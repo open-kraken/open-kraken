@@ -1,0 +1,43 @@
+name: open-kraken-verify
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go/go.mod
+
+      - name: Install web dependencies
+        run: npm --prefix ./web ci
+
+      - name: Remote verify
+        run: bash ./scripts/ci/run-remote-verify.sh
+
+      - name: Upload verify artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-kraken-verify-artifacts
+          path: .open-kraken-artifacts/ci
+          if-no-files-found: error

@@ -1,0 +1,31 @@
+{
+  "entry": "npm run test:e2e:browser",
+  "driver": "headless-chrome",
+  "baseUrlEnv": "OPEN_KRAKEN_BROWSER_BASE_URL",
+  "routes": [
+    { "id": "chat", "path": "/chat", "purpose": "Shared AppShell chat route." },
+    { "id": "members", "path": "/members", "purpose": "Shared AppShell members route." },
+    { "id": "roadmap", "path": "/roadmap", "purpose": "Shared AppShell roadmap route with roadmap/project-data panels." },
+    { "id": "terminal", "path": "/terminal", "purpose": "Shared AppShell terminal route." }
+  ],
+  "requiredSelectors": [
+    "[data-shell-route]",
+    "[data-route-page=\"chat\"]",
+    "[data-route-page=\"members\"]",
+    "[data-route-page=\"roadmap\"]",
+    "[data-route-page=\"terminal\"]"
+  ],
+  "requiredRouteSnippets": [
+    "data-shell-route=\"roadmap\"",
+    "data-route-page=\"roadmap\"",
+    "data-page-entry=\"roadmap-runtime\"",
+    "Save roadmap",
+    "Save project data",
+    "Global notices"
+  ],
+  "handoff": {
+    "nextDriver": "playwright",
+    "runnerCommand": "npx playwright test e2e/browser/*.spec.ts",
+    "minimumRetainedSmoke": "npm run test:e2e:browser"
+  }
+}

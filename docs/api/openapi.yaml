@@ -1,0 +1,1058 @@
+openapi: 3.1.0
+info:
+  title: open-kraken HTTP API
+  version: 0.1.0
+  description: |
+    Browser-facing HTTP contract for the open-kraken migration workspace.
+    WebSocket handshake and event schemas are documented in x-websocket and in
+    docs/api/http-websocket-contract.md.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Get backend runtime health and degraded dependency state
+      responses:
+        '200':
+          description: Healthy or degraded runtime with optional warnings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeHealthResponse'
+        '503':
+          description: Unhealthy runtime with required dependency errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeHealthResponse'
+  /api/workspaces/{workspaceId}/chat/home:
+    get:
+      operationId: getChatHome
+      summary: Get workspace chat home read model
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Chat home read model
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatHomeResponse'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/workspaces/{workspaceId}/conversations/{conversationId}/messages:
+    get:
+      operationId: listConversationMessages
+      summary: List conversation messages
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ConversationId'
+        - name: before
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Message page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePageResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '500':
+          $ref: '#/components/responses/Error500'
+    post:
+      operationId: createConversationMessage
+      summary: Create a message in a conversation
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMessageRequest'
+      responses:
+        '200':
+          description: Persisted message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMessageResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/workspaces/{workspaceId}/members:
+    get:
+      operationId: listMembers
+      summary: List workspace members
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Member roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembersResponse'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/workspaces/{workspaceId}/roles/matrix:
+    get:
+      operationId: getRoleMatrix
+      summary: Get role capability matrix
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Role capability matrix
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleMatrixResponse'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/workspaces/{workspaceId}/roadmap:
+    get:
+      operationId: getRoadmap
+      summary: Get workspace roadmap
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Roadmap document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoadmapResponse'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '500':
+          $ref: '#/components/responses/Error500'
+    put:
+      operationId: updateRoadmap
+      summary: Replace workspace roadmap
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoadmapRequest'
+      responses:
+        '200':
+          description: Updated roadmap document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoadmapResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/workspaces/{workspaceId}/project-data:
+    get:
+      operationId: getProjectData
+      summary: Get workspace project data
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Project data document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDataResponse'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '500':
+          $ref: '#/components/responses/Error500'
+    put:
+      operationId: updateProjectData
+      summary: Update workspace project data
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectDataRequest'
+      responses:
+        '200':
+          description: Updated project data document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDataResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/workspaces/{workspaceId}/terminals:
+    get:
+      operationId: listTerminals
+      summary: List terminal sessions
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Terminal session summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTerminalsResponse'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '500':
+          $ref: '#/components/responses/Error500'
+    post:
+      operationId: createTerminal
+      summary: Create or reuse a terminal session
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTerminalRequest'
+      responses:
+        '200':
+          description: Terminal session created or reused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTerminalResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+  /api/workspaces/{workspaceId}/terminals/{terminalId}/dispatch:
+    post:
+      operationId: dispatchTerminalInput
+      summary: Dispatch input or command text into a terminal lane
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/TerminalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TerminalDispatchRequest'
+      responses:
+        '200':
+          description: Dispatch accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TerminalDispatchResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '503':
+          $ref: '#/components/responses/Error503'
+components:
+  parameters:
+    WorkspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema:
+        type: string
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+    TerminalId:
+      name: terminalId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Error400:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error401:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              value:
+                error:
+                  code: auth.unauthorized
+                  message: bearer token is missing or invalid
+                  status: 401
+                  requestId: req_01KN9B00000000000000000003
+                  retryable: false
+                  details:
+                    workspaceId: ws_123
+    Error403:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            forbiddenScope:
+              value:
+                error:
+                  code: auth.capability_denied
+                  message: member cannot dispatch to this terminal
+                  status: 403
+                  requestId: req_01KN9B00000000000000000004
+                  retryable: false
+                  details:
+                    workspaceId: ws_123
+                    memberId: member_member
+                    requiredCapability: terminal.dispatch
+    Error404:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error409:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error422:
+      description: Unprocessable entity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error500:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error503:
+      description: Service unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    ErrorBody:
+      type: object
+      required: [code, message, status, requestId, retryable]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        status:
+          type: integer
+        requestId:
+          type: string
+        retryable:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+    Workspace:
+      type: object
+      required: [id, name, rootPath, readOnly]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        rootPath:
+          type: string
+        readOnly:
+          type: boolean
+    Member:
+      type: object
+      required: [workspaceId, memberId, displayName, avatar, roleType, manualStatus, terminalStatus]
+      properties:
+        workspaceId:
+          type: string
+        memberId:
+          type: string
+        displayName:
+          type: string
+        avatar:
+          type: string
+        roleType:
+          type: string
+          enum: [owner, supervisor, assistant, member]
+        manualStatus:
+          type: string
+        terminalStatus:
+          type: string
+    Conversation:
+      type: object
+      required: [id, type, memberIds, pinned, muted]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [channel, dm]
+        memberIds:
+          type: array
+          items:
+            type: string
+        customName:
+          type: string
+        pinned:
+          type: boolean
+        muted:
+          type: boolean
+        lastMessageAt:
+          type: integer
+          format: int64
+        lastMessagePreview:
+          type: string
+        isDefault:
+          type: boolean
+        unreadCount:
+          type: integer
+    MessageContent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+        text:
+          type: string
+    MessageAttachment:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        roadmapId:
+          type: string
+        taskId:
+          type: string
+    Message:
+      type: object
+      required: [id, content, createdAt, isAi, status]
+      properties:
+        id:
+          type: string
+        senderId:
+          type: string
+        content:
+          $ref: '#/components/schemas/MessageContent'
+        createdAt:
+          type: integer
+          format: int64
+        isAi:
+          type: boolean
+        status:
+          $ref: '#/components/schemas/MessageStatus'
+        attachment:
+          $ref: '#/components/schemas/MessageAttachment'
+    MessageStatus:
+      type: string
+      enum: [pending, sent, failed]
+      description: |
+        pending = persisted but downstream delivery or side effects still settling.
+        sent = persisted and accepted by the current downstream path.
+        failed = persisted but downstream delivery or side effects failed.
+    PersistenceState:
+      type: object
+      required: [storage]
+      properties:
+        storage:
+          type: string
+          enum: [workspace, app, none]
+        warning:
+          type: [string, 'null']
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ErrorBody'
+            - type: 'null'
+    RuntimeDetail:
+      type: object
+      required: [name, reason]
+      properties:
+        name:
+          type: string
+        reason:
+          type: string
+    RuntimeHealthResponse:
+      type: object
+      required: [status, service, requestId]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unhealthy]
+        service:
+          type: string
+        requestId:
+          type: string
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeDetail'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeDetail'
+    RecoveryState:
+      type: object
+      required: [mode, resyncRequired, terminalReplay, dedupeKey]
+      properties:
+        mode:
+          type: string
+          enum: [snapshot, replay, snapshot_resync]
+        lastAckCursor:
+          type: [string, 'null']
+        resyncRequired:
+          type: boolean
+        terminalReplay:
+          type: string
+          enum: [none, snapshot_only, delta_after_snapshot]
+        dedupeKey:
+          type: string
+          const: cursor_then_terminal_seq
+    ChatHomeResponse:
+      type: object
+      required: [workspace, conversations, members, defaultConversationId, totalUnreadCount]
+      properties:
+        workspace:
+          $ref: '#/components/schemas/Workspace'
+        conversations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Conversation'
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/Member'
+        defaultConversationId:
+          type: string
+        totalUnreadCount:
+          type: integer
+    MessagePageResponse:
+      type: object
+      required: [conversationId, items]
+      properties:
+        conversationId:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        nextBefore:
+          type: string
+    CreateMessageRequest:
+      type: object
+      required: [clientMessageId, content]
+      properties:
+        clientMessageId:
+          type: string
+        content:
+          $ref: '#/components/schemas/MessageContent'
+        attachment:
+          $ref: '#/components/schemas/MessageAttachment'
+    CreateMessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          $ref: '#/components/schemas/Message'
+    MembersResponse:
+      type: object
+      required: [members]
+      properties:
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/Member'
+    RoleCapabilities:
+      type: object
+      required: [roleType, capabilities]
+      properties:
+        roleType:
+          type: string
+          enum: [owner, supervisor, assistant, member]
+        capabilities:
+          type: array
+          items:
+            type: string
+    RoleMatrixResponse:
+      type: object
+      required: [workspaceId, roles]
+      properties:
+        workspaceId:
+          type: string
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleCapabilities'
+    RoadmapTask:
+      type: object
+      required: [id, title, status]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        assigneeId:
+          type: string
+    RoadmapDocument:
+      type: object
+      required: [objective, tasks]
+      properties:
+        objective:
+          type: string
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoadmapTask'
+    RoadmapResponse:
+      type: object
+      required: [workspaceId, version, persistence, roadmap]
+      properties:
+        workspaceId:
+          type: string
+        version:
+          type: integer
+        persistence:
+          $ref: '#/components/schemas/PersistenceState'
+        roadmap:
+          $ref: '#/components/schemas/RoadmapDocument'
+    UpdateRoadmapRequest:
+      type: object
+      required: [expectedVersion, roadmap]
+      properties:
+        expectedVersion:
+          type: integer
+        roadmap:
+          $ref: '#/components/schemas/RoadmapDocument'
+    ProjectDataResponse:
+      type: object
+      required: [workspaceId, projectId, projectName, updatedAt, persistence, roadmap]
+      properties:
+        workspaceId:
+          type: string
+        projectId:
+          type: string
+        projectName:
+          type: string
+        description:
+          type: string
+        version:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        persistence:
+          $ref: '#/components/schemas/PersistenceState'
+        roadmap:
+          $ref: '#/components/schemas/RoadmapDocument'
+    UpdateProjectDataRequest:
+      type: object
+      required: [expectedVersion, projectName, roadmap]
+      properties:
+        expectedVersion:
+          type: integer
+        projectName:
+          type: string
+        description:
+          type: string
+        roadmap:
+          $ref: '#/components/schemas/RoadmapDocument'
+    TerminalSnapshotBuffer:
+      type: object
+      required: [data, rows, cols, cursorRow, cursorCol]
+      properties:
+        data:
+          type: string
+        rows:
+          type: integer
+        cols:
+          type: integer
+        cursorRow:
+          type: integer
+        cursorCol:
+          type: integer
+        history:
+          type: string
+    TerminalSnapshot:
+      type: object
+      required: [terminalId, seq, buffer]
+      properties:
+        terminalId:
+          type: string
+        seq:
+          type: integer
+        buffer:
+          $ref: '#/components/schemas/TerminalSnapshotBuffer'
+    TerminalSession:
+      type: object
+      required:
+        [terminalId, workspaceId, terminalType, command, status, seq, unackedBytes, keepAlive, recovery, createdAt, updatedAt, snapshot]
+      properties:
+        terminalId:
+          type: string
+        memberId:
+          type: string
+        workspaceId:
+          type: string
+        terminalType:
+          type: string
+        command:
+          type: string
+        status:
+          type: string
+          enum: [created, starting, connecting, online, working, offline, closed, failed]
+        seq:
+          type: integer
+        unackedBytes:
+          type: integer
+        keepAlive:
+          type: boolean
+        recovery:
+          $ref: '#/components/schemas/RecoveryState'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        snapshot:
+          $ref: '#/components/schemas/TerminalSnapshot'
+    ListTerminalsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TerminalSession'
+    CreateTerminalRequest:
+      type: object
+      required: [terminalType, command, cols, rows, keepAlive]
+      properties:
+        memberId:
+          type: string
+        terminalType:
+          type: string
+        command:
+          type: string
+        cols:
+          type: integer
+        rows:
+          type: integer
+        keepAlive:
+          type: boolean
+    CreateTerminalResponse:
+      type: object
+      required: [session]
+      properties:
+        session:
+          $ref: '#/components/schemas/TerminalSession'
+    DispatchContext:
+      type: object
+      required: [conversationId, conversationType, senderId, senderName, messageId, clientTraceId, timestamp]
+      properties:
+        conversationId:
+          type: string
+        conversationType:
+          type: string
+          enum: [channel, dm]
+        senderId:
+          type: string
+        senderName:
+          type: string
+        messageId:
+          type: string
+        clientTraceId:
+          type: string
+        timestamp:
+          type: integer
+          format: int64
+    TerminalDispatchRequest:
+      type: object
+      required: [data, context]
+      properties:
+        data:
+          type: string
+        context:
+          $ref: '#/components/schemas/DispatchContext'
+    TerminalDispatchResponse:
+      type: object
+      required: [accepted, terminalId, queuedAt, messageStatus]
+      properties:
+        accepted:
+          type: boolean
+        terminalId:
+          type: string
+        queuedAt:
+          type: string
+          format: date-time
+        messageStatus:
+          $ref: '#/components/schemas/MessageStatus'
+    ChatMessageCreatedEvent:
+      type: object
+      required: [conversationId, message, totalUnreadCount]
+      properties:
+        conversationId:
+          type: string
+        message:
+          $ref: '#/components/schemas/Message'
+        totalUnreadCount:
+          type: integer
+    MemberPresenceUpdatedEvent:
+      type: object
+      required: [member, presenceState, lastHeartbeatAt]
+      properties:
+        member:
+          $ref: '#/components/schemas/Member'
+        presenceState:
+          type: string
+        lastHeartbeatAt:
+          type: string
+          format: date-time
+    RoadmapUpdatedEvent:
+      type: object
+      required: [version, roadmap]
+      properties:
+        version:
+          type: integer
+        roadmap:
+          $ref: '#/components/schemas/RoadmapDocument'
+    TerminalSessionSnapshotEvent:
+      type: object
+      required: [session]
+      properties:
+        session:
+          $ref: '#/components/schemas/TerminalSession'
+    TerminalSessionDeltaEvent:
+      type: object
+      required: [terminalId, seq, data]
+      properties:
+        terminalId:
+          type: string
+        seq:
+          type: integer
+        data:
+          type: string
+    TerminalStatusChangedEvent:
+      type: object
+      required: [terminalId, memberId, status]
+      properties:
+        terminalId:
+          type: string
+        memberId:
+          type: string
+        status:
+          type: string
+        reason:
+          type: string
+x-websocket:
+  endpoint: /api/ws
+  handshake:
+    auth:
+      type: bearer
+      header: Authorization
+    query:
+      workspaceId:
+        type: string
+        required: true
+      memberId:
+        type: string
+        required: true
+      subscriptions:
+        type: string
+        example: chat,members,roadmap,terminal
+      cursor:
+        type: string
+      conversationId:
+        type: array
+        items:
+          type: string
+      terminalId:
+        type: array
+        items:
+          type: string
+    accept:
+      type: object
+      required: [type, workspaceId, memberId, subscriptionScope, mode, cursor, resyncRequired, recovery, heartbeatIntervalMs]
+      properties:
+        type:
+          type: string
+          const: handshake.accepted
+        workspaceId:
+          type: string
+        memberId:
+          type: string
+        subscriptionScope:
+          type: object
+          additionalProperties: true
+        mode:
+          type: string
+          enum: [snapshot, replay]
+        cursor:
+          type: string
+        replayFromCursor:
+          type: string
+        resyncRequired:
+          type: boolean
+        recovery:
+          $ref: '#/components/schemas/RecoveryState'
+        heartbeatIntervalMs:
+          type: integer
+    reject:
+      type: object
+      required: [type, error]
+      properties:
+        type:
+          type: string
+          const: handshake.rejected
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+  events:
+    chat.snapshot:
+      $ref: '#/components/schemas/ChatMessageCreatedEvent'
+    chat.delta:
+      $ref: '#/components/schemas/TerminalSessionDeltaEvent'
+    chat.status:
+      $ref: '#/components/schemas/TerminalStatusChangedEvent'
+    presence.snapshot:
+      $ref: '#/components/schemas/MemberPresenceUpdatedEvent'
+    presence.updated:
+      $ref: '#/components/schemas/MemberPresenceUpdatedEvent'
+    roadmap.snapshot:
+      $ref: '#/components/schemas/RoadmapUpdatedEvent'
+    roadmap.updated:
+      $ref: '#/components/schemas/RoadmapUpdatedEvent'
+    terminal.attach:
+      $ref: '#/components/schemas/TerminalAttachEvent'
+    terminal.snapshot:
+      $ref: '#/components/schemas/TerminalSessionSnapshotEvent'
+    terminal.delta:
+      $ref: '#/components/schemas/TerminalSessionDeltaEvent'
+    terminal.status:
+      $ref: '#/components/schemas/TerminalStatusChangedEvent'

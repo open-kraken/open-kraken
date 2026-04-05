@@ -1,0 +1,77 @@
+:root {
+  color-scheme: light;
+
+  --app-font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --app-font-display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
+  --app-font-mono: "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+
+  /* Neutrals: cool stone / slate (product-console) */
+  --app-bg-canvas: #f4f4f5;
+  --app-bg-elevated: #fafafa;
+  --app-bg-muted: #e4e4e7;
+  --app-surface-strong: #ffffff;
+  --app-surface-soft: rgba(255, 255, 255, 0.72);
+  --app-surface-inset: rgba(15, 23, 42, 0.04);
+  --app-border-subtle: rgba(15, 23, 42, 0.08);
+  --app-border-strong: rgba(15, 23, 42, 0.14);
+  --app-text-strong: #0f172a;
+  --app-text-muted: #64748b;
+  --app-text-faint: #94a3b8;
+
+  --app-accent: #0d9488;
+  --app-accent-foreground: #f0fdfa;
+  --app-accent-soft: rgba(13, 148, 136, 0.1);
+  --app-sidebar-edge: rgba(45, 212, 191, 0.55);
+
+  /* Hairline shadows (single soft layer) */
+  --app-shadow-panel: 0 1px 0 rgba(15, 23, 42, 0.04), 0 12px 40px rgba(15, 23, 42, 0.06);
+  --app-shadow-card: 0 1px 0 rgba(15, 23, 42, 0.05), 0 6px 20px rgba(15, 23, 42, 0.05);
+  --app-shadow-nav: 1px 0 0 rgba(15, 23, 42, 0.06);
+
+  /* Tighter radii: crisp UI, not “bubble” */
+  --app-radius-panel: 14px;
+  --app-radius-card: 12px;
+  --app-radius-control: 8px;
+  --app-radius-pill: 999px;
+
+  --app-sidebar-width: 220px;
+
+  --app-space-1: 0.25rem;
+  --app-space-2: 0.5rem;
+  --app-space-3: 0.75rem;
+  --app-space-4: 1rem;
+  --app-space-5: 1.25rem;
+  --app-space-6: 1.5rem;
+  --app-space-8: 2rem;
+  --app-space-10: 2.5rem;
+
+  --app-text-xs: 0.6875rem;
+  --app-text-sm: 0.8125rem;
+  --app-text-md: 0.875rem;
+  --app-control-y: 0.375rem;
+  --app-control-x: 0.625rem;
+  --app-control-height: 2rem;
+
+  --app-z-base: 1;
+  --app-z-overlay: 10;
+
+  --app-motion-fast: 120ms ease;
+  --app-motion-medium: 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  --app-focus-ring: 0 0 0 2px rgba(13, 148, 136, 0.35);
+  --app-selection-bg: rgba(13, 148, 136, 0.18);
+  --app-selection-fg: var(--app-text-strong);
+
+  --app-health-ok: #14b8a6;
+  --app-health-warn: #f59e0b;
+  --app-health-bad: #f87171;
+
+  --role-owner: #1e293b;
+  --role-supervisor: #1d4ed8;
+  --role-assistant: #047857;
+  --role-member: #b45309;
+  --status-idle: #b45309;
+  --status-running: #0d9488;
+  --status-success: #2563eb;
+  --status-error: #dc2626;
+  --status-offline: #64748b;
+}

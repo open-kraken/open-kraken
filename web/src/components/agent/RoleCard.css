@@ -1,0 +1,172 @@
+.role-card {
+  position: relative;
+  display: grid;
+  gap: var(--app-space-4);
+  padding: var(--app-space-4);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-card);
+  background: var(--app-surface-strong);
+  box-shadow: var(--app-shadow-card);
+  overflow: hidden;
+  transition: border-color var(--app-motion-medium), box-shadow var(--app-motion-medium);
+}
+
+.role-card:hover {
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: var(--app-shadow-panel);
+}
+
+.role-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -18% -42% auto;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+}
+
+.role-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-4);
+}
+
+.role-card__avatar {
+  position: relative;
+  z-index: var(--app-z-base);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--app-radius-control);
+  font-family: var(--app-font-display);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.role-card__body {
+  min-width: 0;
+}
+
+.role-card__name {
+  margin: 0;
+  font-size: var(--app-text-sm, 0.8125rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.role-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--app-space-2);
+  margin-top: var(--app-space-2);
+}
+
+.role-card__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--app-radius-pill);
+  font-size: var(--app-text-xs, 0.6875rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.role-card__status::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.role-card__summary {
+  position: relative;
+  z-index: var(--app-z-base);
+  margin: 0;
+  min-height: 3.75rem;
+  padding: var(--app-space-3);
+  border-radius: var(--app-radius-control);
+  background: var(--app-surface-inset);
+  color: var(--app-text-muted);
+  font-size: var(--app-text-sm, 0.8125rem);
+  line-height: 1.45;
+}
+
+.role-card[data-role="owner"] {
+  border-color: rgba(43, 33, 25, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255, 248, 240, 0.98), rgba(244, 235, 223, 0.92)),
+    var(--app-surface-strong);
+}
+
+.role-card[data-role="supervisor"] {
+  border-color: rgba(32, 79, 120, 0.22);
+}
+
+.role-card[data-role="assistant"] {
+  border-color: rgba(34, 84, 63, 0.22);
+}
+
+.role-card[data-role="member"] {
+  border-color: rgba(120, 82, 34, 0.22);
+}
+
+.role-card[data-role="owner"] .role-card__avatar,
+.role-card[data-role="owner"] .role-card__role {
+  border-color: rgba(43, 33, 25, 0.18);
+  color: var(--role-owner);
+  background: rgba(43, 33, 25, 0.08);
+}
+
+.role-card[data-role="supervisor"] .role-card__avatar,
+.role-card[data-role="supervisor"] .role-card__role {
+  border-color: rgba(32, 79, 120, 0.18);
+  color: var(--role-supervisor);
+  background: rgba(32, 79, 120, 0.08);
+}
+
+.role-card[data-role="assistant"] .role-card__avatar,
+.role-card[data-role="assistant"] .role-card__role {
+  border-color: rgba(34, 84, 63, 0.18);
+  color: var(--role-assistant);
+  background: rgba(34, 84, 63, 0.08);
+}
+
+.role-card[data-role="member"] .role-card__avatar,
+.role-card[data-role="member"] .role-card__role {
+  border-color: rgba(120, 82, 34, 0.18);
+  color: var(--role-member);
+  background: rgba(120, 82, 34, 0.08);
+}
+
+.role-card[data-status="idle"] .role-card__status {
+  color: var(--status-idle);
+  background: rgba(168, 116, 24, 0.12);
+}
+
+.role-card[data-status="running"] .role-card__status {
+  color: var(--status-running);
+  background: rgba(13, 122, 99, 0.12);
+}
+
+.role-card[data-status="success"] .role-card__status {
+  color: var(--status-success);
+  background: rgba(36, 88, 203, 0.12);
+}
+
+.role-card[data-status="error"] .role-card__status {
+  color: var(--status-error);
+  background: rgba(174, 65, 47, 0.12);
+}
+
+.role-card[data-status="offline"] .role-card__status {
+  color: var(--status-offline);
+  background: rgba(105, 115, 134, 0.14);
+}

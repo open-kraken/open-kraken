@@ -1,0 +1,137 @@
+{
+  "workspace": {
+    "id": "ws_open_kraken",
+    "name": "open-kraken Migration",
+    "rootPath": "/Users/claire/IdeaProjects/open-kraken",
+    "readOnly": false
+  },
+  "members": {
+    "members": [
+      {
+        "workspaceId": "ws_open_kraken",
+        "memberId": "owner_1",
+        "displayName": "Claire",
+        "avatar": "CO",
+        "roleType": "owner",
+        "manualStatus": "online",
+        "terminalStatus": "working"
+      },
+      {
+        "workspaceId": "ws_open_kraken",
+        "memberId": "assistant_1",
+        "displayName": "Planner",
+        "avatar": "PL",
+        "roleType": "assistant",
+        "manualStatus": "online",
+        "terminalStatus": "online"
+      },
+      {
+        "workspaceId": "ws_open_kraken",
+        "memberId": "member_1",
+        "displayName": "Runner",
+        "avatar": "RN",
+        "roleType": "member",
+        "manualStatus": "dnd",
+        "terminalStatus": "offline"
+      }
+    ]
+  },
+  "conversations": [
+    {
+      "id": "conv_general",
+      "type": "channel",
+      "memberIds": ["owner_1", "assistant_1", "member_1"],
+      "customName": "General",
+      "pinned": true,
+      "muted": false,
+      "lastMessageAt": 1743667200000,
+      "lastMessagePreview": "Terminal session attached.",
+      "isDefault": true,
+      "unreadCount": 1
+    }
+  ],
+  "messages": {
+    "conv_general": [
+      {
+        "id": "msg_1",
+        "senderId": "owner_1",
+        "content": {
+          "type": "text",
+          "text": "open-kraken mock baseline is ready."
+        },
+        "createdAt": 1743667200000,
+        "isAi": false,
+        "status": "sent"
+      }
+    ]
+  },
+  "roadmap": {
+    "objective": "Stabilize the open-kraken migration shell.",
+    "tasks": [
+      {
+        "id": "task_1",
+        "title": "Freeze reusable backend and browser DTO names.",
+        "status": "done",
+        "assigneeId": "assistant_1"
+      },
+      {
+        "id": "task_2",
+        "title": "Provide mock chat, member, roadmap, and terminal flows.",
+        "status": "in_progress",
+        "assigneeId": "member_1"
+      }
+    ]
+  },
+  "projectData": {
+    "workspaceId": "ws_open_kraken",
+    "projectId": "project_open_kraken",
+    "projectName": "open-kraken",
+    "roadmap": {
+      "objective": "Stabilize the open-kraken migration shell.",
+      "tasks": [
+        {
+          "id": "task_1",
+          "title": "Freeze reusable backend and browser DTO names.",
+          "status": "done",
+          "assigneeId": "assistant_1"
+        },
+        {
+          "id": "task_2",
+          "title": "Provide mock chat, member, roadmap, and terminal flows.",
+          "status": "in_progress",
+          "assigneeId": "member_1"
+        }
+      ]
+    }
+  },
+  "terminalSessions": [
+    {
+      "terminalId": "term_owner_1",
+      "memberId": "owner_1",
+      "workspaceId": "ws_open_kraken",
+      "terminalType": "codex",
+      "command": "npm run verify:migration",
+      "status": "working",
+      "seq": 2,
+      "unackedBytes": 0,
+      "keepAlive": true,
+      "metadata": {
+        "conversationId": "conv_general"
+      },
+      "createdAt": "2026-04-03T16:30:00Z",
+      "updatedAt": "2026-04-03T16:35:00Z",
+      "snapshot": {
+        "terminalId": "term_owner_1",
+        "seq": 1,
+        "buffer": {
+          "data": "$ npm run verify:migration\n",
+          "rows": 24,
+          "cols": 80,
+          "cursorRow": 2,
+          "cursorCol": 1,
+          "history": "$ cd /Users/claire/IdeaProjects/open-kraken\n"
+        }
+      }
+    }
+  ]
+}

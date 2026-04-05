@@ -1,0 +1,82 @@
+{
+  "_roadmapMeta": {
+    "updatedAt": 1775211406281
+  },
+  "roadmap": {
+    "objective": "将 /Users/claire/IdeaProjects/golutra 从 Vue+Tauri(Rust) 桌面应用迁移为可部署到服务器的前后端分离系统：后端 Go，前端 React，保留聊天、成员角色分配、跨 agent 协作、终端调度、路线图与项目数据等核心能力；核心编排与角色管理迁移到后端。",
+    "tasks": [
+      {
+        "id": 1,
+        "number": "01",
+        "pinned": true,
+        "sortOrder": 1,
+        "status": "in-progress",
+        "title": "完成现有 Tauri/Vue/Rust 架构盘点并定义 Go + React 迁移边界"
+      },
+      {
+        "id": 2,
+        "number": "02",
+        "pinned": true,
+        "sortOrder": 2,
+        "status": "in-progress",
+        "title": "设计后端领域模型与 API：会话/成员/角色/消息/路线图/项目数据/技能/终端会话"
+      },
+      {
+        "id": 3,
+        "number": "03",
+        "pinned": true,
+        "sortOrder": 3,
+        "status": "in-progress",
+        "title": "设计 Web 前端 React 架构与 Vue 界面迁移映射"
+      },
+      {
+        "id": 9,
+        "number": "04",
+        "pinned": false,
+        "sortOrder": 4,
+        "status": "in-progress",
+        "title": "前端UI样式要够好看，要显示每个Agent角色，头像，工作状态"
+      },
+      {
+        "id": 4,
+        "number": "05",
+        "pinned": false,
+        "sortOrder": 5,
+        "status": "in-progress",
+        "title": "迁移终端编排、会话映射、事件流与跨 agent 协作机制到 Go 服务"
+      },
+      {
+        "id": 5,
+        "number": "06",
+        "pinned": false,
+        "sortOrder": 6,
+        "status": "in-progress",
+        "title": "迁移聊天存储、消息管道、通知与路线图持久化方案"
+      },
+      {
+        "id": 6,
+        "number": "07",
+        "pinned": false,
+        "sortOrder": 7,
+        "status": "in-progress",
+        "title": "制定 Web 部署方案：服务进程、静态资源、实时通信、鉴权与运行时依赖"
+      },
+      {
+        "id": 7,
+        "number": "08",
+        "pinned": false,
+        "sortOrder": 8,
+        "status": "in-progress",
+        "title": "分阶段实施前后端代码改造并保持核心功能可验证"
+      },
+      {
+        "id": 8,
+        "number": "09",
+        "pinned": false,
+        "sortOrder": 9,
+        "status": "in-progress",
+        "title": "测试验证是否可用，必须达到可用生产标准"
+      }
+    ]
+  }
+}

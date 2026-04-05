@@ -1,0 +1,29 @@
+{
+  "name": "open-kraken",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "audit:changes": "bash ./scripts/audit-changes.sh --summary",
+    "ci:remote-verify": "bash ./scripts/ci/run-remote-verify.sh",
+    "check:go-toolchain": "bash ./scripts/check-go-toolchain.sh",
+    "bootstrap:migration": "bash ./scripts/bootstrap-migration.sh --check",
+    "dev:down": "bash ./scripts/dev-down.sh",
+    "dev:up": "bash ./scripts/dev-up.sh",
+    "test:go": "bash ./scripts/verify-go-tests.sh layers",
+    "test:go:domain": "bash ./scripts/verify-go-tests.sh domain",
+    "test:go:runtime": "bash ./scripts/verify-go-tests.sh runtime",
+    "test:go:workspace": "bash ./scripts/verify-go-tests.sh workspace",
+    "test:go:projectdata": "bash ./scripts/verify-go-tests.sh projectdata",
+    "test:go:importer": "bash ./scripts/verify-go-tests.sh importer",
+    "test:web:routes": "npm --prefix ./web run test:web:routes",
+    "test:web:unit": "npm --prefix ./web run test:web:unit",
+    "test:e2e:browser": "node ./scripts/verify-browser-smoke.mjs",
+    "test:e2e:smoke": "node --test ./e2e/smoke/*.test.mjs",
+    "verify:contract-sync": "node ./scripts/verify-contract-sync.mjs",
+    "verify:production-readiness": "node ./scripts/verify-production-readiness.mjs",
+    "verify:all": "bash ./scripts/verify-all.sh",
+    "verify:runtime": "bash ./scripts/verify-runtime.sh",
+    "verify:migration": "node ./scripts/verify-migration.mjs"
+  }
+}
