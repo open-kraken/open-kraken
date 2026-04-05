@@ -88,6 +88,38 @@
   white-space: nowrap;
 }
 
+.member-card__skills-block {
+  display: grid;
+  gap: 6px;
+}
+
+.member-card__skills {
+  margin: 0;
+  font-size: var(--app-text-xs);
+  color: var(--app-text-muted);
+}
+
+.member-card__skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.member-card__skill-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--app-radius-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(13, 148, 136, 0.1);
+  color: var(--app-text-strong);
+  border: 1px solid rgba(13, 148, 136, 0.2);
+}
+
 .member-card__task-row {
   display: flex;
   align-items: flex-end;
@@ -115,7 +147,7 @@
 .member-card__exec:hover {
   background: var(--app-bg-elevated);
   border-color: rgba(13, 148, 136, 0.35);
-  color: #0f766e;
+  color: var(--app-link-hover);
 }
 
 .member-card__supporting {

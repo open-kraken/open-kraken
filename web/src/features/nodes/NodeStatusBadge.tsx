@@ -3,16 +3,11 @@
  * online → green, degraded → orange, offline → red.
  */
 
+import { useI18n } from '@/i18n/I18nProvider';
 import type { NodeStatus } from '@/types/node';
 
 export type NodeStatusBadgeProps = {
   status: NodeStatus;
-};
-
-const STATUS_LABEL: Record<NodeStatus, string> = {
-  online: 'Online',
-  degraded: 'Degraded',
-  offline: 'Offline'
 };
 
 // Inline styles so the badge works without a dedicated CSS file.
@@ -30,6 +25,8 @@ const STATUS_STYLE: Record<NodeStatus, React.CSSProperties> = {
  * @param status - The node's current NodeStatus value.
  */
 export const NodeStatusBadge = ({ status }: NodeStatusBadgeProps) => {
+  const { t } = useI18n();
+  const label = t(`nodeStatus.${status}`);
   return (
     <span
       className={`node-status-badge node-status-badge--${status}`}
@@ -42,9 +39,9 @@ export const NodeStatusBadge = ({ status }: NodeStatusBadgeProps) => {
         fontWeight: 600,
         letterSpacing: '0.02em'
       }}
-      aria-label={`Node status: ${STATUS_LABEL[status]}`}
+      aria-label={t('nodeCard.statusAria', { status: label })}
     >
-      {STATUS_LABEL[status]}
+      {label}
     </span>
   );
 };

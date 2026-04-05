@@ -14,8 +14,11 @@ export type PanelFeedbackTone = 'neutral' | 'loading' | 'saving' | 'error' | 're
 
 export type PanelFeedback = {
   tone: PanelFeedbackTone;
-  title: string;
-  detail: string;
+  titleKey: string;
+  /** Server or parse error text (shown as-is). */
+  detail?: string;
+  /** Fixed UI copy from the message catalog. */
+  detailKey?: string;
   warning: string;
   disableInputs: boolean;
   disableSave: boolean;
@@ -55,6 +58,10 @@ export const EMPTY_PROJECT_DATA: ProjectDataDocument = {
   warning: '',
   readOnlyReason: null
 };
+
+/** Canonical English copy surfaced to the UI; matched for i18n in panels. */
+export const DEFAULT_READONLY_REASON_EN = 'This roadmap is read-only until the backend unlocks it.';
+export const INVALID_JSON_DETAIL_EN = 'Invalid JSON payload.';
 
 const deepClone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
@@ -96,7 +103,7 @@ export const hydrateRoadmapState = (response: RoadmapResponse): RoadmapEditorSta
     storage: response.storage ?? 'workspace',
     readOnlyReason:
       response.readOnly === true
-        ? response.readOnlyReason ?? 'This roadmap is read-only until the backend unlocks it.'
+        ? response.readOnlyReason ?? DEFAULT_READONLY_REASON_EN
         : response.readOnlyReason ?? null,
     reloadRequestedWhileDirty: false
   };
@@ -164,7 +171,7 @@ export const updateProjectDataDraftText = (state: ProjectDataEditorState, draftT
     return {
       ...state,
       draftText,
-      parseError: error instanceof Error ? error.message : 'Invalid JSON payload.',
+      parseError: error instanceof Error ? error.message : INVALID_JSON_DETAIL_EN,
       saveError: null,
       phase: 'dirty',
       reloadRequestedWhileDirty: false
@@ -252,8 +259,8 @@ export const selectPanelFeedback = ({
   if (saveError || parseError) {
     return {
       tone: 'error',
-      title: 'Action required',
-      detail: saveError ?? parseError ?? 'The latest change could not be stored.',
+      titleKey: 'panel.feedback.actionRequired',
+      detail: (saveError ?? parseError) as string,
       warning,
       disableInputs: false,
       disableSave: Boolean(parseError),
@@ -265,8 +272,8 @@ export const selectPanelFeedback = ({
   if (phase === 'loading') {
     return {
       tone: 'loading',
-      title: 'Loading from backend',
-      detail: 'Inputs stay disabled until the latest persisted state is ready.',
+      titleKey: 'panel.feedback.loadingTitle',
+      detailKey: 'panel.feedback.loadingDetail',
       warning,
       disableInputs: true,
       disableSave: true,
@@ -278,8 +285,8 @@ export const selectPanelFeedback = ({
   if (phase === 'saving') {
     return {
       tone: 'saving',
-      title: 'Saving changes',
-      detail: 'Repeated submit is locked until the current write finishes.',
+      titleKey: 'panel.feedback.savingTitle',
+      detailKey: 'panel.feedback.savingDetail',
       warning,
       disableInputs: true,
       disableSave: true,
@@ -291,7 +298,7 @@ export const selectPanelFeedback = ({
   if (readOnlyReason) {
     return {
       tone: 'readonly',
-      title: 'Read-only source',
+      titleKey: 'panel.feedback.readonlyTitle',
       detail: readOnlyReason,
       warning,
       disableInputs: true,
@@ -304,8 +311,8 @@ export const selectPanelFeedback = ({
   if (reloadRequestedWhileDirty) {
     return {
       tone: 'neutral',
-      title: 'Unsaved local edits',
-      detail: 'Keep the draft to continue editing, or discard it and reload the backend copy.',
+      titleKey: 'panel.feedback.unsavedTitle',
+      detailKey: 'panel.feedback.unsavedDetail',
       warning,
       disableInputs: false,
       disableSave: false,
@@ -316,8 +323,8 @@ export const selectPanelFeedback = ({
 
   return {
     tone: 'neutral',
-    title: 'Ready',
-    detail: 'Edits stay local until you explicitly save them.',
+    titleKey: 'panel.feedback.readyTitle',
+    detailKey: 'panel.feedback.readyDetail',
     warning,
     disableInputs: false,
     disableSave: phase !== 'dirty',

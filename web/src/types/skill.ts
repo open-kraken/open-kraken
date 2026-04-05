@@ -7,7 +7,7 @@
 export type SkillCategory = 'tech-lead' | 'golang' | 'react' | 'qa' | 'devops' | 'other';
 
 /**
- * A single Skill entry as returned by GET /api/skills.
+ * A single Skill entry as returned by GET …/skills (under API base URL).
  * `path` is the workspace-relative path to the SKILL.md file.
  */
 export interface Skill {
@@ -19,7 +19,7 @@ export interface Skill {
 
 /**
  * The set of skills bound to a specific workspace member.
- * Returned by GET /api/members/{id}/skills.
+ * Returned by GET …/members/{id}/skills.
  */
 export interface MemberSkills {
   memberId: string;

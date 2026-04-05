@@ -5,6 +5,7 @@
  */
 
 import { useMemo } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import type { TokenStats } from '@/types/token';
 
 export type TokenChartProps = {
@@ -25,6 +26,7 @@ const CHART_WIDTH = 560;
  * @param stats - Array of TokenStats, one entry per member.
  */
 export const TokenChart = ({ stats }: TokenChartProps) => {
+  const { t } = useI18n();
   const sorted = useMemo(
     () => [...stats].sort((a, b) => b.totalTokens - a.totalTokens),
     [stats]
@@ -33,7 +35,7 @@ export const TokenChart = ({ stats }: TokenChartProps) => {
   if (sorted.length === 0) {
     return (
       <div style={{ color: '#6b7280', padding: '24px', textAlign: 'center' }}>
-        No token data available.
+        {t('tokenChart.empty')}
       </div>
     );
   }
@@ -46,7 +48,7 @@ export const TokenChart = ({ stats }: TokenChartProps) => {
     <div className="token-chart" style={{ overflowX: 'auto' }}>
       <svg
         role="img"
-        aria-label="Per-member token consumption bar chart"
+        aria-label={t('tokenChart.aria')}
         width={CHART_WIDTH}
         height={svgHeight}
         style={{ display: 'block', fontFamily: 'inherit' }}
@@ -59,7 +61,7 @@ export const TokenChart = ({ stats }: TokenChartProps) => {
           fontSize="11"
           fill="#6b7280"
         >
-          Token count
+          {t('tokenChart.axisLabel')}
         </text>
 
         {sorted.map((member, idx) => {
@@ -73,7 +75,11 @@ export const TokenChart = ({ stats }: TokenChartProps) => {
           const adjustedOutputWidth = totalWidth * (1 - inputFraction);
 
           return (
-            <g key={member.memberId} role="listitem" aria-label={`${member.memberName}: ${member.totalTokens.toLocaleString()} tokens`}>
+            <g
+              key={member.memberId}
+              role="listitem"
+              aria-label={t('tokenChart.memberAria', { name: member.memberName, count: member.totalTokens.toLocaleString() })}
+            >
               {/* Member name label */}
               <text
                 x={LEFT_MARGIN - 8}
@@ -125,11 +131,11 @@ export const TokenChart = ({ stats }: TokenChartProps) => {
       <div style={{ display: 'flex', gap: '16px', marginTop: '8px', fontSize: '0.75rem', color: '#9ca3af' }}>
         <span>
           <span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: '#3b82f6', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />
-          Input tokens
+          {t('agentActivity.input')}
         </span>
         <span>
           <span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: '#6366f1', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />
-          Output tokens
+          {t('agentActivity.output')}
         </span>
       </div>
     </div>

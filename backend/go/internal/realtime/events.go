@@ -23,6 +23,14 @@ const (
 	EventRoadmapDelta      = "roadmap.delta"
 	EventRoadmapStatus     = "roadmap.status"
 	EventRoadmapUpdated    = "roadmap.updated"
+
+	// Node registry events.
+	EventNodeSnapshot = "node.snapshot"
+	EventNodeUpdated  = "node.updated"
+	EventNodeOffline  = "node.offline"
+
+	// Token tracking events.
+	EventTokenStatsUpdated = "token.stats_updated"
 )
 
 type Event struct {
@@ -136,6 +144,32 @@ type RoadmapUpdatedPayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	Version     uint64 `json:"version"`
 	Reason      string `json:"reason"`
+}
+
+// NodeSnapshotPayload carries all current node IDs for initial sync.
+type NodeSnapshotPayload struct {
+	NodeIDs []string `json:"nodeIds"`
+}
+
+// NodeUpdatedPayload is broadcast when a node's state changes (register, heartbeat).
+type NodeUpdatedPayload struct {
+	NodeID      string `json:"nodeId"`
+	Status      string `json:"status"`
+	Hostname    string `json:"hostname"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
+}
+
+// NodeOfflinePayload is broadcast when a node goes offline (deregister or timeout).
+type NodeOfflinePayload struct {
+	NodeID      string `json:"nodeId"`
+	Hostname    string `json:"hostname"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
+}
+
+// TokenStatsUpdatedPayload signals that token statistics have changed.
+type TokenStatsUpdatedPayload struct {
+	MemberID string `json:"memberId,omitempty"`
+	NodeID   string `json:"nodeId,omitempty"`
 }
 
 func NewCursor(seq uint64) string {

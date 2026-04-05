@@ -10,6 +10,8 @@ export type ShellToast = {
   tone: ToastTone;
   title: string;
   detail: string;
+  /** Stable id for logic (e.g. clear error state); not shown in UI. */
+  tag?: string;
 };
 
 export type RealtimeStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'stale' | 'disconnected';

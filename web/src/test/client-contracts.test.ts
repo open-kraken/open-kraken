@@ -11,7 +11,7 @@ test('parseAppEnv normalizes defaults and invalid values', () => {
     OPEN_KRAKEN_WORKSPACE_ID: '  '
   });
 
-  assert.equal(env.apiBaseUrl, 'http://127.0.0.1:8080');
+  assert.equal(env.apiBaseUrl, 'http://127.0.0.1:8080/api/v1');
   assert.equal(env.wsBaseUrl, 'ws://127.0.0.1:9001/ws');
   assert.equal(env.defaultWorkspaceId, 'ws_open_kraken');
 });

@@ -92,6 +92,7 @@ test('terminal controller normalizes legacy websocket names and requests resync 
   await controller.handleRealtimeEvent({
     event: 'terminal.snapshot',
     terminalId: 'term_owner_1',
+    seq: 1,
     rows: 24,
     cols: 80,
     buffer: 'boot\n',

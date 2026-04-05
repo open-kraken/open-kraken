@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { RoadmapProjectDataRoute } from '@/routes/roadmap-project-data';
 import type { RoadmapProjectDataClient } from '@/features/roadmap-project-data/api-client';
+import { useI18n } from '@/i18n/I18nProvider';
+import { translateRealtimeDetail, translateRealtimeStatusLabel } from '@/i18n/realtime-copy';
 import { useAppShell } from '@/state/app-shell-store';
 
 export const RoadmapPage = () => {
+  const { t } = useI18n();
   const { apiClient, notifications, pushNotification, realtime, route } = useAppShell();
   const lastErrorRef = useRef<string | null>(null);
 
@@ -42,13 +45,14 @@ export const RoadmapPage = () => {
     lastErrorRef.current = message;
     pushNotification({
       tone: 'error',
-      title: 'Roadmap route error',
-      detail: message
+      title: t('roadmap.errorTitle'),
+      detail: message,
+      tag: 'roadmap-route-error'
     });
   };
 
   useEffect(() => {
-    if (!notifications.some((toast) => toast.title === 'Roadmap route error')) {
+    if (!notifications.some((toast) => toast.tag === 'roadmap-route-error')) {
       lastErrorRef.current = null;
     }
   }, [notifications]);
@@ -57,25 +61,23 @@ export const RoadmapPage = () => {
     <section className="page-card roadmap-route-page" data-route-page="roadmap" data-page-entry="roadmap-runtime">
       <div className="route-page__hero">
         <div>
-          <p className="page-eyebrow">Roadmap</p>
-          <h1>Roadmap and project data stream</h1>
+          <p className="page-eyebrow">{t('roadmap.eyebrow')}</p>
+          <h1>{t('roadmap.title')}</h1>
           <p className="route-page__intro">
-            This page is the formal <code>{route.path}</code> entry inside AppShell navigation. Document-level
-            save, read-only, and conflict feedback stays inside the two panels below, while escalated route
-            failures are mirrored into the shell notice outlet above.
+            {t('roadmap.introBefore')} <code>{route.path}</code> {t('roadmap.introAfter')}
           </p>
         </div>
 
         <div className="route-page__metric-strip">
           <article className="route-page__metric">
-            <span className="route-page__metric-label">Navigation</span>
-            <strong>{route.label}</strong>
-            <small>Entered from the primary AppShell nav, not from the legacy collaboration-only entry.</small>
+            <span className="route-page__metric-label">{t('roadmap.metric.nav')}</span>
+            <strong>{t(`routes.${route.id}.label`)}</strong>
+            <small>{t('roadmap.metric.navHint')}</small>
           </article>
           <article className="route-page__metric">
-            <span className="route-page__metric-label">Shell realtime</span>
-            <strong>{realtime.status}</strong>
-            <small>{realtime.detail}</small>
+            <span className="route-page__metric-label">{t('roadmap.metric.realtime')}</span>
+            <strong>{translateRealtimeStatusLabel(realtime.status, t)}</strong>
+            <small>{translateRealtimeDetail(realtime.detail, t)}</small>
           </article>
         </div>
       </div>

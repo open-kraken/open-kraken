@@ -6,6 +6,8 @@ import { AppShell } from '@/app/layouts/AppShell';
 import { createMockClient } from '@/mocks/mock-client.mjs';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute } from '@/routes';
+import { ThemeProvider } from '@/theme/ThemeProvider';
+import { I18nProvider } from '@/i18n/I18nProvider';
 
 const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
   const client = createMockClient({ workspaceId: 'ws_open_kraken' });
@@ -61,9 +63,17 @@ const renderShell = (routePath: string) => {
 
   return renderToStaticMarkup(
     React.createElement(
-      AppShellContext.Provider,
-      { value: contextValue },
-      React.createElement(AppShell)
+      ThemeProvider,
+      null,
+      React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(
+          AppShellContext.Provider,
+          { value: contextValue },
+          React.createElement(AppShell)
+        )
+      )
     )
   );
 };
@@ -75,6 +85,7 @@ test('resolveAppRoute covers required shell paths', () => {
   assert.equal(resolveAppRoute('/terminal').id, 'terminal');
   assert.equal(resolveAppRoute('/settings').id, 'settings');
   assert.equal(resolveAppRoute('/system').id, 'system');
+  assert.equal(resolveAppRoute('/ledger').id, 'ledger');
   assert.equal(resolveAppRoute('/missing').id, 'chat');
 });
 
@@ -85,11 +96,11 @@ test('AppShell exposes a single workspace, realtime, and notice outlet to pages'
   assert.match(markup, /data-shell-slot="realtime"/);
   assert.match(markup, /data-shell-slot="errors"/);
   assert.match(markup, /data-route-page="members"/);
-  assert.match(markup, /route-page__grid route-page__grid--members/);
-  assert.match(markup, /Member coordination surface/);
-  assert.match(markup, /Active task/);
+  assert.match(markup, /route-page__grid route-page__grid--members-workbench/);
+  assert.match(markup, /agent workbench/);
+  assert.match(markup, /No active task/);
   assert.match(markup, /data-role="owner"/);
-  assert.match(markup, /Global notices/);
+  assert.match(markup, /Notices/);
 });
 
 test('chat and terminal routes render their current page-level shells inside AppShell', () => {
@@ -120,8 +131,8 @@ test('roadmap route renders the formal page entry and keeps page errors subordin
 
   assert.match(markup, /data-route-page="roadmap"/);
   assert.match(markup, /data-page-entry="roadmap-runtime"/);
-  assert.match(markup, /Global notices/);
-  assert.match(markup, /formal <code>\/roadmap<\/code> entry inside AppShell navigation/);
+  assert.match(markup, /Notices/);
+  assert.match(markup, /formal[\s\S]*<code>\/roadmap<\/code>[\s\S]*AppShell navigation/);
   assert.match(markup, /Unsaved local edits|Ready/);
   assert.match(markup, /Save roadmap/);
   assert.match(markup, /Save project data/);

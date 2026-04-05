@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RoleCard } from '@/components/agent/RoleCard';
+import { useI18n } from '@/i18n/I18nProvider';
+import { translateRealtimeDetail, translateRealtimeStatusLabel } from '@/i18n/realtime-copy';
 import { TerminalPanel } from '@/features/terminal/TerminalPanel';
 import { normalizeMembersEnvelope, type MemberFixture } from '@/features/members/member-page-model';
 import { useAppShell } from '@/state/app-shell-store';
 import { useTerminalPanelRuntime } from './terminal-runtime';
 
 const terminalEventVocabulary = ['terminal.attach', 'terminal.snapshot', 'terminal.delta', 'terminal.status'];
-const terminalUiRules = [
-  'Attach rebases the active terminal session before buffered output is trusted.',
-  'Snapshot is authoritative and replaces the rendered buffer when its seq is newer than the accepted buffer.',
-  'Delta appends only when seq is strictly newer than the active terminal buffer state.',
-  'Status updates connectionState and processState together without mutating buffered output text.'
-];
-
 const defaultTerminalId = 'term_owner_1';
 
 const terminalIdForMember = (memberId: string) => `term_${memberId}`;
 
 export const TerminalPage = () => {
+  const { t } = useI18n();
   const { realtime, workspace, apiClient, realtimeClient, pushNotification } = useAppShell();
+  const terminalUiRules = useMemo(
+    () => [t('terminal.rule1'), t('terminal.rule2'), t('terminal.rule3'), t('terminal.rule4')],
+    [t]
+  );
   const bootTerminalId = useMemo(() => {
     if (typeof window === 'undefined') {
       return defaultTerminalId;
@@ -87,39 +87,37 @@ export const TerminalPage = () => {
     <section className="page-card page-card--terminal" data-route-page="terminal">
       <div className="route-page__hero">
         <div>
-          <p className="page-eyebrow">Sessions</p>
-          <h1>Session attach and output stream shell</h1>
-          <p className="route-page__intro">
-            Each workspace member maps to a <strong>terminal id</strong> using the UI convention{' '}
-            <code>term_&lt;memberId&gt;</code>. Pick a row below to attach the PTY stream for that agent; roadmap tasks
-            on the Team page describe <em>what</em> they are doing — this page shows <em>how it runs</em> in the shell.
-          </p>
+          <p className="page-eyebrow">{t('terminal.eyebrow')}</p>
+          <h1>{t('terminal.title')}</h1>
+          <p className="route-page__intro">{t('terminal.intro')}</p>
         </div>
-        <div className="route-page__metric-strip" aria-label="terminal recovery strip">
+        <div className="route-page__metric-strip" aria-label={t('terminal.recoveryAria')}>
           <article className="route-page__metric">
-            <span className="route-page__metric-label">Realtime detail</span>
-            <strong>{realtime.status}</strong>
-            <small>{realtime.detail}</small>
+            <span className="route-page__metric-label">{t('terminal.metric.realtimeDetail')}</span>
+            <strong>{translateRealtimeStatusLabel(realtime.status, t)}</strong>
+            <small>{translateRealtimeDetail(realtime.detail, t)}</small>
           </article>
           <article className="route-page__metric">
-            <span className="route-page__metric-label">Resume cursor</span>
-            <strong>{realtime.lastCursor ?? 'none'}</strong>
-            <small>Used for reconnect-safe replay</small>
+            <span className="route-page__metric-label">{t('terminal.metric.resumeCursor')}</span>
+            <strong>{realtime.lastCursor ?? t('terminal.none')}</strong>
+            <small>{t('terminal.metric.resumeHint')}</small>
           </article>
         </div>
       </div>
 
-      <section className="terminal-session-picker" aria-label="Per-agent terminal sessions">
+      <section className="terminal-session-picker" aria-label={t('terminal.pickerAria')}>
         <header className="terminal-session-picker__header">
           <div>
-            <p className="page-eyebrow">Agent streams</p>
-            <h2 className="terminal-session-picker__title">Choose whose execution to watch</h2>
+            <p className="page-eyebrow">{t('terminal.streamsEyebrow')}</p>
+            <h2 className="terminal-session-picker__title">{t('terminal.streamsTitle')}</h2>
           </div>
-          <span className="route-page__status-pill">Active: {activeTerminalId}</span>
+          <span className="route-page__status-pill">
+            {t('terminal.active')} {activeTerminalId}
+          </span>
         </header>
         <ul className="terminal-session-picker__list">
           {roster.length === 0 ? (
-            <li className="terminal-session-picker__empty">Loading roster…</li>
+            <li className="terminal-session-picker__empty">{t('terminal.loadingRoster')}</li>
           ) : (
             roster.map((member) => {
               const tid = terminalIdForMember(member.memberId);
@@ -137,7 +135,7 @@ export const TerminalPage = () => {
                     <span className="terminal-session-picker__meta">
                       <code>{tid}</code>
                       <span className="terminal-session-picker__sep">·</span>
-                      <span>{member.terminalStatus ?? 'unknown'}</span>
+                      <span>{member.terminalStatus ?? t('terminal.unknown')}</span>
                     </span>
                   </button>
                 </li>
@@ -151,27 +149,27 @@ export const TerminalPage = () => {
         <section className="route-page__panel route-page__panel--timeline">
           <header className="route-page__panel-header">
             <div>
-              <p className="page-eyebrow">Terminal flow</p>
-              <h2>Recovery chain</h2>
+              <p className="page-eyebrow">{t('terminal.flowEyebrow')}</p>
+              <h2>{t('terminal.recoveryTitle')}</h2>
             </div>
-            <span className="route-page__status-pill route-page__status-pill--live">Seq aware</span>
+            <span className="route-page__status-pill route-page__status-pill--live">{t('terminal.seqAware')}</span>
           </header>
           <ol className="route-page__timeline">
             <li>
               <strong>terminal.attach</strong>
-              <p>Claim the active session for {workspace.workspaceId} before output becomes visible.</p>
+              <p>{t('terminal.attachStep', { workspaceId: workspace.workspaceId })}</p>
             </li>
             <li>
               <strong>terminal.snapshot</strong>
-              <p>Paint the authoritative buffer once so reconnects do not replay stale fragments as fresh output.</p>
+              <p>{t('terminal.snapshotStep')}</p>
             </li>
             <li>
               <strong>terminal.delta</strong>
-              <p>Append only newer seq values; duplicate or older frames stay suppressed in the UI layer.</p>
+              <p>{t('terminal.deltaStep')}</p>
             </li>
             <li>
               <strong>terminal.status</strong>
-              <p>Surface attach loss, running state, and completion without forcing a second page-level status system.</p>
+              <p>{t('terminal.statusStep')}</p>
             </li>
           </ol>
         </section>
@@ -179,8 +177,8 @@ export const TerminalPage = () => {
         <section className="route-page__panel route-page__panel--stream">
           <header className="route-page__panel-header">
             <div>
-              <p className="page-eyebrow">Output preview</p>
-              <h2>Replay-safe buffer</h2>
+              <p className="page-eyebrow">{t('terminal.outputEyebrow')}</p>
+              <h2>{t('terminal.bufferTitle')}</h2>
             </div>
           </header>
           <div data-terminal-runtime="connected-panel">
@@ -202,17 +200,25 @@ export const TerminalPage = () => {
         <section className="route-page__panel route-page__panel--side">
           <header className="route-page__panel-header">
             <div>
-              <p className="page-eyebrow">Session owner</p>
-              <h2>Visible runtime status</h2>
+              <p className="page-eyebrow">{t('terminal.ownerEyebrow')}</p>
+              <h2>{t('terminal.visibleStatus')}</h2>
             </div>
           </header>
           <div className="route-page__role-stack">
             <RoleCard
               avatarInitial="TM"
-              name={terminalRuntime.state.session?.memberId ? `Member ${terminalRuntime.state.session.memberId}` : 'Terminal session'}
+              name={
+                terminalRuntime.state.session?.memberId
+                  ? t('terminal.memberSession', { id: terminalRuntime.state.session.memberId })
+                  : t('terminal.sessionLabel')
+              }
               role="member"
               status={terminalRuntime.state.runtime.process === 'running' ? 'running' : realtime.status === 'connected' ? 'idle' : 'offline'}
-              summary={`Stream ${terminalRuntime.state.activeTerminalId ?? 'none'} · ${terminalRuntime.state.session?.command ?? 'no command metadata'} · ${terminalRuntime.state.runtime.statusLabel}`}
+              summary={t('terminal.streamSummary', {
+                id: terminalRuntime.state.activeTerminalId ?? t('terminal.none'),
+                cmd: terminalRuntime.state.session?.command ?? t('terminal.noCommand'),
+                status: terminalRuntime.state.runtime.statusLabel
+              })}
             />
           </div>
         </section>
@@ -220,12 +226,12 @@ export const TerminalPage = () => {
         <section className="route-page__panel route-page__panel--rules">
           <header className="route-page__panel-header">
             <div>
-              <p className="page-eyebrow">Protocol contract</p>
-              <h2>Canonical names and UI rules</h2>
+              <p className="page-eyebrow">{t('terminal.protocolEyebrow')}</p>
+              <h2>{t('terminal.canonicalTitle')}</h2>
             </div>
           </header>
           <div className="route-page__rule-group">
-            <h3>Canonical events</h3>
+            <h3>{t('terminal.canonicalEvents')}</h3>
             <ul className="route-page__rule-list">
               {terminalEventVocabulary.map((eventName) => (
                 <li key={eventName}>{eventName}</li>
@@ -233,7 +239,7 @@ export const TerminalPage = () => {
             </ul>
           </div>
           <div className="route-page__rule-group">
-            <h3>Replay and dedupe</h3>
+            <h3>{t('terminal.replayDedupe')}</h3>
             <ul className="route-page__rule-list">
               {terminalUiRules.map((rule) => (
                 <li key={rule}>{rule}</li>

@@ -1,3 +1,5 @@
+import { useI18n } from '@/i18n/I18nProvider';
+import { translatePanelDetail } from '@/i18n/panel-detail';
 import type { ProjectDataDocument } from '../api-client';
 import type { PanelFeedback } from '../store';
 
@@ -22,44 +24,51 @@ export const ProjectDataPanel = ({
   onKeepDraft,
   onDiscardAndReload
 }: ProjectDataPanelProps) => {
+  const { t } = useI18n();
+  const detailText = feedback.detailKey ? t(feedback.detailKey) : translatePanelDetail(feedback.detail, t);
+
   return (
     <section className="roadmap-project-panel" data-tone={feedback.tone} aria-label="project-data-panel">
       <header className="roadmap-project-panel__header">
         <div>
-          <p className="roadmap-project-panel__eyebrow">Project data</p>
-          <h2 className="roadmap-project-panel__title">ProjectDataPanel</h2>
+          <p className="roadmap-project-panel__eyebrow">{t('projectDataPanel.eyebrow')}</p>
+          <h2 className="roadmap-project-panel__title">{t('projectDataPanel.title')}</h2>
         </div>
         <div className="roadmap-project-panel__actions">
           <button type="button" onClick={onReload} disabled={feedback.disableReload}>
-            Reload
+            {t('projectDataPanel.reload')}
           </button>
           <button type="button" onClick={onSave} disabled={feedback.disableSave}>
-            Save project data
+            {t('projectDataPanel.save')}
           </button>
         </div>
       </header>
 
       <div className="roadmap-project-panel__banner" data-tone={feedback.tone}>
-        <strong>{feedback.title}</strong>
-        <p>{feedback.detail}</p>
+        <strong>{t(feedback.titleKey)}</strong>
+        <p>{detailText}</p>
         <p className="roadmap-project-panel__meta">
-          Storage source: <span>{value.storage}</span>
+          {t('projectDataPanel.storage')} <span>{value.storage}</span>
         </p>
-        {feedback.warning ? <p className="roadmap-project-panel__warning">Warning: {feedback.warning}</p> : null}
+        {feedback.warning ? (
+          <p className="roadmap-project-panel__warning">
+            {t('projectDataPanel.warningPrefix')} {feedback.warning}
+          </p>
+        ) : null}
         {feedback.showReloadChoices ? (
           <div className="roadmap-project-panel__choice-row">
             <button type="button" onClick={onKeepDraft}>
-              Keep local draft
+              {t('projectDataPanel.keepDraft')}
             </button>
             <button type="button" onClick={onDiscardAndReload}>
-              Discard and reload
+              {t('projectDataPanel.discardReload')}
             </button>
           </div>
         ) : null}
       </div>
 
       <label className="roadmap-project-panel__field">
-        <span>Payload JSON</span>
+        <span>{t('projectDataPanel.payloadJson')}</span>
         <textarea
           value={draftText}
           onChange={(event) => onDraftChange(event.currentTarget.value)}

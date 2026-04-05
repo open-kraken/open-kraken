@@ -1,4 +1,5 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import { createApiClient } from '../api/create-client.mjs';
 import { ProjectDataPanel } from '../features/roadmap-project-data/components/ProjectDataPanel';
 import { RoadmapPanel } from '../features/roadmap-project-data/components/RoadmapPanel';
@@ -53,6 +54,7 @@ const updateTaskList = (tasks: RoadmapTaskItem[], taskId: string, patch: Partial
   tasks.map((task) => (task.id === taskId ? { ...task, ...patch } : task));
 
 export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectDataRouteProps) => {
+  const { t } = useI18n();
   const resolvedClient = useMemo(() => client ?? createDefaultClient(), [client]);
   const [roadmapState, setRoadmapState] = useState(() => createRoadmapEditorState());
   const [projectDataState, setProjectDataState] = useState(() => createProjectDataEditorState());
@@ -74,7 +76,7 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
         onPageError?.(null);
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load roadmap and project data.';
+      const message = error instanceof Error ? error.message : t('roadmap.loadFailed');
       startTransition(() => {
         setPageError(message);
         setRoadmapState((current) => applyRoadmapSaveFailure(current, message));
@@ -86,6 +88,8 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
 
   useEffect(() => {
     void loadAll();
+    // Intentionally reload only when the API client identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedClient]);
 
   const handleRoadmapSave = async () => {
@@ -97,7 +101,7 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
         onPageError?.(null);
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Roadmap save failed.';
+      const message = error instanceof Error ? error.message : t('roadmap.saveFailed');
       startTransition(() => {
         setRoadmapState((current) => applyRoadmapSaveFailure(current, message));
         onPageError?.(message);
@@ -120,7 +124,7 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
         onPageError?.(null);
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Project data save failed.';
+      const message = error instanceof Error ? error.message : t('roadmap.projectSaveFailed');
       startTransition(() => {
         setProjectDataState((current) => applyProjectDataSaveFailure(current, message));
         onPageError?.(message);
@@ -149,14 +153,13 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
     <section className="roadmap-project-route" aria-label="roadmap-project-data-route">
       <header className="roadmap-project-route__header">
         <div>
-          <p className="collaboration-overview-page__eyebrow">Roadmap and project data</p>
-          <h2 className="roadmap-project-route__headline">Browser-side read and write flow for roadmap and project metadata.</h2>
-          <p className="collaboration-overview-page__intro">
-            Both panels share the same page-level semantics for loading, saving, read-only locks, reload conflict
-            handling, and error feedback so the browser never drifts from the backend contract.
-          </p>
+          <p className="collaboration-overview-page__eyebrow">{t('roadmap.routeHeaderEyebrow')}</p>
+          <h2 className="roadmap-project-route__headline">{t('roadmap.routeHeaderTitle')}</h2>
+          <p className="collaboration-overview-page__intro">{t('roadmap.routeHeaderIntro')}</p>
         </div>
-        {pageError ? <p className="roadmap-project-route__page-error">Page load error: {pageError}</p> : null}
+        {pageError ? (
+          <p className="roadmap-project-route__page-error">{t('roadmap.pageLoadError', { message: pageError })}</p>
+        ) : null}
       </header>
 
       <div className="roadmap-project-route__grid">

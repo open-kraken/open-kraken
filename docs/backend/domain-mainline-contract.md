@@ -34,6 +34,8 @@ The only allowed backend message delivery states are:
 - `sent`
 - `failed`
 
+The WebSocket event `chat.status` carries persisted delivery observations using these same values where applicable.
+
 They must stay aligned across:
 
 - `backend/go/contracts`

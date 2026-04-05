@@ -1,169 +1,160 @@
-import { useState } from 'react';
-import { RoleCard } from '@/components/agent/RoleCard';
+import { useEffect, useMemo, useState } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import { useAppShell } from '@/state/app-shell-store';
-import { MemberSkillPanel } from '@/features/skills/MemberSkillPanel';
+import { TeamMemberWorkbenchCard } from '@/features/members/TeamMemberWorkbenchCard';
 import type { Skill } from '@/types/skill';
 import type { MembersPageModel } from './member-page-model';
+import type { MemberNodeBinding } from '@/features/members/member-runtime-map';
 
 export type MemberCollabPanelProps = {
   model: MembersPageModel;
-  /** Full catalogue of available skills for the skill assignment panel. */
+  /** Skill catalogue for the management drawer. */
   availableSkills?: Skill[];
+  /** From GET /nodes — which execution node hosts each member. */
+  nodeByMemberId?: Record<string, MemberNodeBinding>;
+  /** Optional PTY snapshot lines per member (fixture or future API). */
+  cliPreviewByMemberId?: Record<string, string[]>;
 };
 
-export const MemberCollabPanel = ({ model, availableSkills = [] }: MemberCollabPanelProps) => {
+export const MemberCollabPanel = ({
+  model,
+  availableSkills = [],
+  nodeByMemberId = {},
+  cliPreviewByMemberId = {}
+}: MemberCollabPanelProps) => {
+  const { t } = useI18n();
   const { navigate } = useAppShell();
-  // Track which member's skill panel is currently expanded
+  const teams = model.teams.length > 0 ? model.teams : [];
+  const [activeTeamId, setActiveTeamId] = useState<string>(() => teams[0]?.teamId ?? 'team_default');
   const [skillPanelMemberId, setSkillPanelMemberId] = useState<string | null>(null);
-  const leadMember =
-    model.members.find((member) => member.role === 'owner') ??
-    model.members.find((member) => member.status === 'running') ??
-    model.members[0];
+
+  useEffect(() => {
+    if (!teams.some((t) => t.teamId === activeTeamId) && teams[0]) {
+      setActiveTeamId(teams[0].teamId);
+    }
+  }, [teams, activeTeamId]);
+
+  const activeTeam = useMemo(
+    () => teams.find((t) => t.teamId === activeTeamId) ?? teams[0],
+    [teams, activeTeamId]
+  );
+
+  const rosterMembers = activeTeam?.members ?? model.members;
+  const rosterMetrics = activeTeam?.metrics ?? model.metrics;
 
   return (
-    <section className="members-page" data-route-page="members" data-realtime-status={model.realtimeStatus}>
+    <section
+      className="members-page members-page--workbench"
+      data-route-page="members"
+      data-realtime-status={model.realtimeStatus}
+    >
       <div className="route-page__hero">
         <div>
-          <p className="page-eyebrow">Team</p>
-          <h1>Member coordination surface</h1>
-          <p className="route-page__intro">
-            Roster shows roles, collaboration status, and roadmap-assigned work. <strong>PTY / command execution</strong>{' '}
-            for each member is viewed under <strong>Sessions</strong> — open a member&apos;s stream with{' '}
-            <em>View execution</em> below.
-          </p>
+          <p className="page-eyebrow">{t('members.teamEyebrow')}</p>
+          <h1>{t('members.workbenchTitle')}</h1>
+          <p className="route-page__intro">{t('members.workbenchIntro')}</p>
         </div>
-        <div className="route-page__metric-strip members-page__metrics" aria-label="Member coordination metrics">
+        <div className="route-page__metric-strip members-page__metrics" aria-label={t('members.metricsAria')}>
           <div className="route-page__metric members-page__metric">
-            <span className="route-page__metric-label members-page__metric-label">Agents</span>
-            <strong>{model.metrics.total}</strong>
-            <small>Formal workspace roster</small>
+            <span className="route-page__metric-label members-page__metric-label">{t('members.metric.teams')}</span>
+            <strong>{teams.length}</strong>
+            <small>{t('members.metric.teamsHint')}</small>
           </div>
           <div className="route-page__metric members-page__metric">
-            <span className="route-page__metric-label members-page__metric-label">Running</span>
-            <strong>{model.metrics.running}</strong>
-            <small>Active execution slots</small>
+            <span className="route-page__metric-label members-page__metric-label">{t('members.metric.agents')}</span>
+            <strong>{rosterMetrics.total}</strong>
+            <small>
+              {activeTeam
+                ? t('members.workbenchRosterTitle', {
+                    name: activeTeam.name === 'Workspace team' ? t('members.defaultTeamName') : activeTeam.name
+                  })
+                : t('members.metric.agentsHintAll')}
+            </small>
           </div>
           <div className="route-page__metric members-page__metric">
-            <span className="route-page__metric-label members-page__metric-label">Offline</span>
-            <strong>{model.metrics.offline}</strong>
-            <small>Needs follow-up or reconnect</small>
+            <span className="route-page__metric-label members-page__metric-label">{t('members.metric.running')}</span>
+            <strong>{rosterMetrics.running}</strong>
+            <small>{t('members.metric.runningHint')}</small>
+          </div>
+          <div className="route-page__metric members-page__metric">
+            <span className="route-page__metric-label members-page__metric-label">{t('members.metric.offline')}</span>
+            <strong>{rosterMetrics.offline}</strong>
+            <small>{t('members.offlineHintReconnect')}</small>
           </div>
         </div>
       </div>
 
-      <div className="route-page__grid route-page__grid--members">
-        <section className="route-page__panel members-page__panel members-page__panel--status">
-          <header className="route-page__panel-header">
-            <div>
-              <p className="page-eyebrow">Runtime status</p>
-              <h2>Shell realtime and lead owner</h2>
-            </div>
-            <span className="route-page__status-pill route-page__status-pill--live">Live workspace</span>
-          </header>
+      {teams.length > 1 ? (
+        <div className="members-page__team-switch" role="tablist" aria-label={t('members.teamTabsAria')}>
+          {teams.map((team) => (
+            <button
+              key={team.teamId}
+              type="button"
+              role="tab"
+              aria-selected={team.teamId === activeTeamId}
+              className={
+                team.teamId === activeTeamId
+                  ? 'members-page__team-tab members-page__team-tab--active'
+                  : 'members-page__team-tab'
+              }
+              onClick={() => setActiveTeamId(team.teamId)}
+            >
+              <span className="members-page__team-name">
+                {team.name === 'Workspace team' ? t('members.defaultTeamName') : team.name}
+              </span>
+              <span className="members-page__team-count">{t('members.agentsCount', { count: team.metrics.total })}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
-          <div className="members-page__status-strip">
-            <span className="members-page__status-label">Shell realtime</span>
-            <strong>{model.realtimeStatus}</strong>
+      <div className="members-page__context-bar">
+        <dl className="members-page__context-kv">
+          <div>
+            <dt>{t('members.contextShellRealtime')}</dt>
+            <dd>{model.realtimeStatus}</dd>
           </div>
+          <div>
+            <dt>{t('members.contextActiveTeam')}</dt>
+            <dd>{activeTeam?.name ?? t('system.emDash')}</dd>
+          </div>
+        </dl>
+        <span className="route-page__status-pill route-page__status-pill--live">{t('members.liveWorkspace')}</span>
+      </div>
 
-          {leadMember ? (
-            <RoleCard
-              avatarInitial={leadMember.avatarLabel}
-              name={leadMember.displayName}
-              role={leadMember.role}
-              status={leadMember.status}
-              summary={leadMember.activeTask ?? 'Owns member coordination and closes empty-task gaps before handoff.'}
-            />
-          ) : null}
-        </section>
-
+      <div className="route-page__grid route-page__grid--members-workbench">
         <section className="route-page__panel members-page__panel members-page__panel--roster">
           <header className="route-page__panel-header">
             <div>
-              <p className="page-eyebrow">Roster</p>
-              <h2>Shared member cards</h2>
+              <p className="page-eyebrow">{t('members.agentsEyebrow')}</p>
+              <h2>
+                {activeTeam
+                  ? t('members.workbenchRosterTitle', {
+                      name: activeTeam.name === 'Workspace team' ? t('members.defaultTeamName') : activeTeam.name
+                    })
+                  : t('members.workspaceAgents')}
+              </h2>
             </div>
-            <span className="route-page__status-pill">Token-backed</span>
+            <span className="route-page__status-pill">{t('members.workbenchPill')}</span>
           </header>
 
-          <section className="member-collab-panel member-collab-panel--desktop" aria-label="Workspace members">
-            {model.members.map((member) => (
-              <article
+          <div className="members-workbench-list" aria-label={t('members.teamAgentsAria')}>
+            {rosterMembers.map((member) => (
+              <TeamMemberWorkbenchCard
                 key={member.memberId}
-                className={member.cardClassName}
-                data-member-id={member.memberId}
-                data-terminal-id={member.terminalId}
-                data-role={member.role}
-                data-status={member.status}
-              >
-                <div className="member-card__identity">
-                  <div className={`member-card__avatar member-card__avatar--${member.role}`}>
-                    {member.avatarUrl ? (
-                      <img
-                        className="member-card__avatar-image"
-                        src={member.avatarUrl}
-                        alt={`${member.displayName} avatar`}
-                      />
-                    ) : (
-                      <span className="member-card__avatar-fallback">{member.avatarLabel}</span>
-                    )}
-                  </div>
-                  <div className="member-card__meta">
-                    <strong className={member.nameClassName} title={member.displayNameTitle}>
-                      {member.displayName}
-                    </strong>
-                    <div className="member-card__supporting">
-                      <span className={`member-card__role-chip member-card__role-chip--${member.role}`}>
-                        {member.roleLabel}
-                      </span>
-                      <span className={`member-card__status-badge member-card__status-badge--${member.status}`}>
-                        {member.statusLabel}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="member-card__task-row">
-                  <div className={member.taskClassName} title={member.activeTaskLabel}>
-                    <span className="member-card__task-label">Active task</span>
-                    <span className="member-card__task-value">{member.activeTaskLabel}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      type="button"
-                      className="member-card__exec"
-                      onClick={() => navigate('terminal', { hash: member.terminalId })}
-                    >
-                      View execution
-                    </button>
-                    <button
-                      type="button"
-                      className="member-card__exec"
-                      onClick={() =>
-                        setSkillPanelMemberId((prev) =>
-                          prev === member.memberId ? null : member.memberId
-                        )
-                      }
-                      aria-expanded={skillPanelMemberId === member.memberId}
-                    >
-                      Skills
-                    </button>
-                  </div>
-                </div>
-
-                {/* Inline skill management panel */}
-                {skillPanelMemberId === member.memberId && (
-                  <div style={{ marginTop: '12px' }}>
-                    <MemberSkillPanel
-                      memberId={member.memberId}
-                      memberName={member.displayName}
-                      availableSkills={availableSkills}
-                    />
-                  </div>
-                )}
-              </article>
+                member={member}
+                node={nodeByMemberId[member.memberId] ?? null}
+                cliLines={cliPreviewByMemberId[member.memberId] ?? []}
+                availableSkills={availableSkills}
+                skillPanelOpen={skillPanelMemberId === member.memberId}
+                onToggleSkillPanel={() =>
+                  setSkillPanelMemberId((prev) => (prev === member.memberId ? null : member.memberId))
+                }
+                onNavigateTerminal={() => navigate('terminal', { hash: member.terminalId })}
+                onNavigateNodes={() => navigate('nodes')}
+              />
             ))}
-          </section>
+          </div>
         </section>
       </div>
     </section>

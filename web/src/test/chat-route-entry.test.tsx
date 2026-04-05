@@ -6,6 +6,7 @@ import { AppShell } from '@/app/layouts/AppShell';
 import { ChatPage, buildChatPageRouteModel, loadChatRouteData } from '@/pages/chat/ChatPage';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute } from '@/routes';
+import { TestI18n } from '@/test/i18n-test-utils';
 
 const testApiClient: AppShellContextValue['apiClient'] = {
   getWorkspaceSummary: async () => ({ workspaceId: 'ws_open_kraken', membersOnline: 1, activeConversationId: 'conv_general' }),
@@ -35,7 +36,7 @@ const testApiClient: AppShellContextValue['apiClient'] = {
   }),
   sendMessage: async () => ({}),
   getMembers: async () => ({ members: [] }),
-  getRoadmap: async () => ({ objective: 'Ship', tasks: [] }),
+  getRoadmap: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   getRoadmapDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   updateRoadmapDocument: async (payload) => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: payload.roadmap }),
   getProjectDataDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', payload: {} }),
@@ -120,7 +121,9 @@ test('chat route loader pulls conversation items and message page from the forma
 test('AppShell renders the chat route with shell realtime state mapped into the page-level chat notice', () => {
   const markup = renderToStaticMarkup(
     <AppShellContext.Provider value={createShellContext('/chat', 'disconnected', 'Realtime disconnected')}>
-      <AppShell />
+      <TestI18n>
+        <AppShell />
+      </TestI18n>
     </AppShellContext.Provider>
   );
 
@@ -134,7 +137,9 @@ test('AppShell renders the chat route with shell realtime state mapped into the 
 test('ChatPage component can surface composer failure at the real page entry without conflicting child status copy', () => {
   const markup = renderToStaticMarkup(
     <AppShellContext.Provider value={createShellContext('/chat', 'connected', 'Connected to workspace stream')}>
-      <ChatPage feedbackOverride={{ composerStatus: 'failed', composerErrorMessage: 'Message delivery failed.' }} />
+      <TestI18n>
+        <ChatPage feedbackOverride={{ composerStatus: 'failed', composerErrorMessage: 'Message delivery failed.' }} />
+      </TestI18n>
     </AppShellContext.Provider>
   );
 

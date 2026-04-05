@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { TerminalPage } from '@/pages/terminal/TerminalPage';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute } from '@/routes';
+import { TestI18n } from '@/test/i18n-test-utils';
 
 const terminalApiClient = {
   getWorkspaceSummary: async () => ({ workspaceId: 'ws_open_kraken', membersOnline: 1, activeConversationId: 'conv_general' }),
@@ -12,7 +13,7 @@ const terminalApiClient = {
   getMessages: async () => ({ items: [], nextBeforeId: null }),
   sendMessage: async () => ({}),
   getMembers: async () => ({ members: [] }),
-  getRoadmap: async () => ({ objective: 'Ship', tasks: [] }),
+  getRoadmap: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   getRoadmapDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   updateRoadmapDocument: async (payload: { readOnly: boolean; roadmap: { objective?: string; tasks?: unknown[] } }) => ({ readOnly: payload.readOnly, storage: 'workspace', warning: '', roadmap: payload.roadmap }),
   getProjectDataDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', payload: {} }),
@@ -36,7 +37,7 @@ const terminalApiClient = {
     }
   }),
   subscribe: () => () => undefined
-} as AppShellContextValue['apiClient'];
+} as unknown as AppShellContextValue['apiClient'];
 
 const terminalRealtimeClient = {
   connect: () => undefined,
@@ -71,7 +72,9 @@ test('terminal page renders the real panel container inside the route entry', ()
 
   const markup = renderToStaticMarkup(
     <AppShellContext.Provider value={contextValue}>
-      <TerminalPage />
+      <TestI18n>
+        <TerminalPage />
+      </TestI18n>
     </AppShellContext.Provider>
   );
 

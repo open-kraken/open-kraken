@@ -3,6 +3,7 @@
  * and cumulative token usage for the reporting period (T09).
  */
 
+import { useI18n } from '@/i18n/I18nProvider';
 import type { AgentActivity } from '@/types/token';
 
 export type AgentActivityPanelProps = {
@@ -28,10 +29,12 @@ const getStatusColor = (status: string): string =>
  * @param activities - Array of AgentActivity items to render.
  */
 export const AgentActivityPanel = ({ activities }: AgentActivityPanelProps) => {
+  const { t } = useI18n();
+
   if (activities.length === 0) {
     return (
       <div style={{ color: '#6b7280', padding: '24px', textAlign: 'center' }}>
-        No agent activity to display.
+        {t('agentActivity.empty')}
       </div>
     );
   }
@@ -40,17 +43,17 @@ export const AgentActivityPanel = ({ activities }: AgentActivityPanelProps) => {
     <div className="agent-activity-panel" style={{ overflowX: 'auto' }}>
       <table
         style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}
-        aria-label="Agent activity and token usage"
+        aria-label={t('agentActivity.aria')}
       >
         <thead>
           <tr style={{ borderBottom: '1px solid #374151', color: '#9ca3af', textAlign: 'left' }}>
-            <th style={{ padding: '8px 12px' }}>Agent</th>
-            <th style={{ padding: '8px 12px' }}>Status</th>
-            <th style={{ padding: '8px 12px' }}>Current task</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Input tokens</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Output tokens</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Total</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Cost (USD)</th>
+            <th style={{ padding: '8px 12px' }}>{t('agentActivity.agent')}</th>
+            <th style={{ padding: '8px 12px' }}>{t('agentActivity.status')}</th>
+            <th style={{ padding: '8px 12px' }}>{t('agentActivity.task')}</th>
+            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('agentActivity.input')}</th>
+            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('agentActivity.output')}</th>
+            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('agentActivity.total')}</th>
+            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('agentActivity.cost')}</th>
           </tr>
         </thead>
         <tbody>
@@ -93,7 +96,7 @@ export const AgentActivityPanel = ({ activities }: AgentActivityPanelProps) => {
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  {activity.currentTask ?? '—'}
+                  {activity.currentTask ?? t('system.emDash')}
                 </span>
               </td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: '#d1d5db' }}>

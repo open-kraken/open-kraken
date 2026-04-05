@@ -3,10 +3,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { createApiClient as createLegacyApiClient } from '@/api/create-client.mjs';
 import { appEnv } from '@/config/env';
 import { createApiClient } from '@/api/api-client';
+import { bindHttpClient } from '@/api/http-binding';
 import { HttpClient, HttpClientError } from '@/api/http-client';
 import { RealtimeClient } from '@/realtime/realtime-client';
 import { AppShellContext, type RealtimeStatusValue, type ShellToast } from '@/state/app-shell-store';
+import { I18nProvider } from '@/i18n/I18nProvider';
+import { MESSAGES } from '@/i18n/messages';
+import { readStoredLocale } from '@/i18n/locale-storage';
 import { appRoutes, resolveAppRoute, type AppRouteId } from '@/routes';
+
+const tr = (key: string) => {
+  const loc = readStoredLocale();
+  return MESSAGES[loc][key] ?? MESSAGES.en[key] ?? key;
+};
 
 const defaultPath = '/chat';
 
@@ -27,13 +36,14 @@ const initialRealtimeStatus: RealtimeStatusValue = {
 };
 
 const resolveApiBaseUrl = () => {
-  if (appEnv.apiBaseUrl !== 'http://127.0.0.1:8080') {
-    return appEnv.apiBaseUrl;
+  const fromEnv = appEnv.apiBaseUrl;
+  if (fromEnv !== 'http://127.0.0.1:8080/api/v1') {
+    return fromEnv;
   }
-  if (window.location.origin.startsWith('http')) {
-    return window.location.origin;
+  if (typeof window !== 'undefined' && window.location.origin.startsWith('http')) {
+    return `${window.location.origin}/api/v1`;
   }
-  return appEnv.apiBaseUrl;
+  return fromEnv;
 };
 
 export const AppProviders = ({ children }: PropsWithChildren) => {
@@ -42,7 +52,7 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
   const [realtime, setRealtime] = useState<RealtimeStatusValue>(initialRealtimeStatus);
   const [workspace, setWorkspace] = useState({
     workspaceId: appEnv.defaultWorkspaceId,
-    workspaceLabel: 'open-kraken Migration Workspace',
+    workspaceLabel: tr('workspace.migrationLabel'),
     membersOnline: 0,
     activeConversationId: null as string | null
   });
@@ -53,6 +63,10 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
       workspaceId: appEnv.defaultWorkspaceId
     });
   }, []);
+
+  useEffect(() => {
+    bindHttpClient(httpClient);
+  }, [httpClient]);
 
   const apiClient = useMemo(() => {
     const legacyClient = createLegacyApiClient({
@@ -126,7 +140,7 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
         }
         setWorkspace({
           workspaceId: summary.workspaceId,
-          workspaceLabel: `open-kraken Workspace ${summary.workspaceId}`,
+          workspaceLabel: tr('workspace.labelWithId').replace('{id}', summary.workspaceId),
           membersOnline: summary.membersOnline,
           activeConversationId: summary.activeConversationId
         });
@@ -138,13 +152,13 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
         const detail =
           error instanceof HttpClientError
             ? `${error.envelope.code} (${error.envelope.requestId})`
-            : 'workspace summary fallback engaged';
+            : tr('workspace.summaryFallback');
         setNotifications((current) => [
           ...current,
           {
             id: `toast_${Math.random().toString(36).slice(2, 10)}`,
             tone: 'warning',
-            title: 'Workspace summary unavailable',
+            title: tr('workspace.summaryUnavailable'),
             detail
           }
         ]);
@@ -188,5 +202,9 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
     };
   }, [apiClient, notifications, pathname, realtime, realtimeClient, workspace]);
 
-  return <AppShellContext.Provider value={contextValue}>{children}</AppShellContext.Provider>;
+  return (
+    <AppShellContext.Provider value={contextValue}>
+      <I18nProvider>{children}</I18nProvider>
+    </AppShellContext.Provider>
+  );
 };

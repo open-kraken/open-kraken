@@ -12,6 +12,14 @@ export type MemberFixture = {
   status?: string;
   statusLabel?: string;
   lastUpdatedAt?: string | null;
+  /** When no explicit `teams` list exists, members are grouped by this id. */
+  teamId?: string;
+};
+
+export type TeamGroupFixture = {
+  teamId: string;
+  name?: string;
+  members: MemberFixture[];
 };
 
 export type RoadmapTaskFixture = {
@@ -41,6 +49,19 @@ export type MemberCardModel = {
   cardClassName: string;
   nameClassName: string;
   taskClassName: string;
+  /** PTY + presence line for ops overview (distinct from collaboration status). */
+  processSummary: string;
+};
+
+export type TeamRosterModel = {
+  teamId: string;
+  name: string;
+  metrics: {
+    total: number;
+    running: number;
+    offline: number;
+  };
+  members: MemberCardModel[];
 };
 
 export type MembersPageModel = {
@@ -51,6 +72,8 @@ export type MembersPageModel = {
     running: number;
     offline: number;
   };
+  /** One or more teams; each lists agents with roles (skills are loaded in the panel). */
+  teams: TeamRosterModel[];
   members: MemberCardModel[];
 };
 
@@ -137,6 +160,17 @@ const getActiveTask = (memberId: string, roadmapTasks: RoadmapTaskFixture[]) => 
   return task?.title ?? null;
 };
 
+const buildProcessSummary = (member: MemberFixture): string => {
+  const parts: string[] = [];
+  if (member.terminalStatus) {
+    parts.push(`PTY · ${member.terminalStatus}`);
+  }
+  if (member.manualStatus) {
+    parts.push(`presence · ${member.manualStatus}`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : 'No PTY telemetry';
+};
+
 export const normalizeMembersEnvelope = (payload: MembersEnvelope): MemberFixture[] => {
   if (Array.isArray(payload)) {
     return payload;
@@ -151,6 +185,81 @@ export const normalizeMembersEnvelope = (payload: MembersEnvelope): MemberFixtur
   }
 
   return [];
+};
+
+const isTeamGroupList = (raw: unknown): raw is TeamGroupFixture[] => {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return false;
+  }
+  const first = raw[0];
+  return (
+    typeof first === 'object' &&
+    first !== null &&
+    'teamId' in first &&
+    typeof (first as TeamGroupFixture).teamId === 'string' &&
+    Array.isArray((first as TeamGroupFixture).members)
+  );
+};
+
+/**
+ * Resolves flat members plus team groupings from API or fixture payloads.
+ * - If `teams` is present with nested `members`, that list wins.
+ * - Else if any member has `teamId`, members are grouped and optional `teams` metadata (id+name only) supplies labels.
+ * - Else a single default team contains everyone.
+ */
+export const normalizeTeamsAndMembers = (payload: Record<string, unknown>): { members: MemberFixture[]; teamGroups: TeamGroupFixture[] } => {
+  if (isTeamGroupList(payload.teams)) {
+    const teamGroups = payload.teams.map((t) => ({
+      teamId: String(t.teamId),
+      name: t.name,
+      members: t.members.map((m) => ({ ...m, teamId: m.teamId ?? String(t.teamId) }))
+    }));
+    const members = teamGroups.flatMap((t) => t.members);
+    return { members, teamGroups };
+  }
+
+  const members = normalizeMembersEnvelope(payload as MembersEnvelope);
+  const withTeam = members.filter((m) => m.teamId);
+  if (withTeam.length === 0) {
+    return {
+      members,
+      teamGroups: [
+        {
+          teamId: 'team_default',
+          name: 'Workspace team',
+          members
+        }
+      ]
+    };
+  }
+
+  const metaRaw = payload.teams;
+  const nameById = new Map<string, string>();
+  if (Array.isArray(metaRaw)) {
+    for (const item of metaRaw) {
+      if (typeof item === 'object' && item !== null && 'teamId' in item) {
+        const row = item as { teamId: string; name?: string };
+        nameById.set(String(row.teamId), row.name ?? String(row.teamId));
+      }
+    }
+  }
+
+  const byTeam = new Map<string, MemberFixture[]>();
+  for (const m of members) {
+    const tid = m.teamId ?? 'team_default';
+    if (!byTeam.has(tid)) {
+      byTeam.set(tid, []);
+    }
+    byTeam.get(tid)!.push(m);
+  }
+
+  const teamGroups: TeamGroupFixture[] = Array.from(byTeam.entries()).map(([teamId, ms]) => ({
+    teamId,
+    name: nameById.get(teamId) ?? (teamId === 'team_default' ? 'Workspace team' : teamId),
+    members: ms
+  }));
+
+  return { members, teamGroups };
 };
 
 export const normalizeRoadmapTasksEnvelope = (payload: RoadmapEnvelope): RoadmapTaskFixture[] => {
@@ -173,18 +282,8 @@ export const normalizeRoadmapTasksEnvelope = (payload: RoadmapEnvelope): Roadmap
   return [];
 };
 
-export const buildMembersPageModel = ({
-  workspaceId,
-  realtimeStatus,
-  members,
-  roadmapTasks
-}: {
-  workspaceId: string;
-  realtimeStatus: string;
-  members: MemberFixture[];
-  roadmapTasks: RoadmapTaskFixture[];
-}): MembersPageModel => {
-  const cards = members.map((member) => {
+const buildMemberCards = (workspaceId: string, members: MemberFixture[], roadmapTasks: RoadmapTaskFixture[]): MemberCardModel[] => {
+  return members.map((member) => {
     const displayName = String(member.displayName ?? 'Unknown member');
     const role = normalizeRole(member.roleType);
     const status = normalizeStatus(member);
@@ -208,18 +307,52 @@ export const buildMembersPageModel = ({
       lastUpdatedAt: member.lastUpdatedAt ?? null,
       cardClassName: 'member-card',
       nameClassName: displayName.length > 24 ? 'member-card__name member-card__name--truncate' : 'member-card__name',
-      taskClassName: activeTask ? 'member-card__task' : 'member-card__task member-card__task--empty'
+      taskClassName: activeTask ? 'member-card__task' : 'member-card__task member-card__task--empty',
+      processSummary: buildProcessSummary(member)
     } satisfies MemberCardModel;
   });
+};
+
+const rosterMetrics = (cards: MemberCardModel[]) => ({
+  total: cards.length,
+  running: cards.filter((m) => m.status === 'running').length,
+  offline: cards.filter((m) => m.status === 'offline').length
+});
+
+export const buildMembersPageModel = ({
+  workspaceId,
+  realtimeStatus,
+  members,
+  roadmapTasks,
+  teamGroups
+}: {
+  workspaceId: string;
+  realtimeStatus: string;
+  members: MemberFixture[];
+  roadmapTasks: RoadmapTaskFixture[];
+  teamGroups?: TeamGroupFixture[];
+}): MembersPageModel => {
+  const groups = teamGroups?.length
+    ? teamGroups
+    : [{ teamId: 'team_default', name: 'Workspace team', members }];
+
+  const teams: TeamRosterModel[] = groups.map((g) => {
+    const cards = buildMemberCards(workspaceId, g.members, roadmapTasks);
+    return {
+      teamId: g.teamId,
+      name: g.name ?? g.teamId,
+      metrics: rosterMetrics(cards),
+      members: cards
+    };
+  });
+
+  const cards = buildMemberCards(workspaceId, members, roadmapTasks);
 
   return {
     workspaceId,
     realtimeStatus,
-    metrics: {
-      total: cards.length,
-      running: cards.filter((member) => member.status === 'running').length,
-      offline: cards.filter((member) => member.status === 'offline').length
-    },
+    metrics: rosterMetrics(cards),
+    teams,
     members: cards
   };
 };

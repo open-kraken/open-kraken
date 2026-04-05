@@ -1,3 +1,5 @@
+import { useI18n } from '@/i18n/I18nProvider';
+import { translatePanelDetail } from '@/i18n/panel-detail';
 import type { PanelFeedback } from '../store';
 import type { RoadmapDocument, RoadmapTaskItem } from '../api-client';
 
@@ -12,7 +14,7 @@ export type RoadmapPanelProps = {
   onDiscardAndReload: () => void;
 };
 
-const STATUS_OPTIONS = ['todo', 'in_progress', 'done', 'blocked'];
+const STATUS_OPTIONS = ['todo', 'in_progress', 'done', 'blocked'] as const;
 
 export const RoadmapPanel = ({
   value,
@@ -24,41 +26,49 @@ export const RoadmapPanel = ({
   onKeepDraft,
   onDiscardAndReload
 }: RoadmapPanelProps) => {
+  const { t } = useI18n();
+
+  const detailText = feedback.detailKey ? t(feedback.detailKey) : translatePanelDetail(feedback.detail, t);
+
   return (
     <section className="roadmap-project-panel" data-tone={feedback.tone} aria-label="roadmap-panel">
       <header className="roadmap-project-panel__header">
         <div>
-          <p className="roadmap-project-panel__eyebrow">Roadmap</p>
-          <h2 className="roadmap-project-panel__title">RoadmapPanel</h2>
+          <p className="roadmap-project-panel__eyebrow">{t('roadmapPanel.eyebrow')}</p>
+          <h2 className="roadmap-project-panel__title">{t('roadmapPanel.title')}</h2>
         </div>
         <div className="roadmap-project-panel__actions">
           <button type="button" onClick={onReload} disabled={feedback.disableReload}>
-            Reload
+            {t('roadmapPanel.reload')}
           </button>
           <button type="button" onClick={onSave} disabled={feedback.disableSave}>
-            Save roadmap
+            {t('roadmapPanel.save')}
           </button>
         </div>
       </header>
 
       <div className="roadmap-project-panel__banner" data-tone={feedback.tone}>
-        <strong>{feedback.title}</strong>
-        <p>{feedback.detail}</p>
-        {feedback.warning ? <p className="roadmap-project-panel__warning">Warning: {feedback.warning}</p> : null}
+        <strong>{t(feedback.titleKey)}</strong>
+        <p>{detailText}</p>
+        {feedback.warning ? (
+          <p className="roadmap-project-panel__warning">
+            {t('roadmapPanel.warningPrefix')} {feedback.warning}
+          </p>
+        ) : null}
         {feedback.showReloadChoices ? (
           <div className="roadmap-project-panel__choice-row">
             <button type="button" onClick={onKeepDraft}>
-              Keep local draft
+              {t('projectDataPanel.keepDraft')}
             </button>
             <button type="button" onClick={onDiscardAndReload}>
-              Discard and reload
+              {t('projectDataPanel.discardReload')}
             </button>
           </div>
         ) : null}
       </div>
 
       <label className="roadmap-project-panel__field">
-        <span>Objective</span>
+        <span>{t('roadmapPanel.objective')}</span>
         <textarea
           value={value.objective}
           onChange={(event) => onObjectiveChange(event.currentTarget.value)}
@@ -71,7 +81,9 @@ export const RoadmapPanel = ({
         {value.tasks.map((task) => (
           <article key={task.id} className="roadmap-project-panel__task-card">
             <div className="roadmap-project-panel__task-meta">
-              <span className="roadmap-project-panel__task-number">#{task.number}</span>
+              <span className="roadmap-project-panel__task-number">
+                {t('roadmapPanel.taskNumber', { n: task.number })}
+              </span>
               <label className="roadmap-project-panel__checkbox">
                 <input
                   type="checkbox"
@@ -79,12 +91,12 @@ export const RoadmapPanel = ({
                   onChange={(event) => onTaskChange(task.id, { pinned: event.currentTarget.checked })}
                   disabled={feedback.disableInputs}
                 />
-                Pinned
+                {t('roadmapPanel.pinned')}
               </label>
             </div>
 
             <label className="roadmap-project-panel__field">
-              <span>Title</span>
+              <span>{t('roadmapPanel.taskTitle')}</span>
               <input
                 type="text"
                 value={task.title}
@@ -94,7 +106,7 @@ export const RoadmapPanel = ({
             </label>
 
             <label className="roadmap-project-panel__field">
-              <span>Status</span>
+              <span>{t('roadmapPanel.taskStatus')}</span>
               <select
                 value={task.status}
                 onChange={(event) => onTaskChange(task.id, { status: event.currentTarget.value })}
@@ -102,7 +114,7 @@ export const RoadmapPanel = ({
               >
                 {STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>
-                    {status}
+                    {t(`taskStatus.${status}`)}
                   </option>
                 ))}
               </select>

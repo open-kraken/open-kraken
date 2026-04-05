@@ -6,6 +6,7 @@ import { AppShell } from '@/app/layouts/AppShell';
 import { createMockClient } from '@/mocks/mock-client.mjs';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute, type AppRouteId } from '@/routes';
+import { TestI18n } from '@/test/i18n-test-utils';
 
 const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
   const client = createMockClient({ workspaceId: 'ws_open_kraken' });
@@ -79,7 +80,7 @@ const renderShellRoute = (routeId: AppRouteId) => {
     React.createElement(
       AppShellContext.Provider,
       { value: contextValue },
-      React.createElement(AppShell)
+      React.createElement(TestI18n, null, React.createElement(AppShell))
     )
   );
 };
@@ -99,9 +100,9 @@ test('migration web gate: members page enters through AppShell route outlet', ()
 
   assert.match(markup, /data-shell-route="members"/);
   assert.match(markup, /data-route-page="members"/);
-  assert.match(markup, /Member coordination surface/);
-  assert.match(markup, /Roster shows roles/);
-  assert.match(markup, /View execution/);
+  assert.match(markup, /agent workbench/);
+  assert.match(markup, /skills|Skills/i);
+  assert.match(markup, /Open in Sessions|Full terminal/);
 });
 
 test('migration web gate: roadmap page enters through AppShell route outlet', () => {
@@ -112,7 +113,7 @@ test('migration web gate: roadmap page enters through AppShell route outlet', ()
   assert.match(markup, /Roadmap and project data stream/);
   assert.match(markup, /Shell realtime/);
   assert.match(markup, /Connected to workspace stream/);
-  assert.match(markup, /formal <code>\/roadmap<\/code> entry inside AppShell navigation/);
+  assert.match(markup, /formal[\s\S]*<code>\/roadmap<\/code>[\s\S]*AppShell navigation/);
   assert.match(markup, /Save roadmap/);
   assert.match(markup, /Save project data/);
 });
@@ -130,7 +131,7 @@ test('migration web gate: terminal page enters through AppShell route outlet', (
   assert.match(markup, /Snapshot is authoritative and replaces the rendered buffer/i);
   assert.match(markup, /Connected to workspace stream/);
   assert.match(markup, /data-terminal-runtime="connected-panel"/);
-  assert.match(markup, /Attach a terminal session to start streaming output\./);
+  assert.match(markup, /Attach a terminal session to start streaming output/);
   assert.match(markup, /terminal-session-picker/);
   assert.match(markup, /Choose whose execution to watch/);
 });
@@ -152,4 +153,14 @@ test('migration web gate: system page enters through AppShell route outlet', () 
   assert.match(markup, /data-route-page="system"/);
   assert.match(markup, /Observability, health, and control-plane signals/);
   assert.match(markup, /Shell notices/);
+});
+
+test('migration web gate: ledger page enters through AppShell route outlet', () => {
+  const markup = renderShellRoute('ledger');
+
+  assert.match(markup, /data-shell-route="ledger"/);
+  assert.match(markup, /data-route-page="ledger"/);
+  assert.match(markup, /Central audit ledger/);
+  assert.match(markup, /Governance/);
+  assert.match(markup, /retrospectives and compliance/);
 });

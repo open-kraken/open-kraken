@@ -1,4 +1,13 @@
-export type AppRouteId = 'chat' | 'members' | 'roadmap' | 'terminal' | 'system' | 'settings' | 'nodes' | 'dashboard';
+export type AppRouteId =
+  | 'chat'
+  | 'members'
+  | 'roadmap'
+  | 'terminal'
+  | 'system'
+  | 'settings'
+  | 'nodes'
+  | 'dashboard'
+  | 'ledger';
 
 export type AppRouteDefinition = {
   id: AppRouteId;
@@ -55,21 +64,27 @@ export const appRoutes: AppRouteDefinition[] = [
     path: '/dashboard',
     label: 'Dashboard',
     description: 'Token consumption, agent activity, and cost breakdown.'
+  },
+  {
+    id: 'ledger',
+    path: '/ledger',
+    label: 'Ledger',
+    description: 'Central audit trail: teams, members, commands, and context for retrospectives.'
   }
 ];
 
 export type AppNavGroup = {
-  id: 'collaboration' | 'delivery' | 'runtime' | 'workspace' | 'infrastructure' | 'observability';
+  id: 'collaboration' | 'delivery' | 'runtime' | 'observability' | 'workspace';
   label: string;
   routeIds: AppRouteId[];
 };
 
+/** Top-to-bottom: overview (dashboard) → collaboration → planning → execution → platform ops. */
 export const appNavGroups: AppNavGroup[] = [
+  { id: 'observability', label: 'Observability', routeIds: ['dashboard', 'ledger'] },
   { id: 'collaboration', label: 'Collaboration', routeIds: ['chat', 'members'] },
   { id: 'delivery', label: 'Delivery', routeIds: ['roadmap'] },
-  { id: 'runtime', label: 'Agents & runtime', routeIds: ['terminal'] },
-  { id: 'infrastructure', label: 'Infrastructure', routeIds: ['nodes'] },
-  { id: 'observability', label: 'Observability', routeIds: ['dashboard'] },
+  { id: 'runtime', label: 'Runtime & nodes', routeIds: ['terminal', 'nodes'] },
   { id: 'workspace', label: 'Workspace & ops', routeIds: ['system', 'settings'] }
 ];
 

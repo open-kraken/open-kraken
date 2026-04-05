@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MembersPage } from '@/pages/members/MembersPage';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute } from '@/routes';
+import { TestI18n } from '@/test/i18n-test-utils';
 
 const testApiClient: AppShellContextValue['apiClient'] = {
   getWorkspaceSummary: async () => ({ workspaceId: 'ws_open_kraken', membersOnline: 3, activeConversationId: 'conv_general' }),
@@ -12,7 +13,7 @@ const testApiClient: AppShellContextValue['apiClient'] = {
   getMessages: async () => ({ items: [], nextBeforeId: null }),
   sendMessage: async () => ({}),
   getMembers: async () => ({ members: [] }),
-  getRoadmap: async () => ({ objective: 'Ship', tasks: [] }),
+  getRoadmap: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   getRoadmapDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   updateRoadmapDocument: async (payload) => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: payload.roadmap }),
   getProjectDataDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', payload: {} }),
@@ -54,7 +55,9 @@ const renderMembersPage = (realtimeStatus: AppShellContextValue['realtime']['sta
 
   return renderToStaticMarkup(
     <AppShellContext.Provider value={contextValue}>
-      <MembersPage />
+      <TestI18n>
+        <MembersPage />
+      </TestI18n>
     </AppShellContext.Provider>
   );
 };
@@ -66,17 +69,17 @@ test('members page renders formal route content with role, status, and active ta
   assert.match(markup, /data-members-source="fixture"/);
   assert.match(markup, /data-route-page="members"/);
   assert.match(markup, /data-realtime-status="connected"/);
-  assert.match(markup, /route-page__grid route-page__grid--members/);
-  assert.match(markup, /Shell realtime and lead owner/);
-  assert.match(markup, /Shared member cards/);
-  assert.match(markup, /Member coordination surface/);
-  assert.match(markup, /Provide mock chat, member, roadmap, and terminal flows\./);
+  assert.match(markup, /route-page__grid route-page__grid--members-workbench/);
+  assert.match(markup, /members-page__context-bar/);
+  assert.match(markup, /Platform · roster/);
+  assert.match(markup, /agent workbench/);
   assert.match(markup, /No active task/);
   assert.match(markup, /data-role="owner"/);
   assert.match(markup, /data-role="assistant"/);
   assert.match(markup, /data-status="running"/);
   assert.match(markup, /data-status="idle"/);
-  assert.match(markup, /data-status="offline"/);
+  assert.match(markup, /members-page__team-switch/);
+  assert.match(markup, />Delivery</);
 });
 
 test('members page keeps shell realtime status in the shared page entry', () => {
@@ -84,7 +87,7 @@ test('members page keeps shell realtime status in the shared page entry', () => 
 
   assert.match(markup, /Shell realtime/);
   assert.match(markup, />reconnecting</);
-  assert.match(markup, /Member coordination surface/);
-  assert.match(markup, /Token-backed/);
+  assert.match(markup, /agent workbench/);
+  assert.match(markup, /Skills · Node · Process · CLI/);
   assert.match(markup, /Live workspace/);
 });

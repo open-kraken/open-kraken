@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
+import { translateRealtimeDetail, translateRealtimeStatusLabel } from '@/i18n/realtime-copy';
 import { useAppShell } from '@/state/app-shell-store';
 
 type HealthPayload = {
@@ -10,6 +12,7 @@ type HealthPayload = {
 };
 
 export const SystemPage = () => {
+  const { t } = useI18n();
   const { notifications, realtime, workspace } = useAppShell();
   const [health, setHealth] = useState<HealthPayload | null>(null);
   const [healthHttp, setHealthHttp] = useState<number | null>(null);
@@ -41,24 +44,20 @@ export const SystemPage = () => {
     <section className="page-card system-route-page" data-route-page="system" data-page-entry="system-runtime">
       <div className="route-page__hero">
         <div>
-          <p className="page-eyebrow">System</p>
-          <h1>Observability, health, and control-plane signals</h1>
-          <p className="route-page__intro">
-            This surface mirrors the production-readiness baseline: backend <code>/healthz</code>, websocket stream
-            posture, and client-visible degradation hooks. Authorization and capability truth remain server-owned; the UI
-            only renders read models and failure affordances described in the contracts.
-          </p>
+          <p className="page-eyebrow">{t('system.eyebrow')}</p>
+          <h1>{t('system.title')}</h1>
+          <p className="route-page__intro">{t('system.intro')}</p>
         </div>
         <div className="route-page__metric-strip">
           <article className="route-page__metric">
-            <span className="route-page__metric-label">Workspace</span>
+            <span className="route-page__metric-label">{t('system.metric.workspace')}</span>
             <strong>{workspace.workspaceId}</strong>
             <small>{workspace.workspaceLabel}</small>
           </article>
           <article className="route-page__metric">
-            <span className="route-page__metric-label">Realtime stream</span>
-            <strong>{realtime.status}</strong>
-            <small>{realtime.detail}</small>
+            <span className="route-page__metric-label">{t('system.metric.realtimeStream')}</span>
+            <strong>{translateRealtimeStatusLabel(realtime.status, t)}</strong>
+            <small>{translateRealtimeDetail(realtime.detail, t)}</small>
           </article>
         </div>
       </div>
@@ -67,11 +66,11 @@ export const SystemPage = () => {
         <section className="route-page__panel">
           <header className="route-page__panel-header">
             <div>
-              <p className="page-eyebrow">Runtime</p>
-              <h2>Backend health</h2>
+              <p className="page-eyebrow">{t('system.runtimeEyebrow')}</p>
+              <h2>{t('system.backendHealth')}</h2>
             </div>
             <button type="button" className="route-page__panel-refresh" onClick={() => void refresh()}>
-              Refresh
+              {t('system.refresh')}
             </button>
           </header>
           {healthError ? (
@@ -79,62 +78,47 @@ export const SystemPage = () => {
           ) : (
             <dl className="system-route-page__kv">
               <div>
-                <dt>HTTP</dt>
-                <dd>{healthHttp ?? '—'}</dd>
+                <dt>{t('system.http')}</dt>
+                <dd>{healthHttp ?? t('system.emDash')}</dd>
               </div>
               <div>
-                <dt>status</dt>
-                <dd>{health?.status ?? '—'}</dd>
+                <dt>{t('system.statusField')}</dt>
+                <dd>{health?.status ?? t('system.emDash')}</dd>
               </div>
               <div>
-                <dt>service</dt>
-                <dd>{health?.service ?? '—'}</dd>
+                <dt>{t('system.serviceField')}</dt>
+                <dd>{health?.service ?? t('system.emDash')}</dd>
               </div>
               <div>
-                <dt>requestId</dt>
-                <dd className="system-route-page__mono">{health?.requestId ?? '—'}</dd>
+                <dt>{t('system.requestIdField')}</dt>
+                <dd className="system-route-page__mono">{health?.requestId ?? t('system.emDash')}</dd>
               </div>
             </dl>
           )}
-          <p className="route-page__intro">
-            Bound probe: <code>GET /healthz</code>. When dependencies degrade, warnings may appear without failing the
-            process—surface them here before users hit secondary failures.
-          </p>
+          <p className="route-page__intro">{t('system.healthIntro')}</p>
         </section>
 
         <section className="route-page__panel">
           <header className="route-page__panel-header">
             <div>
-              <p className="page-eyebrow">Client</p>
-              <h2>Shell notices</h2>
+              <p className="page-eyebrow">{t('system.clientEyebrow')}</p>
+              <h2>{t('system.shellNoticesTitle')}</h2>
             </div>
           </header>
-          <p>
-            Active global notices: <strong>{notifications.length}</strong>. Pages should consume the shell outlet
-            instead of inventing parallel banners (see observability baseline).
-          </p>
+          <p>{t('system.shellNoticesBody', { count: notifications.length })}</p>
         </section>
 
         <section className="route-page__panel system-route-page__panel--span">
           <header className="route-page__panel-header">
             <div>
-              <p className="page-eyebrow">Contracts</p>
-              <h2>What this console is responsible for</h2>
+              <p className="page-eyebrow">{t('system.contractsEyebrow')}</p>
+              <h2>{t('system.contractsTitle')}</h2>
             </div>
           </header>
           <ul className="system-route-page__checklist">
-            <li>
-              <strong>Roster & roles</strong> — owner / supervisor / assistant / member projections with server-derived{' '}
-              <code>capabilities</code>, not UI-inferred privileges.
-            </li>
-            <li>
-              <strong>Multi-agent runtime</strong> — terminal attach/snapshot/delta/status channels per session; presence
-              vs terminal status stay distinct.
-            </li>
-            <li>
-              <strong>Stream monitoring</strong> — reconnect/backoff visibility, route-level load failures, and attach
-              failures surfaced as actionable UI state.
-            </li>
+            <li>{t('system.contract1')}</li>
+            <li>{t('system.contract2')}</li>
+            <li>{t('system.contract3')}</li>
           </ul>
         </section>
       </div>

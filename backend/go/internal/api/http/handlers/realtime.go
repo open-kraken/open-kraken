@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+
 	"open-kraken/backend/go/internal/authz"
 	"open-kraken/backend/go/internal/realtime"
 	"open-kraken/backend/go/internal/session"
@@ -19,21 +20,21 @@ type RealtimeHandler struct {
 	hub           *realtime.Hub
 	authorizer    authz.Service
 	startupCursor string
+	upgrader      websocket.Upgrader
 }
 
-func NewRealtimeHandler(service *terminal.Service, hub *realtime.Hub) *RealtimeHandler {
+func NewRealtimeHandler(service *terminal.Service, hub *realtime.Hub, upgrader websocket.Upgrader) *RealtimeHandler {
 	return &RealtimeHandler{
 		service:       service,
 		hub:           hub,
 		authorizer:    authz.NewService(),
 		startupCursor: hub.LatestCursor(),
+		upgrader:      upgrader,
 	}
 }
 
-var upgrader = websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
-
 func (h *RealtimeHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

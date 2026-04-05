@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import { useAppShell } from '@/state/app-shell-store';
 import { useNodesStore } from '@/state/nodesStore';
 import { NodeList } from '@/features/nodes/NodeList';
@@ -26,6 +27,7 @@ const MOCK_AGENTS: AgentOption[] = [
 ];
 
 export const NodesPage = () => {
+  const { t } = useI18n();
   const { realtimeClient } = useAppShell();
   const store = useNodesStore();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -76,112 +78,75 @@ export const NodesPage = () => {
     <section className="page-card page-card--nodes" data-page-entry="nodes">
       <div className="route-page__hero">
         <div>
-          <p className="page-eyebrow">Infrastructure</p>
-          <h1>Node management</h1>
-          <p className="route-page__intro">
-            Registered execution environments. Assign agents to nodes to control where workloads run.
-          </p>
+          <p className="page-eyebrow">{t('nodes.eyebrow')}</p>
+          <h1>{t('nodes.title')}</h1>
+          <p className="route-page__intro">{t('nodes.intro')}</p>
         </div>
 
-        <div className="route-page__metric-strip" aria-label="Node metrics">
+        <div className="route-page__metric-strip" aria-label={t('nodes.metricsAria')}>
           <div className="route-page__metric">
-            <span className="route-page__metric-label">Total</span>
+            <span className="route-page__metric-label">{t('nodes.total')}</span>
             <strong>{store.nodes.length}</strong>
-            <small>Registered nodes</small>
+            <small>{t('nodes.registeredNodes')}</small>
           </div>
           <div className="route-page__metric">
-            <span className="route-page__metric-label">Online</span>
+            <span className="route-page__metric-label">{t('nodes.online')}</span>
             <strong>{onlineCount}</strong>
-            <small>Healthy nodes</small>
+            <small>{t('nodes.healthyNodes')}</small>
           </div>
           <div className="route-page__metric">
-            <span className="route-page__metric-label">Degraded</span>
+            <span className="route-page__metric-label">{t('nodes.degraded')}</span>
             <strong>{degradedCount}</strong>
-            <small>Partial failures</small>
+            <small>{t('nodes.partialFailures')}</small>
           </div>
           <div className="route-page__metric">
-            <span className="route-page__metric-label">Offline</span>
+            <span className="route-page__metric-label">{t('nodes.offline')}</span>
             <strong>{offlineCount}</strong>
-            <small>Unreachable</small>
+            <small>{t('nodes.unreachable')}</small>
           </div>
         </div>
       </div>
 
       {/* View mode toggle */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
+      <div className="nodes-toolbar">
         <button
           type="button"
+          className={`nodes-toolbar__btn${viewMode === 'list' ? ' nodes-toolbar__btn--active' : ''}`}
           onClick={() => setViewMode('list')}
           aria-pressed={viewMode === 'list'}
-          style={{
-            padding: '5px 14px',
-            borderRadius: '4px',
-            border: `1px solid ${viewMode === 'list' ? '#6366f1' : '#374151'}`,
-            color: viewMode === 'list' ? '#6366f1' : '#9ca3af',
-            background: 'transparent',
-            cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
         >
-          List
+          {t('nodes.viewList')}
         </button>
         <button
           type="button"
+          className={`nodes-toolbar__btn${viewMode === 'topology' ? ' nodes-toolbar__btn--active' : ''}`}
           onClick={() => setViewMode('topology')}
           aria-pressed={viewMode === 'topology'}
-          style={{
-            padding: '5px 14px',
-            borderRadius: '4px',
-            border: `1px solid ${viewMode === 'topology' ? '#6366f1' : '#374151'}`,
-            color: viewMode === 'topology' ? '#6366f1' : '#9ca3af',
-            background: 'transparent',
-            cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
         >
-          Topology
+          {t('nodes.viewTopology')}
         </button>
 
         <button
           type="button"
+          className="nodes-toolbar__btn nodes-toolbar__btn--refresh"
           onClick={() => void store.loadNodes()}
           disabled={store.loadState === 'loading'}
-          style={{
-            marginLeft: 'auto',
-            padding: '5px 14px',
-            borderRadius: '4px',
-            border: '1px solid #374151',
-            color: '#9ca3af',
-            background: 'transparent',
-            cursor: store.loadState === 'loading' ? 'not-allowed' : 'pointer',
-            fontSize: '0.85rem'
-          }}
         >
-          {store.loadState === 'loading' ? 'Loading…' : 'Refresh'}
+          {store.loadState === 'loading' ? t('nodes.loading') : t('nodes.refresh')}
         </button>
       </div>
 
       {/* Error state */}
       {store.loadState === 'error' && (
-        <div
-          role="alert"
-          style={{
-            padding: '12px 16px',
-            borderRadius: '6px',
-            backgroundColor: 'rgba(220,38,38,0.1)',
-            border: '1px solid #dc2626',
-            color: '#fca5a5',
-            marginBottom: '16px'
-          }}
-        >
-          Failed to load nodes: {store.errorMessage}
+        <div role="alert" className="nodes-page__alert">
+          {t('nodes.loadError', { message: store.errorMessage ?? '' })}
         </div>
       )}
 
       {/* Loading skeleton */}
       {store.loadState === 'loading' && store.nodes.length === 0 && (
-        <div role="status" style={{ color: '#6b7280', padding: '32px', textAlign: 'center' }}>
-          Loading nodes…
+        <div role="status" className="nodes-page__loading">
+          {t('nodes.loadingNodes')}
         </div>
       )}
 
@@ -197,12 +162,9 @@ export const NodesPage = () => {
 
       {/* Topology / card grid view */}
       {viewMode === 'topology' && store.loadState !== 'loading' && (
-        <div
-          className="nodes-topology-grid"
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}
-        >
+        <div className="nodes-topology-grid">
           {store.nodes.length === 0 ? (
-            <p style={{ color: '#6b7280' }}>No nodes registered.</p>
+            <p className="nodes-page__empty-hint">{t('nodes.empty')}</p>
           ) : (
             store.nodes.map((node) => (
               <NodeCard

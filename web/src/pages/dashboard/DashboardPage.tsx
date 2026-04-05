@@ -5,6 +5,7 @@
  */
 
 import { useEffect } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import { useAppShell } from '@/state/app-shell-store';
 import { useDashboardStore } from '@/state/dashboardStore';
 import { TeamTokenSummary } from '@/features/dashboard/TeamTokenSummary';
@@ -13,6 +14,7 @@ import { AgentActivityPanel } from '@/features/dashboard/AgentActivityPanel';
 import { NodeTokenBreakdown } from '@/features/dashboard/NodeTokenBreakdown';
 
 export const DashboardPage = () => {
+  const { t } = useI18n();
   const { realtimeClient } = useAppShell();
   const store = useDashboardStore();
 
@@ -39,11 +41,9 @@ export const DashboardPage = () => {
     <section className="page-card page-card--dashboard" data-page-entry="dashboard">
       <div className="route-page__hero">
         <div>
-          <p className="page-eyebrow">Observability</p>
-          <h1>Token consumption &amp; agent activity</h1>
-          <p className="route-page__intro">
-            Real-time view of agent token usage, cost breakdown, and execution status across the workspace.
-          </p>
+          <p className="page-eyebrow">{t('dashboard.eyebrow')}</p>
+          <h1>{t('dashboard.title')}</h1>
+          <p className="route-page__intro">{t('dashboard.intro')}</p>
         </div>
       </div>
 
@@ -60,14 +60,14 @@ export const DashboardPage = () => {
             marginBottom: '16px'
           }}
         >
-          Failed to load dashboard data: {store.errorMessage}
+          {t('dashboard.loadError', { message: store.errorMessage ?? '' })}
         </div>
       )}
 
       {/* Loading state */}
       {store.loadState === 'loading' && store.tokenStats.length === 0 && (
         <div role="status" style={{ color: '#6b7280', padding: '32px', textAlign: 'center' }}>
-          Loading dashboard…
+          {t('dashboard.loading')}
         </div>
       )}
 
@@ -89,8 +89,8 @@ export const DashboardPage = () => {
           style={{ border: '1px solid #374151', borderRadius: '8px', padding: '16px' }}
         >
           <header style={{ marginBottom: '12px' }}>
-            <p className="page-eyebrow">Consumption</p>
-            <h2 style={{ margin: 0, fontSize: '1rem' }}>Tokens by member</h2>
+            <p className="page-eyebrow">{t('dashboard.consumptionEyebrow')}</p>
+            <h2 style={{ margin: 0, fontSize: '1rem' }}>{t('dashboard.tokensByMember')}</h2>
           </header>
           <TokenChart stats={store.tokenStats} />
         </section>
@@ -101,8 +101,8 @@ export const DashboardPage = () => {
           style={{ border: '1px solid #374151', borderRadius: '8px', padding: '16px' }}
         >
           <header style={{ marginBottom: '12px' }}>
-            <p className="page-eyebrow">Infrastructure</p>
-            <h2 style={{ margin: 0, fontSize: '1rem' }}>Tokens by node</h2>
+            <p className="page-eyebrow">{t('dashboard.infraEyebrow')}</p>
+            <h2 style={{ margin: 0, fontSize: '1rem' }}>{t('dashboard.tokensByNode')}</h2>
           </header>
           <NodeTokenBreakdown stats={store.tokenStats} />
         </section>
@@ -114,8 +114,8 @@ export const DashboardPage = () => {
         style={{ border: '1px solid #374151', borderRadius: '8px', padding: '16px', marginTop: '24px' }}
       >
         <header style={{ marginBottom: '12px' }}>
-          <p className="page-eyebrow">Activity</p>
-          <h2 style={{ margin: 0, fontSize: '1rem' }}>Agent activity</h2>
+          <p className="page-eyebrow">{t('dashboard.activityEyebrow')}</p>
+          <h2 style={{ margin: 0, fontSize: '1rem' }}>{t('dashboard.agentActivity')}</h2>
         </header>
         <AgentActivityPanel activities={store.activities} />
       </section>

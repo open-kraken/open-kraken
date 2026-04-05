@@ -13,7 +13,15 @@ export const createMockClient = ({ workspaceId = 'ws_open_kraken', clock = () =>
   return {
     workspaceId,
     async getConversations() {
-      return { workspace: store.getWorkspace(), conversations: store.listConversations() };
+      const conversations = store.listConversations();
+      const firstId = conversations[0]?.id ?? 'conv_general';
+      emit({
+        event: 'chat.snapshot',
+        workspaceId,
+        conversationId: firstId,
+        messageIds: []
+      });
+      return { workspace: store.getWorkspace(), conversations };
     },
     async getMessages(conversationId) {
       return { items: store.listMessages(conversationId), nextBeforeId: null };
@@ -53,6 +61,13 @@ export const createMockClient = ({ workspaceId = 'ws_open_kraken', clock = () =>
         }))
       };
       emit(event);
+      emit({
+        event: 'presence.updated',
+        workspaceId,
+        memberId,
+        presenceState: patch.manualStatus ?? members.members.find((m) => m.memberId === memberId)?.manualStatus,
+        sentAt: new Date().toISOString()
+      });
       return event;
     },
     async getRoadmap() {

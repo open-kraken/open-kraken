@@ -26,7 +26,9 @@ func NewRuntimeHandler(cfg runtimecfg.Config, apiHandler http.Handler) http.Hand
 }
 
 func isAPIRequest(path, apiBasePath, wsPath string) bool {
-	for _, prefix := range []string{apiBasePath, wsPath, "/api/terminal", "/realtime"} {
+	// All versioned HTTP APIs live under apiBasePath. WebSocket is wsPath; /realtime is a legacy alias.
+	// /api covers unversioned T04-T07 routes (/api/nodes, /api/skills, /api/members, /api/tokens, /api/memory).
+	for _, prefix := range []string{apiBasePath, wsPath, "/api", "/realtime"} {
 		if prefix == "/" {
 			continue
 		}

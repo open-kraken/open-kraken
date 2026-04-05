@@ -60,6 +60,13 @@ const createBroadcastEvent = (state) => {
       }))
     },
     {
+      event: 'presence.updated',
+      workspaceId: state.workspace.id,
+      memberId: state.members.members[0].memberId,
+      presenceState: state.members.members[0].manualStatus,
+      sentAt: new Date().toISOString()
+    },
+    {
       event: 'roadmap.updated',
       workspaceId: state.workspace.id,
       roadmap: state.roadmap
@@ -92,7 +99,8 @@ const createBroadcastEvent = (state) => {
       workspaceId: state.workspace.id,
       terminalId: session.terminalId,
       connectionState: 'attached',
-      processState: session.status === 'working' ? 'running' : 'idle'
+      processState: session.status === 'working' ? 'running' : 'idle',
+      reason: 'mock'
     },
     {
       event: 'chat.status',
@@ -115,6 +123,42 @@ export const startMockServer = async ({ port = 0 } = {}) => {
     }
     if (parts[0] === 'api' && parts[1] === 'v1') {
       parts = ['api', ...parts.slice(2)];
+    }
+    if (parts[0] === 'api' && parts[1] === 'ledger' && parts[2] === 'events') {
+      if (req.method === 'GET') {
+        const items = [
+          {
+            id: 'led_demo_1',
+            workspaceId: state.workspace.id,
+            teamId: 'team_platform',
+            memberId: 'owner_1',
+            nodeId: 'node-1',
+            eventType: 'terminal.command',
+            summary: 'npm run verify:all',
+            correlationId: 'run_demo_1',
+            sessionId: 'term_owner_1',
+            context: { cwd: state.workspace.rootPath ?? '/repo', exitCode: 0 },
+            timestamp: new Date().toISOString()
+          }
+        ];
+        return sendJson(res, 200, { items, total: items.length });
+      }
+      if (req.method === 'POST') {
+        const body = JSON.parse(await readBody(req));
+        return sendJson(res, 201, {
+          id: `led_${Date.now()}`,
+          workspaceId: body.workspaceId ?? state.workspace.id,
+          teamId: body.teamId ?? '',
+          memberId: body.memberId ?? '',
+          nodeId: body.nodeId ?? '',
+          eventType: body.eventType ?? '',
+          summary: body.summary ?? '',
+          correlationId: body.correlationId ?? '',
+          sessionId: body.sessionId ?? '',
+          context: body.context ?? {},
+          timestamp: new Date().toISOString()
+        });
+      }
     }
     if (parts[0] !== 'api' || parts[1] !== 'workspaces' || parts[2] !== state.workspace.id) {
       return sendJson(res, 404, { error: 'not_found' });
@@ -184,6 +228,13 @@ export const startMockServer = async ({ port = 0 } = {}) => {
         }))
       };
       broadcast(sockets, event);
+      broadcast(sockets, {
+        event: 'presence.updated',
+        workspaceId: state.workspace.id,
+        memberId: next.memberId,
+        presenceState: next.manualStatus,
+        sentAt: new Date().toISOString()
+      });
       return sendJson(res, 200, event);
     }
     if (req.method === 'GET' && parts[3] === 'roadmap') {

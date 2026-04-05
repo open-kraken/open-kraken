@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { TestI18n } from '@/test/i18n-test-utils';
 import { CollaborationOverviewPage } from '../pages/collaboration/CollaborationOverviewPage';
 import type { RoleCardProps } from '../components/agent/RoleCard';
 
@@ -30,7 +31,11 @@ const members: RoleCardProps[] = [
 ];
 
 test('collaboration overview page consumes layout shell and role-card state contracts', () => {
-  const markup = renderToStaticMarkup(<CollaborationOverviewPage members={members} />);
+  const markup = renderToStaticMarkup(
+    <TestI18n>
+      <CollaborationOverviewPage members={members} />
+    </TestI18n>
+  );
 
   assert.match(markup, /collaboration-overview-page__shell/);
   assert.match(markup, /collaboration-overview-page__grid/);

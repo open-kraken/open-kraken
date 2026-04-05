@@ -4,6 +4,7 @@
  */
 
 import { useState, useMemo } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import type { Skill, SkillCategory } from '@/types/skill';
 import { SkillBadge } from './SkillBadge';
 
@@ -16,15 +17,6 @@ export type SkillListProps = {
 /** Canonical display order for skill categories. */
 const CATEGORY_ORDER: SkillCategory[] = ['tech-lead', 'golang', 'react', 'qa', 'devops', 'other'];
 
-const CATEGORY_LABEL: Record<SkillCategory, string> = {
-  'tech-lead': 'Tech Lead',
-  golang: 'Go / Backend',
-  react: 'React / Frontend',
-  qa: 'QA',
-  devops: 'DevOps',
-  other: 'Other'
-};
-
 /**
  * SkillList
  * Renders all available skills organised by category with an optional search bar.
@@ -33,6 +25,7 @@ const CATEGORY_LABEL: Record<SkillCategory, string> = {
  * @param onAdd - Optional callback to add a skill to the current member.
  */
 export const SkillList = ({ skills, onAdd }: SkillListProps) => {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
@@ -66,10 +59,10 @@ export const SkillList = ({ skills, onAdd }: SkillListProps) => {
       <div style={{ marginBottom: '16px' }}>
         <input
           type="search"
-          placeholder="Search skills…"
+          placeholder={t('skills.searchPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search skills"
+          aria-label={t('skills.searchAria')}
           style={{
             width: '100%',
             padding: '7px 12px',
@@ -84,7 +77,7 @@ export const SkillList = ({ skills, onAdd }: SkillListProps) => {
       </div>
 
       {filtered.length === 0 && (
-        <p style={{ color: '#6b7280' }}>No skills match your search.</p>
+        <p style={{ color: '#6b7280' }}>{t('skills.noMatch')}</p>
       )}
 
       {/* Category groups */}
@@ -100,7 +93,7 @@ export const SkillList = ({ skills, onAdd }: SkillListProps) => {
               marginBottom: '8px'
             }}
           >
-            {CATEGORY_LABEL[cat]}
+            {t(`skills.category.${cat}`)}
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {(grouped.get(cat) ?? []).map((skill) => (
@@ -135,7 +128,7 @@ export const SkillList = ({ skills, onAdd }: SkillListProps) => {
                       flexShrink: 0
                     }}
                   >
-                    Add
+                    {t('skills.add')}
                   </button>
                 )}
               </div>

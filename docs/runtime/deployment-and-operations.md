@@ -161,7 +161,7 @@ Pass condition:
 
 - Static files are served only for non-API and non-WebSocket paths.
 - `OPEN_KRAKEN_API_BASE_PATH` and `OPEN_KRAKEN_WS_PATH` are never shadowed by static routing.
-- Legacy compatibility aliases `/api/terminal` and `/realtime` remain routed to backend handlers while the migration is in progress.
+- Terminal HTTP APIs are served only under `{OPEN_KRAKEN_API_BASE_PATH}/terminal` (default `/api/v1/terminal`). The WebSocket endpoint is `{OPEN_KRAKEN_WS_PATH}` (default `/ws`), with a legacy alias at `/realtime`.
 - If `OPEN_KRAKEN_WEB_DIST_DIR` is unset, missing, not a directory, or lacks `index.html`, the backend still starts and continues to serve API and `/healthz`.
 - In that degraded static state, browser-path requests such as `/` return `503` with `application/json; charset=utf-8` and a body containing `status=degraded`, `error=web_dist_unavailable`, and `requestId`.
 

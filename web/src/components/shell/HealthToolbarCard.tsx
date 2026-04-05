@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 
 type HealthPayload = {
   status?: string;
@@ -45,17 +46,18 @@ const toneFor = (args: {
 };
 
 export const HealthToolbarCard = () => {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<'loading' | 'ready'>('loading');
-  const [summary, setSummary] = useState<string>('Checking…');
-  const [detail, setDetail] = useState<string>('Requesting /healthz');
+  const [summary, setSummary] = useState<string>(() => t('health.checking'));
+  const [detail, setDetail] = useState<string>(() => t('health.requesting'));
   const [tone, setTone] = useState<HealthTone>('muted');
 
   const applyResult = useCallback(
     (result: Awaited<ReturnType<typeof fetchHealth>>, opts: { markLoadingEnd: boolean }) => {
       const reachable = result.httpStatus !== 0;
       if (!reachable) {
-        setSummary('Offline');
-        setDetail('Start the API or proxy /healthz');
+        setSummary(t('health.offline'));
+        setDetail(t('health.startApi'));
         setTone('bad');
         if (opts.markLoadingEnd) {
           setPhase('ready');
@@ -64,7 +66,7 @@ export const HealthToolbarCard = () => {
       }
       if (!result.payload) {
         setSummary(`HTTP ${result.httpStatus}`);
-        setDetail('Unexpected health payload');
+        setDetail(t('health.unexpectedPayload'));
         setTone('warn');
         if (opts.markLoadingEnd) {
           setPhase('ready');
@@ -77,8 +79,8 @@ export const HealthToolbarCard = () => {
       const bits = [
         result.payload.service ? result.payload.service : null,
         result.payload.requestId ? result.payload.requestId : null,
-        result.payload.warnings?.length ? `${result.payload.warnings.length} warning(s)` : null,
-        result.payload.errors?.length ? `${result.payload.errors.length} error(s)` : null
+        result.payload.warnings?.length ? t('health.warnings', { n: result.payload.warnings.length }) : null,
+        result.payload.errors?.length ? t('health.errors', { n: result.payload.errors.length }) : null
       ]
         .filter(Boolean)
         .join(' · ');
@@ -90,7 +92,7 @@ export const HealthToolbarCard = () => {
         setPhase('ready');
       }
     },
-    []
+    [t]
   );
 
   const refresh = useCallback(
@@ -117,17 +119,15 @@ export const HealthToolbarCard = () => {
 
   return (
     <div
-      className="app-shell__toolbar-card"
+      className="app-shell__toolbar-chip app-shell__toolbar-chip--health"
       data-shell-slot="health"
       data-health-phase={phase}
       data-health-tone={tone}
+      title={detail}
     >
-      <span className="app-shell__toolbar-label">Backend</span>
-      <div className="app-shell__toolbar-health-row">
-        <span className="app-shell__toolbar-health-dot" data-tone={tone} aria-hidden />
-        <strong>{summary}</strong>
-      </div>
-      <small>{detail}</small>
+      <span className="sr-only">{t('health.label')}</span>
+      <span className="app-shell__toolbar-health-dot" data-tone={tone} aria-hidden />
+      <span className="app-shell__toolbar-chip-health-text">{summary}</span>
     </div>
   );
 };

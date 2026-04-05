@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import type { Skill } from '@/types/skill';
 import { getMemberSkills, updateMemberSkills } from '@/api/skills';
 import { SkillBadge } from './SkillBadge';
@@ -27,6 +28,7 @@ export type MemberSkillPanelProps = {
  * @param availableSkills - Catalogue of all available skills for the add section.
  */
 export const MemberSkillPanel = ({ memberId, memberName, availableSkills }: MemberSkillPanelProps) => {
+  const { t } = useI18n();
   const [assignedSkills, setAssignedSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -73,7 +75,7 @@ export const MemberSkillPanel = ({ memberId, memberName, availableSkills }: Memb
       style={{ padding: '16px', border: '1px solid #374151', borderRadius: '8px' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <h3 style={{ margin: 0, fontSize: '0.95rem' }}>{memberName} — Skills</h3>
+        <h3 style={{ margin: 0, fontSize: '0.95rem' }}>{t('memberSkill.title', { name: memberName })}</h3>
         <button
           type="button"
           onClick={() => setShowAdd((v) => !v)}
@@ -87,18 +89,18 @@ export const MemberSkillPanel = ({ memberId, memberName, availableSkills }: Memb
             cursor: 'pointer'
           }}
         >
-          {showAdd ? 'Close' : '+ Add skill'}
+          {showAdd ? t('memberSkill.close') : t('memberSkill.add')}
         </button>
       </div>
 
       {/* Loading state */}
       {loading && (
-        <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>Loading skills…</p>
+        <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>{t('memberSkill.loading')}</p>
       )}
 
       {/* Assigned skills */}
       {!loading && assignedSkills.length === 0 && !showAdd && (
-        <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>No skills assigned.</p>
+        <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>{t('memberSkill.none')}</p>
       )}
 
       {!loading && assignedSkills.length > 0 && (
@@ -111,7 +113,7 @@ export const MemberSkillPanel = ({ memberId, memberName, availableSkills }: Memb
               <SkillBadge skill={skill} />
               <button
                 type="button"
-                aria-label={`Remove skill ${skill.name}`}
+                aria-label={t('memberSkill.removeAria', { name: skill.name })}
                 onClick={() => void handleRemove(skill.path)}
                 style={{
                   background: 'none',

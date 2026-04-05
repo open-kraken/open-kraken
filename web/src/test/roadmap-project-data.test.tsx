@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { TestI18n } from '@/test/i18n-test-utils';
 import { ProjectDataPanel } from '../features/roadmap-project-data/components/ProjectDataPanel';
 import { RoadmapPanel } from '../features/roadmap-project-data/components/RoadmapPanel';
 import {
@@ -112,7 +113,7 @@ test('project data supports writable json editing and read-only lock feedback', 
   assert.equal(feedback.tone, 'readonly');
   assert.equal(feedback.disableInputs, true);
   assert.equal(feedback.disableSave, true);
-  assert.match(feedback.detail, /awaiting approval/i);
+  assert.match(feedback.detail ?? '', /awaiting approval/i);
 });
 
 test('roadmap and project data panels share feedback semantics for loading, saving, readonly, and errors', () => {
@@ -131,32 +132,36 @@ test('roadmap and project data panels share feedback semantics for loading, savi
   });
 
   const roadmapMarkup = renderToStaticMarkup(
-    <RoadmapPanel
-      value={{
-        objective: 'Goal',
-        tasks: [{ id: 'task_1', number: 1, title: 'First', status: 'todo', pinned: true }]
-      }}
-      feedback={neutral}
-      onObjectiveChange={() => undefined}
-      onTaskChange={() => undefined}
-      onSave={() => undefined}
-      onReload={() => undefined}
-      onKeepDraft={() => undefined}
-      onDiscardAndReload={() => undefined}
-    />
+    <TestI18n>
+      <RoadmapPanel
+        value={{
+          objective: 'Goal',
+          tasks: [{ id: 'task_1', number: 1, title: 'First', status: 'todo', pinned: true }]
+        }}
+        feedback={neutral}
+        onObjectiveChange={() => undefined}
+        onTaskChange={() => undefined}
+        onSave={() => undefined}
+        onReload={() => undefined}
+        onKeepDraft={() => undefined}
+        onDiscardAndReload={() => undefined}
+      />
+    </TestI18n>
   );
 
   const projectMarkup = renderToStaticMarkup(
-    <ProjectDataPanel
-      value={{ payload: { owner: 'Claire' }, storage: 'workspace', warning: '', readOnlyReason: null }}
-      draftText={'{\n  "owner": "Claire"\n}'}
-      feedback={errorFeedback}
-      onDraftChange={() => undefined}
-      onSave={() => undefined}
-      onReload={() => undefined}
-      onKeepDraft={() => undefined}
-      onDiscardAndReload={() => undefined}
-    />
+    <TestI18n>
+      <ProjectDataPanel
+        value={{ payload: { owner: 'Claire' }, storage: 'workspace', warning: '', readOnlyReason: null }}
+        draftText={'{\n  "owner": "Claire"\n}'}
+        feedback={errorFeedback}
+        onDraftChange={() => undefined}
+        onSave={() => undefined}
+        onReload={() => undefined}
+        onKeepDraft={() => undefined}
+        onDiscardAndReload={() => undefined}
+      />
+    </TestI18n>
   );
 
   assert.match(roadmapMarkup, /Keep local draft/);

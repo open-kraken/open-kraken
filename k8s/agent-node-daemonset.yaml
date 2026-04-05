@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kraken-agent-node
+  namespace: kraken
+  labels:
+    app: kraken-agent-node
+spec:
+  selector:
+    matchLabels:
+      app: kraken-agent-node
+  template:
+    metadata:
+      labels:
+        app: kraken-agent-node
+    spec:
+      tolerations:
+        # Allow scheduling on control-plane nodes
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: agent-node
+          image: alpine:3.19
+          envFrom:
+            - configMapRef:
+                name: kraken-config
+          env:
+            - name: KRAKEN_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: skills
+              mountPath: /skills
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          command:
+            - sh
+            - -c
+            - |
+              echo "Agent node starting on $(KRAKEN_NODE_ID), backend: $KRAKEN_BACKEND_URL"
+              while true; do
+                wget -qO- "$KRAKEN_BACKEND_URL/healthz" > /dev/null 2>&1 \
+                  && echo "[$(KRAKEN_NODE_ID)] heartbeat ok" \
+                  || echo "[$(KRAKEN_NODE_ID)] backend unreachable"
+                sleep 30
+              done
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kraken-data-pvc
+        - name: skills
+          emptyDir: {}

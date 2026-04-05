@@ -89,10 +89,13 @@ const parseErrorEnvelope = async (response: Response, requestId: string): Promis
 export class HttpClient {
   private readonly fetchImpl: typeof fetch;
   private readonly requestIdFactory: () => string;
+  /** Workspace id for X-Workspace-Id; also used to build /workspaces/{id}/… paths in the API client. */
+  readonly workspaceId: string;
 
   constructor(private readonly options: HttpClientOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.requestIdFactory = options.requestIdFactory ?? defaultRequestIdFactory;
+    this.workspaceId = options.workspaceId;
   }
 
   get<T>(path: string, init?: Omit<RequestOptions, 'body' | 'method'>) {

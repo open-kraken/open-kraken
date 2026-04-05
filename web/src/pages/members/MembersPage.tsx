@@ -3,31 +3,40 @@ import membersFixture from '../../../../backend/tests/fixtures/workspace-fixture
 import { MemberCollabPanel } from '@/features/members/MemberCollabPanel';
 import {
   buildMembersPageModel,
-  type MemberFixture,
   type MembersPageModel,
-  normalizeMembersEnvelope,
   normalizeRoadmapTasksEnvelope,
+  normalizeTeamsAndMembers,
   type RoadmapTaskFixture
 } from '@/features/members/member-page-model';
 import { useAppShell } from '@/state/app-shell-store';
 import { getSkills } from '@/api/skills';
+import { getNodes } from '@/api/nodes';
+import { buildNodeBindingByMemberId } from '@/features/members/member-runtime-map';
+import { buildCliPreviewLinesFromFixture } from '@/features/members/cli-preview-from-fixture';
 import type { Skill } from '@/types/skill';
+import type { MemberNodeBinding } from '@/features/members/member-runtime-map';
 
 type MembersPageDataState = {
   model: MembersPageModel;
   source: 'fixture' | 'api';
 };
 
-const fallbackMembers = membersFixture.members.members as MemberFixture[];
+const fixtureCliPreviews = buildCliPreviewLinesFromFixture(
+  membersFixture as unknown as { terminalSessions?: Array<Record<string, unknown>> }
+);
+
 const fallbackRoadmapTasks = membersFixture.roadmap.tasks as RoadmapTaskFixture[];
 
-const buildFallbackModel = (workspaceId: string, realtimeStatus: string) =>
-  buildMembersPageModel({
+const buildFallbackModel = (workspaceId: string, realtimeStatus: string) => {
+  const { members, teamGroups } = normalizeTeamsAndMembers(membersFixture as Record<string, unknown>);
+  return buildMembersPageModel({
     workspaceId,
     realtimeStatus,
-    members: fallbackMembers,
-    roadmapTasks: fallbackRoadmapTasks
+    members,
+    roadmapTasks: fallbackRoadmapTasks,
+    teamGroups
   });
+};
 
 export const MembersPage = () => {
   const { workspace, realtime, apiClient } = useAppShell();
@@ -35,6 +44,7 @@ export const MembersPage = () => {
     model: buildFallbackModel(workspace.workspaceId, realtime.status),
     source: 'fixture'
   }));
+  const [nodeByMemberId, setNodeByMemberId] = useState<Record<string, MemberNodeBinding>>({});
   // Available skills for the inline MemberSkillPanel integration
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
 
@@ -47,12 +57,14 @@ export const MembersPage = () => {
         if (cancelled) {
           return;
         }
+        const { members, teamGroups } = normalizeTeamsAndMembers(membersResponse as Record<string, unknown>);
         setState({
           model: buildMembersPageModel({
             workspaceId: workspace.workspaceId,
             realtimeStatus: realtime.status,
-            members: normalizeMembersEnvelope(membersResponse),
-            roadmapTasks: normalizeRoadmapTasksEnvelope(roadmapResponse)
+            members,
+            roadmapTasks: normalizeRoadmapTasksEnvelope(roadmapResponse),
+            teamGroups
           }),
           source: 'api'
         });
@@ -79,9 +91,33 @@ export const MembersPage = () => {
     void getSkills().then((res) => setAvailableSkills(res.skills));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { nodes } = await getNodes();
+        if (!cancelled) {
+          setNodeByMemberId(buildNodeBindingByMemberId(nodes));
+        }
+      } catch {
+        /* optional topology */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const cliPreviewForUi = state.source === 'fixture' ? fixtureCliPreviews : {};
+
   return (
     <section className="page-card page-card--members" data-page-entry="members-runtime" data-members-source={state.source}>
-      <MemberCollabPanel model={state.model} availableSkills={availableSkills} />
+      <MemberCollabPanel
+        model={state.model}
+        availableSkills={availableSkills}
+        nodeByMemberId={nodeByMemberId}
+        cliPreviewByMemberId={cliPreviewForUi}
+      />
     </section>
   );
 };

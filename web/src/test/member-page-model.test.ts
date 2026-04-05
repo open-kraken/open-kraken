@@ -41,4 +41,6 @@ test('member page model normalizes wrapped members and roadmap envelopes from br
   assert.equal(roadmapTasks.length, 1);
   assert.equal(model.members[0].status, 'idle');
   assert.equal(model.members[0].activeTaskLabel, 'Close remaining runtime gaps');
+  assert.equal(model.teams.length, 1);
+  assert.equal(model.teams[0].members.length, model.members.length);
 });

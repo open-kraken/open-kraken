@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import type { Node } from '@/types/node';
 
 export type AgentOption = {
@@ -31,7 +32,7 @@ export type NodeAgentAssignProps = {
  * @param onClose - Called when the dialog should be dismissed.
  */
 export const NodeAgentAssign = ({ node, allAgents, onAssign, onUnassign, onClose }: NodeAgentAssignProps) => {
-  // Track in-flight requests per memberId to show loading state on the button
+  const { t } = useI18n();
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
   const handleAssign = async (memberId: string) => {
@@ -61,87 +62,43 @@ export const NodeAgentAssign = ({ node, allAgents, onAssign, onUnassign, onClose
   };
 
   return (
-    // Backdrop
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="node-assign-dialog-title"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 50
-      }}
+      className="node-assign-backdrop"
       onClick={(e) => {
-        // Close when clicking the backdrop
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
-        style={{
-          backgroundColor: '#111827',
-          border: '1px solid #374151',
-          borderRadius: '8px',
-          padding: '24px',
-          minWidth: '360px',
-          maxWidth: '480px',
-          width: '100%'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <h2 id="node-assign-dialog-title" style={{ margin: 0, fontSize: '1rem' }}>
-            Assign agents — {node.hostname}
+      <div className="node-assign-dialog">
+        <div className="node-assign-dialog__header">
+          <h2 id="node-assign-dialog-title" className="node-assign-dialog__title">
+            {t('nodeAssign.title', { hostname: node.hostname })}
           </h2>
-          <button
-            type="button"
-            aria-label="Close dialog"
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1.25rem' }}
-          >
+          <button type="button" aria-label={t('nodeAssign.close')} className="node-assign-dialog__close" onClick={onClose}>
             ✕
           </button>
         </div>
 
         {allAgents.length === 0 ? (
-          <p style={{ color: '#6b7280' }}>No agents available.</p>
+          <p className="node-assign-dialog__empty">{t('nodeAssign.empty')}</p>
         ) : (
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <ul className="node-assign-dialog__list">
             {allAgents.map((agent) => {
               const isAssigned = node.assignedAgents.includes(agent.memberId);
               const isPending = pendingIds.has(agent.memberId);
 
               return (
-                <li
-                  key={agent.memberId}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    backgroundColor: '#1f2937',
-                    borderRadius: '6px'
-                  }}
-                >
-                  <span style={{ fontSize: '0.875rem' }}>{agent.displayName}</span>
+                <li key={agent.memberId} className="node-assign-dialog__row">
+                  <span className="node-assign-dialog__name">{agent.displayName}</span>
                   <button
                     type="button"
                     disabled={isPending}
-                    onClick={() => isAssigned ? handleUnassign(agent.memberId) : handleAssign(agent.memberId)}
-                    style={{
-                      fontSize: '0.75rem',
-                      padding: '3px 10px',
-                      borderRadius: '4px',
-                      border: `1px solid ${isAssigned ? '#dc2626' : '#16a34a'}`,
-                      color: isAssigned ? '#dc2626' : '#16a34a',
-                      background: 'transparent',
-                      cursor: isPending ? 'not-allowed' : 'pointer',
-                      opacity: isPending ? 0.6 : 1
-                    }}
+                    className={`node-assign-dialog__action ${isAssigned ? 'node-assign-dialog__action--remove' : 'node-assign-dialog__action--add'}`}
+                    onClick={() => (isAssigned ? handleUnassign(agent.memberId) : handleAssign(agent.memberId))}
                   >
-                    {isPending ? '…' : isAssigned ? 'Remove' : 'Assign'}
+                    {isPending ? t('nodeAssign.pending') : isAssigned ? t('nodeAssign.remove') : t('nodeAssign.assign')}
                   </button>
                 </li>
               );
@@ -149,20 +106,8 @@ export const NodeAgentAssign = ({ node, allAgents, onAssign, onUnassign, onClose
           </ul>
         )}
 
-        <div style={{ marginTop: '16px', textAlign: 'right' }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              fontSize: '0.85rem',
-              padding: '6px 16px',
-              borderRadius: '4px',
-              border: '1px solid #374151',
-              color: '#9ca3af',
-              background: 'transparent',
-              cursor: 'pointer'
-            }}
-          >
+        <div className="node-assign-dialog__footer">
+          <button type="button" className="node-assign-dialog__done" onClick={onClose}>
             Done
           </button>
         </div>

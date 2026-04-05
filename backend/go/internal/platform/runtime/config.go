@@ -23,8 +23,14 @@ type Config struct {
 	WSPath        string
 	AppDataRoot   string
 	WorkspaceRoot string
-	LogLevel      string
-	WebDistDir    string
+	// SkillRoot is the directory that the skill loader scans for .md skill files.
+	SkillRoot  string
+	LogLevel   string
+	WebDistDir string
+	// WSAllowAnyOrigin disables WebSocket Origin validation (development only).
+	WSAllowAnyOrigin bool
+	// WSAllowedOrigins lists extra permitted Origin values (full URL, e.g. http://localhost:5173).
+	WSAllowedOrigins []string
 }
 
 func Load() (Config, error) {
@@ -38,6 +44,8 @@ func Load() (Config, error) {
 		LogLevel:      strings.ToLower(firstNonEmpty(os.Getenv("OPEN_KRAKEN_LOG_LEVEL"), defaultLogLevel)),
 		WebDistDir:    firstNonEmpty(os.Getenv("OPEN_KRAKEN_WEB_DIST_DIR"), defaultWebDistDir),
 	}
+	cfg.WSAllowAnyOrigin = parseBoolEnv("OPEN_KRAKEN_WS_ALLOW_ANY_ORIGIN")
+	cfg.WSAllowedOrigins = splitComma(os.Getenv("OPEN_KRAKEN_WS_ALLOWED_ORIGINS"))
 
 	if cfg.APIBasePath == cfg.WSPath {
 		return Config{}, fmt.Errorf("OPEN_KRAKEN_API_BASE_PATH and OPEN_KRAKEN_WS_PATH must be distinct")
@@ -50,6 +58,17 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("resolve OPEN_KRAKEN_APP_DATA_ROOT %q: %w", cfg.AppDataRoot, err)
 	}
 	cfg.AppDataRoot = absDataRoot
+
+	if skillRoot := strings.TrimSpace(os.Getenv("OPEN_KRAKEN_SKILL_ROOT")); skillRoot != "" {
+		absSkillRoot, err := filepath.Abs(skillRoot)
+		if err != nil {
+			return Config{}, fmt.Errorf("resolve OPEN_KRAKEN_SKILL_ROOT %q: %w", skillRoot, err)
+		}
+		cfg.SkillRoot = absSkillRoot
+	} else {
+		cfg.SkillRoot = filepath.Join(cfg.AppDataRoot, "skills")
+	}
+
 	absWorkspaceRoot, err := filepath.Abs(cfg.WorkspaceRoot)
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve OPEN_KRAKEN_WORKSPACE_ROOT %q: %w", cfg.WorkspaceRoot, err)
@@ -65,6 +84,26 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func parseBoolEnv(key string) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	return v == "1" || v == "true" || v == "yes"
+}
+
+func splitComma(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func firstNonEmpty(values ...string) string {

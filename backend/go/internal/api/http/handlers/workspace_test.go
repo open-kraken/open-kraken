@@ -10,6 +10,7 @@ import (
 	apihttp "open-kraken/backend/go/internal/api/http"
 	"open-kraken/backend/go/internal/authn"
 	"open-kraken/backend/go/internal/authz"
+	plathttp "open-kraken/backend/go/internal/platform/http"
 	"open-kraken/backend/go/internal/projectdata"
 	"open-kraken/backend/go/internal/pty"
 	"open-kraken/backend/go/internal/realtime"
@@ -22,7 +23,7 @@ func TestWorkspaceRoadmapAndProjectDataAuthzViaBearerAdapter(t *testing.T) {
 	appRoot := t.TempDir()
 	repo := projectdata.NewRepository(appRoot)
 	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), realtime.NewHub(64))
-	handler := apihttp.NewHandlerWithDependencies(service, realtime.NewHub(64), repo, workspaceRoot, "/api/v1", "/ws")
+	handler := apihttp.NewHandlerWithDependencies(service, realtime.NewHub(64), repo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{}, plathttp.PermissiveWebSocketUpgrader())
 
 	roadmapGet := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/ws_open_kraken/roadmap", nil)
 	roadmapGetRec := httptest.NewRecorder()
@@ -113,7 +114,7 @@ func TestWorkspaceHandlerStillAcceptsLegacyHeadersAsAdapterFallback(t *testing.T
 		t.Fatalf("CreateSession: %v", err)
 	}
 
-	handler := apihttp.NewHandlerWithDependencies(service, hub, repo, workspaceRoot, "/api/v1", "/ws")
+	handler := apihttp.NewHandlerWithDependencies(service, hub, repo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{}, plathttp.PermissiveWebSocketUpgrader())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces/ws_open_kraken/roadmap", nil)
 	req.Header.Set("X-Open-Kraken-Actor-Id", "owner-1")
 	req.Header.Set("X-Open-Kraken-Actor-Role", "owner")

@@ -971,6 +971,131 @@ components:
           type: string
         reason:
           type: string
+    RealtimeChatSnapshotPayload:
+      type: object
+      required: [conversationId, messageIds]
+      properties:
+        conversationId:
+          type: string
+        messageIds:
+          type: array
+          items:
+            type: string
+    RealtimeChatDeltaPayload:
+      type: object
+      required: [conversationId, messageId, sequence, body]
+      properties:
+        conversationId:
+          type: string
+        messageId:
+          type: string
+        sequence:
+          type: integer
+        body:
+          type: string
+    RealtimeChatStatusPayload:
+      type: object
+      required: [conversationId, messageId, status]
+      properties:
+        conversationId:
+          type: string
+        messageId:
+          type: string
+        status:
+          type: string
+    RealtimePresenceSnapshotPayload:
+      type: object
+      required: [memberId, presenceState, terminalStatus, lastHeartbeat]
+      properties:
+        memberId:
+          type: string
+        presenceState:
+          type: string
+        terminalStatus:
+          type: string
+        lastHeartbeat:
+          type: string
+    RealtimePresenceUpdatedPayload:
+      type: object
+      required: [memberId, presenceState, sentAt]
+      properties:
+        memberId:
+          type: string
+        presenceState:
+          type: string
+        sentAt:
+          type: string
+          format: date-time
+    RealtimeRoadmapSnapshotPayload:
+      type: object
+      required: [workspaceId, itemIds, version]
+      properties:
+        workspaceId:
+          type: string
+        itemIds:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+    RealtimeRoadmapUpdatedPayload:
+      type: object
+      required: [version, workspaceId, reason]
+      properties:
+        version:
+          type: integer
+        workspaceId:
+          type: string
+        reason:
+          type: string
+    RealtimeTerminalAttachPayload:
+      type: object
+      required: [terminalId, connectionState, processState]
+      properties:
+        terminalId:
+          type: string
+        connectionState:
+          type: string
+        processState:
+          type: string
+    RealtimeTerminalSnapshotPayload:
+      type: object
+      required: [terminalId, buffer, rows, cols, connectionState, processState]
+      properties:
+        terminalId:
+          type: string
+        buffer:
+          type: string
+        rows:
+          type: integer
+        cols:
+          type: integer
+        connectionState:
+          type: string
+        processState:
+          type: string
+    RealtimeTerminalDeltaPayload:
+      type: object
+      required: [terminalId, sequence, data]
+      properties:
+        terminalId:
+          type: string
+        sequence:
+          type: integer
+        data:
+          type: string
+    RealtimeTerminalStatusPayload:
+      type: object
+      required: [terminalId, connectionState, processState, reason]
+      properties:
+        terminalId:
+          type: string
+        connectionState:
+          type: string
+        processState:
+          type: string
+        reason:
+          type: string
 x-websocket:
   endpoint: /api/ws
   handshake:
@@ -1035,24 +1160,24 @@ x-websocket:
           $ref: '#/components/schemas/ErrorBody'
   events:
     chat.snapshot:
-      $ref: '#/components/schemas/ChatMessageCreatedEvent'
+      $ref: '#/components/schemas/RealtimeChatSnapshotPayload'
     chat.delta:
-      $ref: '#/components/schemas/TerminalSessionDeltaEvent'
+      $ref: '#/components/schemas/RealtimeChatDeltaPayload'
     chat.status:
-      $ref: '#/components/schemas/TerminalStatusChangedEvent'
+      $ref: '#/components/schemas/RealtimeChatStatusPayload'
     presence.snapshot:
-      $ref: '#/components/schemas/MemberPresenceUpdatedEvent'
+      $ref: '#/components/schemas/RealtimePresenceSnapshotPayload'
     presence.updated:
-      $ref: '#/components/schemas/MemberPresenceUpdatedEvent'
+      $ref: '#/components/schemas/RealtimePresenceUpdatedPayload'
     roadmap.snapshot:
-      $ref: '#/components/schemas/RoadmapUpdatedEvent'
+      $ref: '#/components/schemas/RealtimeRoadmapSnapshotPayload'
     roadmap.updated:
-      $ref: '#/components/schemas/RoadmapUpdatedEvent'
+      $ref: '#/components/schemas/RealtimeRoadmapUpdatedPayload'
     terminal.attach:
-      $ref: '#/components/schemas/TerminalAttachEvent'
+      $ref: '#/components/schemas/RealtimeTerminalAttachPayload'
     terminal.snapshot:
-      $ref: '#/components/schemas/TerminalSessionSnapshotEvent'
+      $ref: '#/components/schemas/RealtimeTerminalSnapshotPayload'
     terminal.delta:
-      $ref: '#/components/schemas/TerminalSessionDeltaEvent'
+      $ref: '#/components/schemas/RealtimeTerminalDeltaPayload'
     terminal.status:
-      $ref: '#/components/schemas/TerminalStatusChangedEvent'
+      $ref: '#/components/schemas/RealtimeTerminalStatusPayload'

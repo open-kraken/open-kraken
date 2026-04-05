@@ -200,3 +200,73 @@ type TerminalStatusChangedEvent struct {
 	MemberID    string    `json:"memberId,omitempty"`
 	Status      string    `json:"status"`
 }
+
+// NodeDTO is the API representation of a registered node.
+type NodeDTO struct {
+	ID              string            `json:"id"`
+	Hostname        string            `json:"hostname"`
+	NodeType        string            `json:"nodeType"`
+	Status          string            `json:"status"`
+	Labels          map[string]string `json:"labels,omitempty"`
+	RegisteredAt    string            `json:"registeredAt"`
+	LastHeartbeatAt string            `json:"lastHeartbeatAt"`
+}
+
+// NodeStatusChangedEvent is broadcast when a node transitions between status values.
+type NodeStatusChangedEvent struct {
+	Event    EventName `json:"event"`
+	NodeID   string    `json:"nodeId"`
+	Hostname string    `json:"hostname"`
+	Status   string    `json:"status"`
+}
+
+// SkillDTO is the API representation of a skill catalog entry.
+type SkillDTO struct {
+	Name           string `json:"name"`
+	Description    string `json:"description,omitempty"`
+	Path           string `json:"path,omitempty"`
+	Category       string `json:"category,omitempty"`
+	ContentSummary string `json:"contentSummary,omitempty"`
+}
+
+// MemberSkillsDTO lists all skills assigned to a member.
+type MemberSkillsDTO struct {
+	MemberID string     `json:"memberId"`
+	Skills   []SkillDTO `json:"skills"`
+}
+
+// TokenEventDTO is the API request/response representation of a token usage event.
+type TokenEventDTO struct {
+	ID           string  `json:"id,omitempty"`
+	MemberID     string  `json:"memberId"`
+	NodeID       string  `json:"nodeId,omitempty"`
+	Model        string  `json:"model"`
+	InputTokens  int64   `json:"inputTokens"`
+	OutputTokens int64   `json:"outputTokens"`
+	Cost         float64 `json:"cost"`
+	Timestamp    string  `json:"timestamp,omitempty"`
+}
+
+// TokenStatsDTO is the aggregated token usage statistics response.
+type TokenStatsDTO struct {
+	Scope        string  `json:"scope"`
+	InputTokens  int64   `json:"inputTokens"`
+	OutputTokens int64   `json:"outputTokens"`
+	TotalTokens  int64   `json:"totalTokens"`
+	TotalCost    float64 `json:"totalCost"`
+	EventCount   int64   `json:"eventCount"`
+}
+
+// MemoryEntryDTO is the API representation of a distributed memory entry.
+type MemoryEntryDTO struct {
+	ID        string `json:"id,omitempty"`
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	Scope     string `json:"scope"`
+	OwnerID   string `json:"ownerId,omitempty"`
+	NodeID    string `json:"nodeId,omitempty"`
+	CreatedAt string `json:"createdAt,omitempty"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
+	// TTLSeconds is 0 when the entry does not expire.
+	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
+}

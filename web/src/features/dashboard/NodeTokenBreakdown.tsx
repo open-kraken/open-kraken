@@ -5,6 +5,7 @@
  */
 
 import { useMemo } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import type { TokenStats } from '@/types/token';
 
 export type NodeTokenBreakdownProps = {
@@ -26,6 +27,8 @@ type NodeAggregate = {
  * @param stats - Full list of per-member token statistics to aggregate.
  */
 export const NodeTokenBreakdown = ({ stats }: NodeTokenBreakdownProps) => {
+  const { t } = useI18n();
+
   const aggregates = useMemo((): NodeAggregate[] => {
     const map = new Map<string, NodeAggregate>();
 
@@ -52,7 +55,7 @@ export const NodeTokenBreakdown = ({ stats }: NodeTokenBreakdownProps) => {
 
   if (aggregates.length === 0) {
     return (
-      <div style={{ color: '#6b7280', padding: '16px' }}>No node breakdown available.</div>
+      <div style={{ color: '#6b7280', padding: '16px' }}>{t('nodeToken.empty')}</div>
     );
   }
 
@@ -60,20 +63,22 @@ export const NodeTokenBreakdown = ({ stats }: NodeTokenBreakdownProps) => {
     <div className="node-token-breakdown" style={{ overflowX: 'auto' }}>
       <table
         style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}
-        aria-label="Token consumption by node"
+        aria-label={t('nodeToken.aria')}
       >
         <thead>
           <tr style={{ borderBottom: '1px solid #374151', color: '#9ca3af', textAlign: 'left' }}>
-            <th style={{ padding: '8px 12px' }}>Node</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Members</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Total tokens</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Cost (USD)</th>
+            <th style={{ padding: '8px 12px' }}>{t('nodeToken.node')}</th>
+            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('nodeToken.members')}</th>
+            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('nodeToken.totalTokens')}</th>
+            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('nodeToken.cost')}</th>
           </tr>
         </thead>
         <tbody>
           {aggregates.map((agg) => (
             <tr key={agg.nodeId} style={{ borderBottom: '1px solid #1f2937' }}>
-              <td style={{ padding: '10px 12px', fontWeight: 500 }}>{agg.label}</td>
+              <td style={{ padding: '10px 12px', fontWeight: 500 }}>
+                {agg.nodeId === '__unassigned__' || agg.label === 'Unassigned' ? t('nodeToken.unassigned') : agg.label}
+              </td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: '#9ca3af' }}>{agg.memberCount}</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
                 {agg.totalTokens.toLocaleString()}

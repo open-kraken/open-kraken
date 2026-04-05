@@ -1,3 +1,4 @@
+import { useI18n } from '@/i18n/I18nProvider';
 import { RoleCard, type RoleCardProps } from '../../components/agent/RoleCard';
 
 type CollaborationOverviewPageProps = {
@@ -5,6 +6,7 @@ type CollaborationOverviewPageProps = {
 };
 
 export function CollaborationOverviewPage({ members }: CollaborationOverviewPageProps) {
+  const { t } = useI18n();
   const runningCount = members.filter((member) => member.status === 'running').length;
   const blockedCount = members.filter((member) => member.status === 'error').length;
 
@@ -13,32 +15,27 @@ export function CollaborationOverviewPage({ members }: CollaborationOverviewPage
       <section className="collaboration-overview-page__shell">
         <header className="collaboration-overview-page__hero">
           <div>
-            <p className="collaboration-overview-page__eyebrow">open-kraken visual baseline</p>
-            <h1 className="collaboration-overview-page__headline">
-              CollaborationOverviewPage binds theme tokens, layout breakpoints, and role cards in one surface.
-            </h1>
-            <p className="collaboration-overview-page__intro">
-              The page-level shell owns the spacing and breakpoint system while each role card exposes canonical
-              role and runtime states for avatar rings, status pills, and card emphasis.
-            </p>
+            <p className="collaboration-overview-page__eyebrow">{t('collab.eyebrow')}</p>
+            <h1 className="collaboration-overview-page__headline">{t('collab.title')}</h1>
+            <p className="collaboration-overview-page__intro">{t('collab.intro')}</p>
           </div>
           <div className="collaboration-overview-page__metrics">
             <div className="collaboration-overview-page__metric">
-              <span className="collaboration-overview-page__metric-label">Agents</span>
+              <span className="collaboration-overview-page__metric-label">{t('collab.agents')}</span>
               <strong className="collaboration-overview-page__metric-value">{members.length}</strong>
             </div>
             <div className="collaboration-overview-page__metric">
-              <span className="collaboration-overview-page__metric-label">Running</span>
+              <span className="collaboration-overview-page__metric-label">{t('collab.running')}</span>
               <strong className="collaboration-overview-page__metric-value">{runningCount}</strong>
             </div>
             <div className="collaboration-overview-page__metric">
-              <span className="collaboration-overview-page__metric-label">Blocked</span>
+              <span className="collaboration-overview-page__metric-label">{t('collab.blocked')}</span>
               <strong className="collaboration-overview-page__metric-value">{blockedCount}</strong>
             </div>
           </div>
         </header>
 
-        <section className="collaboration-overview-page__grid" aria-label="Active collaboration roles">
+        <section className="collaboration-overview-page__grid" aria-label={t('collab.gridAria')}>
           {members.map((member) => (
             <RoleCard key={`${member.role}-${member.name}`} {...member} />
           ))}

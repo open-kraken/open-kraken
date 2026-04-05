@@ -226,7 +226,7 @@ func matches(f filter, event Event) bool {
 
 func isSnapshotEvent(name string) bool {
 	switch name {
-	case EventChatSnapshot, EventTerminalSnapshot, EventPresenceSnapshot, EventRoadmapSnapshot:
+	case EventChatSnapshot, EventTerminalSnapshot, EventPresenceSnapshot, EventRoadmapSnapshot, EventNodeSnapshot:
 		return true
 	default:
 		return false

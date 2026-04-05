@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kraken-config
+  namespace: kraken
+data:
+  KRAKEN_BACKEND_URL: "http://kraken-backend:8080"
+  KRAKEN_SKILLS_DIR: "/skills"
+  OPEN_KRAKEN_HTTP_ADDR: "0.0.0.0:8080"
+  OPEN_KRAKEN_APP_DATA_ROOT: "/data"
+  OPEN_KRAKEN_WEB_DIST_DIR: "/web/dist"
+  OPEN_KRAKEN_LOG_LEVEL: "info"

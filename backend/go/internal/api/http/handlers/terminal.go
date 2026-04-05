@@ -13,12 +13,17 @@ import (
 )
 
 type TerminalHandler struct {
-	service    *terminal.Service
-	authorizer authz.Service
+	service            *terminal.Service
+	authorizer         authz.Service
+	sessionsPathPrefix string // e.g. /api/v1/terminal/sessions/
 }
 
-func NewTerminalHandler(service *terminal.Service) *TerminalHandler {
-	return &TerminalHandler{service: service, authorizer: authz.NewService()}
+func NewTerminalHandler(service *terminal.Service, sessionsPathPrefix string) *TerminalHandler {
+	return &TerminalHandler{
+		service:            service,
+		authorizer:         authz.NewService(),
+		sessionsPathPrefix: sessionsPathPrefix,
+	}
 }
 
 func (h *TerminalHandler) HandleSessions(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +56,7 @@ func (h *TerminalHandler) HandleMemberSession(w http.ResponseWriter, r *http.Req
 }
 
 func (h *TerminalHandler) HandleSessionByID(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/terminal/sessions/")
+	path := strings.TrimPrefix(r.URL.Path, h.sessionsPathPrefix)
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) == 0 || parts[0] == "" {
 		w.WriteHeader(http.StatusNotFound)

@@ -1,0 +1,346 @@
+/* Nodes feature — light shell–aligned surfaces (was dark-theme inline colors). */
+
+.nodes-toolbar {
+  display: flex;
+  gap: var(--app-space-2);
+  margin-bottom: var(--app-space-4);
+  align-items: center;
+}
+
+.nodes-toolbar__btn {
+  padding: var(--app-control-y) var(--app-space-3);
+  border-radius: var(--app-radius-control);
+  border: 1px solid var(--app-border-strong);
+  color: var(--app-text-muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--app-text-sm);
+}
+
+.nodes-toolbar__btn:hover {
+  border-color: var(--app-border-strong);
+  color: var(--app-text-strong);
+  background: var(--app-bg-elevated);
+}
+
+.nodes-toolbar__btn--active {
+  border-color: var(--app-accent);
+  color: var(--app-link);
+  background: var(--app-accent-soft);
+}
+
+.nodes-toolbar__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.nodes-toolbar__btn--refresh {
+  margin-left: auto;
+}
+
+.nodes-page__alert {
+  padding: var(--app-space-3) var(--app-space-4);
+  border-radius: var(--app-radius-control);
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  color: var(--status-error);
+  margin-bottom: var(--app-space-4);
+  font-size: var(--app-text-sm);
+}
+
+.nodes-page__loading,
+.nodes-page__empty-hint {
+  color: var(--app-text-muted);
+  padding: var(--app-space-8);
+  text-align: center;
+  font-size: var(--app-text-sm);
+}
+
+/* Table */
+.node-list {
+  overflow-x: auto;
+}
+
+.node-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--app-text-sm);
+  color: var(--app-text-strong);
+}
+
+.node-list thead tr {
+  border-bottom: 1px solid var(--app-border-subtle);
+  color: var(--app-text-muted);
+  text-align: left;
+}
+
+.node-list thead th {
+  padding: var(--app-space-2) var(--app-space-3);
+  font-weight: 600;
+}
+
+.node-list tbody tr {
+  border-bottom: 1px solid var(--app-border-subtle);
+  cursor: pointer;
+  background: transparent;
+}
+
+.node-list tbody tr:hover {
+  background: var(--app-bg-elevated);
+}
+
+.node-list tbody tr[aria-selected='true'] {
+  background: var(--app-accent-soft);
+}
+
+.node-list td {
+  padding: 10px var(--app-space-3);
+  font-weight: 500;
+  color: var(--app-text-strong);
+}
+
+.node-list td.node-list__cell--muted {
+  color: var(--app-text-muted);
+  font-weight: 400;
+}
+
+.node-list td.node-list__cell--meta {
+  color: var(--app-text-muted);
+  font-size: var(--app-text-xs);
+}
+
+.node-list__assign {
+  font-size: var(--app-text-xs);
+  padding: 3px 10px;
+  border-radius: var(--app-radius-control);
+  border: 1px solid var(--app-link);
+  color: var(--app-link);
+  background: transparent;
+  cursor: pointer;
+}
+
+.node-list__assign:hover {
+  background: var(--app-accent-soft);
+}
+
+.node-list--empty {
+  padding: var(--app-space-8);
+  text-align: center;
+  color: var(--app-text-muted);
+  font-size: var(--app-text-sm);
+}
+
+/* Topology cards */
+.node-card {
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-card);
+  padding: var(--app-space-4);
+  cursor: pointer;
+  background: var(--app-bg-elevated);
+}
+
+.node-card--selected {
+  border-color: rgba(13, 148, 136, 0.45);
+  background: var(--app-accent-soft);
+}
+
+.node-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.node-card__hostname {
+  font-size: 0.95rem;
+}
+
+.node-card__type {
+  font-size: var(--app-text-xs);
+  color: var(--app-text-muted);
+  margin-right: var(--app-space-2);
+}
+
+.node-card__labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.node-card__label-pill {
+  font-size: 0.7rem;
+  background: var(--app-surface-inset);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: var(--app-text-strong);
+}
+
+.node-card__agents {
+  margin-bottom: 10px;
+}
+
+.node-card__agents-label {
+  font-size: var(--app-text-xs);
+  color: var(--app-text-muted);
+}
+
+.node-card__agents-value {
+  font-size: var(--app-text-xs);
+  color: var(--app-text-strong);
+}
+
+.node-card__agents-value--empty {
+  color: var(--app-text-muted);
+}
+
+.node-card__timestamps {
+  font-size: 0.7rem;
+  color: var(--app-text-muted);
+  margin-bottom: 12px;
+}
+
+.node-card__assign-btn {
+  font-size: 0.8rem;
+  padding: 4px 12px;
+  border-radius: var(--app-radius-control);
+  border: 1px solid var(--app-link);
+  color: var(--app-link);
+  background: transparent;
+  cursor: pointer;
+}
+
+.node-card__assign-btn:hover {
+  background: var(--app-accent-soft);
+}
+
+.nodes-topology-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--app-space-4);
+}
+
+/* Assign dialog — light panel on dim backdrop */
+.node-assign-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--app-z-overlay);
+}
+
+.node-assign-dialog {
+  background: var(--app-surface-strong);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-card);
+  padding: var(--app-space-6);
+  min-width: 360px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: var(--app-shadow-panel);
+}
+
+.node-assign-dialog__header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--app-space-4);
+  align-items: flex-start;
+  gap: var(--app-space-3);
+}
+
+.node-assign-dialog__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--app-text-strong);
+}
+
+.node-assign-dialog__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--app-text-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: var(--app-space-1);
+}
+
+.node-assign-dialog__close:hover {
+  color: var(--app-text-strong);
+}
+
+.node-assign-dialog__empty {
+  color: var(--app-text-muted);
+  font-size: var(--app-text-sm);
+}
+
+.node-assign-dialog__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-2);
+}
+
+.node-assign-dialog__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--app-space-2) var(--app-space-3);
+  background: var(--app-bg-elevated);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-control);
+}
+
+.node-assign-dialog__name {
+  font-size: var(--app-text-sm);
+  color: var(--app-text-strong);
+}
+
+.node-assign-dialog__action {
+  font-size: var(--app-text-xs);
+  padding: 3px 10px;
+  border-radius: var(--app-radius-control);
+  border: 1px solid var(--app-border-strong);
+  background: var(--app-surface-strong);
+  color: var(--app-text-strong);
+  cursor: pointer;
+}
+
+.node-assign-dialog__action--add {
+  border-color: rgba(22, 163, 74, 0.45);
+  color: #15803d;
+}
+
+.node-assign-dialog__action--remove {
+  border-color: rgba(220, 38, 38, 0.4);
+  color: var(--status-error);
+}
+
+.node-assign-dialog__action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.node-assign-dialog__footer {
+  margin-top: var(--app-space-4);
+  text-align: right;
+}
+
+.node-assign-dialog__done {
+  font-size: var(--app-text-sm);
+  padding: var(--app-space-2) var(--app-space-4);
+  border-radius: var(--app-radius-control);
+  border: 1px solid var(--app-border-strong);
+  color: var(--app-text-strong);
+  background: var(--app-bg-elevated);
+  cursor: pointer;
+}
+
+.node-assign-dialog__done:hover {
+  background: var(--app-bg-muted);
+}

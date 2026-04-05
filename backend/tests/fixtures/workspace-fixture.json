@@ -36,6 +36,47 @@
       }
     ]
   },
+  "teams": [
+    {
+      "teamId": "team_platform",
+      "name": "Platform",
+      "members": [
+        {
+          "workspaceId": "ws_open_kraken",
+          "memberId": "owner_1",
+          "displayName": "Claire",
+          "avatar": "CO",
+          "roleType": "owner",
+          "manualStatus": "online",
+          "terminalStatus": "working"
+        },
+        {
+          "workspaceId": "ws_open_kraken",
+          "memberId": "assistant_1",
+          "displayName": "Planner",
+          "avatar": "PL",
+          "roleType": "assistant",
+          "manualStatus": "online",
+          "terminalStatus": "online"
+        }
+      ]
+    },
+    {
+      "teamId": "team_delivery",
+      "name": "Delivery",
+      "members": [
+        {
+          "workspaceId": "ws_open_kraken",
+          "memberId": "member_1",
+          "displayName": "Runner",
+          "avatar": "RN",
+          "roleType": "member",
+          "manualStatus": "dnd",
+          "terminalStatus": "offline"
+        }
+      ]
+    }
+  ],
   "conversations": [
     {
       "id": "conv_general",

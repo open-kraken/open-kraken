@@ -19,9 +19,9 @@ import (
 func TestTerminalHandlerLifecycleAndErrors(t *testing.T) {
 	proc := pty.NewFakeProcess()
 	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(proc), realtime.NewHub(256))
-	handler := NewTerminalHandler(service)
+	handler := NewTerminalHandler(service, "/api/v1/terminal/sessions/")
 
-	createReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions", bytes.NewBufferString(`{"sessionId":"session-1","memberId":"member-1","workspaceId":"ws-1","command":"echo hi","cols":120,"rows":40}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/terminal/sessions", bytes.NewBufferString(`{"sessionId":"session-1","memberId":"member-1","workspaceId":"ws-1","command":"echo hi","cols":120,"rows":40}`))
 	createRec := httptest.NewRecorder()
 	handler.HandleSessions(createRec, createReq)
 	if createRec.Code != http.StatusCreated {
@@ -31,7 +31,7 @@ func TestTerminalHandlerLifecycleAndErrors(t *testing.T) {
 	proc.PushOutput("hello\n")
 	time.Sleep(20 * time.Millisecond)
 
-	attachReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-1/attach", bytes.NewBufferString(`{"subscriberId":"sub-1","afterSeq":0}`))
+	attachReq := httptest.NewRequest(http.MethodPost, "/api/v1/terminal/sessions/session-1/attach", bytes.NewBufferString(`{"subscriberId":"sub-1","afterSeq":0}`))
 	attachReq.Header.Set(headerActorID, "owner-1")
 	attachReq.Header.Set(headerActorRole, "owner")
 	attachReq.Header.Set(headerWorkspaceID, "ws-1")
@@ -51,14 +51,14 @@ func TestTerminalHandlerLifecycleAndErrors(t *testing.T) {
 		t.Fatalf("expected snapshot buffer")
 	}
 
-	inputReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-1/input", bytes.NewBufferString(`{"data":"pwd\n"}`))
+	inputReq := httptest.NewRequest(http.MethodPost, "/api/v1/terminal/sessions/session-1/input", bytes.NewBufferString(`{"data":"pwd\n"}`))
 	inputRec := httptest.NewRecorder()
 	handler.HandleSessionByID(inputRec, inputReq)
 	if inputRec.Code != http.StatusNoContent {
 		t.Fatalf("input status = %d", inputRec.Code)
 	}
 
-	dispatchReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-1/dispatch", bytes.NewBufferString(`{"data":"@assistant hi","context":{"conversationId":"conv-1","conversationType":"channel","senderId":"user-1","senderName":"Owner","messageId":"msg-1","clientTraceId":"trace-1","timestamp":123}}`))
+	dispatchReq := httptest.NewRequest(http.MethodPost, "/api/v1/terminal/sessions/session-1/dispatch", bytes.NewBufferString(`{"data":"@assistant hi","context":{"conversationId":"conv-1","conversationType":"channel","senderId":"user-1","senderName":"Owner","messageId":"msg-1","clientTraceId":"trace-1","timestamp":123}}`))
 	dispatchReq.Header.Set(headerActorID, "owner-1")
 	dispatchReq.Header.Set(headerActorRole, "owner")
 	dispatchReq.Header.Set(headerWorkspaceID, "ws-1")
@@ -68,7 +68,7 @@ func TestTerminalHandlerLifecycleAndErrors(t *testing.T) {
 		t.Fatalf("dispatch status = %d", dispatchRec.Code)
 	}
 
-	resizeReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-1/resize", bytes.NewBufferString(`{"cols":90,"rows":33}`))
+	resizeReq := httptest.NewRequest(http.MethodPost, "/api/v1/terminal/sessions/session-1/resize", bytes.NewBufferString(`{"cols":90,"rows":33}`))
 	resizeRec := httptest.NewRecorder()
 	handler.HandleSessionByID(resizeRec, resizeReq)
 	if resizeRec.Code != http.StatusNoContent {
@@ -79,14 +79,14 @@ func TestTerminalHandlerLifecycleAndErrors(t *testing.T) {
 		t.Fatalf("resize not forwarded: cols=%d rows=%d", cols, rows)
 	}
 
-	memberReq := httptest.NewRequest(http.MethodGet, "/api/terminal/member-session?workspaceId=ws-1&memberId=member-1", nil)
+	memberReq := httptest.NewRequest(http.MethodGet, "/api/v1/terminal/member-session?workspaceId=ws-1&memberId=member-1", nil)
 	memberRec := httptest.NewRecorder()
 	handler.HandleMemberSession(memberRec, memberReq)
 	if memberRec.Code != http.StatusOK {
 		t.Fatalf("member session status = %d", memberRec.Code)
 	}
 
-	unknownReq := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/missing/attach", bytes.NewBufferString(`{"subscriberId":"sub-9"}`))
+	unknownReq := httptest.NewRequest(http.MethodPost, "/api/v1/terminal/sessions/missing/attach", bytes.NewBufferString(`{"subscriberId":"sub-9"}`))
 	unknownReq.Header.Set(headerActorID, "owner-1")
 	unknownReq.Header.Set(headerActorRole, "owner")
 	unknownReq.Header.Set(headerWorkspaceID, "ws-1")
@@ -100,7 +100,7 @@ func TestTerminalHandlerLifecycleAndErrors(t *testing.T) {
 func TestTerminalHandlerRejectsUnauthorizedDispatch(t *testing.T) {
 	proc := pty.NewFakeProcess()
 	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(proc), realtime.NewHub(256))
-	handler := NewTerminalHandler(service)
+	handler := NewTerminalHandler(service, "/api/v1/terminal/sessions/")
 
 	_, err := service.CreateSession(context.Background(), session.CreateRequest{
 		SessionID:   "session-authz",
@@ -111,7 +111,7 @@ func TestTerminalHandlerRejectsUnauthorizedDispatch(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/terminal/sessions/session-authz/dispatch", bytes.NewBufferString(`{"data":"@assistant hi","context":{"conversationId":"conv-1"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/terminal/sessions/session-authz/dispatch", bytes.NewBufferString(`{"data":"@assistant hi","context":{"conversationId":"conv-1"}}`))
 	req.Header.Set(headerActorID, "assistant-1")
 	req.Header.Set(headerActorRole, string(authz.RoleAssistant))
 	req.Header.Set(headerWorkspaceID, "ws-1")
