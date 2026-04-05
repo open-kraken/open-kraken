@@ -7,6 +7,8 @@ import { RoadmapPage } from '@/pages/roadmap/RoadmapPage';
 import { TerminalPage } from '@/pages/terminal/TerminalPage';
 import { SystemPage } from '@/pages/system/SystemPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { NodesPage } from '@/pages/nodes/NodesPage';
+import { DashboardPage } from '@/pages/dashboard/DashboardPage';
 
 const pageByRoute = {
   chat: ChatPage,
@@ -14,7 +16,9 @@ const pageByRoute = {
   roadmap: RoadmapPage,
   terminal: TerminalPage,
   system: SystemPage,
-  settings: SettingsPage
+  settings: SettingsPage,
+  nodes: NodesPage,
+  dashboard: DashboardPage
 };
 
 export const AppShell = () => {

@@ -1,13 +1,20 @@
+import { useState } from 'react';
 import { RoleCard } from '@/components/agent/RoleCard';
 import { useAppShell } from '@/state/app-shell-store';
+import { MemberSkillPanel } from '@/features/skills/MemberSkillPanel';
+import type { Skill } from '@/types/skill';
 import type { MembersPageModel } from './member-page-model';
 
 export type MemberCollabPanelProps = {
   model: MembersPageModel;
+  /** Full catalogue of available skills for the skill assignment panel. */
+  availableSkills?: Skill[];
 };
 
-export const MemberCollabPanel = ({ model }: MemberCollabPanelProps) => {
+export const MemberCollabPanel = ({ model, availableSkills = [] }: MemberCollabPanelProps) => {
   const { navigate } = useAppShell();
+  // Track which member's skill panel is currently expanded
+  const [skillPanelMemberId, setSkillPanelMemberId] = useState<string | null>(null);
   const leadMember =
     model.members.find((member) => member.role === 'owner') ??
     model.members.find((member) => member.status === 'running') ??
@@ -121,14 +128,39 @@ export const MemberCollabPanel = ({ model }: MemberCollabPanelProps) => {
                     <span className="member-card__task-label">Active task</span>
                     <span className="member-card__task-value">{member.activeTaskLabel}</span>
                   </div>
-                  <button
-                    type="button"
-                    className="member-card__exec"
-                    onClick={() => navigate('terminal', { hash: member.terminalId })}
-                  >
-                    View execution
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="member-card__exec"
+                      onClick={() => navigate('terminal', { hash: member.terminalId })}
+                    >
+                      View execution
+                    </button>
+                    <button
+                      type="button"
+                      className="member-card__exec"
+                      onClick={() =>
+                        setSkillPanelMemberId((prev) =>
+                          prev === member.memberId ? null : member.memberId
+                        )
+                      }
+                      aria-expanded={skillPanelMemberId === member.memberId}
+                    >
+                      Skills
+                    </button>
+                  </div>
                 </div>
+
+                {/* Inline skill management panel */}
+                {skillPanelMemberId === member.memberId && (
+                  <div style={{ marginTop: '12px' }}>
+                    <MemberSkillPanel
+                      memberId={member.memberId}
+                      memberName={member.displayName}
+                      availableSkills={availableSkills}
+                    />
+                  </div>
+                )}
               </article>
             ))}
           </section>

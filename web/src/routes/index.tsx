@@ -1,4 +1,4 @@
-export type AppRouteId = 'chat' | 'members' | 'roadmap' | 'terminal' | 'system' | 'settings';
+export type AppRouteId = 'chat' | 'members' | 'roadmap' | 'terminal' | 'system' | 'settings' | 'nodes' | 'dashboard';
 
 export type AppRouteDefinition = {
   id: AppRouteId;
@@ -43,11 +43,23 @@ export const appRoutes: AppRouteDefinition[] = [
     path: '/settings',
     label: 'Settings',
     description: 'Workspace defaults, guards, and shell integration checks.'
+  },
+  {
+    id: 'nodes',
+    path: '/nodes',
+    label: 'Nodes',
+    description: 'Execution node topology, status, and agent assignment.'
+  },
+  {
+    id: 'dashboard',
+    path: '/dashboard',
+    label: 'Dashboard',
+    description: 'Token consumption, agent activity, and cost breakdown.'
   }
 ];
 
 export type AppNavGroup = {
-  id: 'collaboration' | 'delivery' | 'runtime' | 'workspace';
+  id: 'collaboration' | 'delivery' | 'runtime' | 'workspace' | 'infrastructure' | 'observability';
   label: string;
   routeIds: AppRouteId[];
 };
@@ -56,6 +68,8 @@ export const appNavGroups: AppNavGroup[] = [
   { id: 'collaboration', label: 'Collaboration', routeIds: ['chat', 'members'] },
   { id: 'delivery', label: 'Delivery', routeIds: ['roadmap'] },
   { id: 'runtime', label: 'Agents & runtime', routeIds: ['terminal'] },
+  { id: 'infrastructure', label: 'Infrastructure', routeIds: ['nodes'] },
+  { id: 'observability', label: 'Observability', routeIds: ['dashboard'] },
   { id: 'workspace', label: 'Workspace & ops', routeIds: ['system', 'settings'] }
 ];
 

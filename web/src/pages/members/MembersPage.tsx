@@ -10,6 +10,8 @@ import {
   type RoadmapTaskFixture
 } from '@/features/members/member-page-model';
 import { useAppShell } from '@/state/app-shell-store';
+import { getSkills } from '@/api/skills';
+import type { Skill } from '@/types/skill';
 
 type MembersPageDataState = {
   model: MembersPageModel;
@@ -33,6 +35,8 @@ export const MembersPage = () => {
     model: buildFallbackModel(workspace.workspaceId, realtime.status),
     source: 'fixture'
   }));
+  // Available skills for the inline MemberSkillPanel integration
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,9 +74,14 @@ export const MembersPage = () => {
     };
   }, [apiClient, realtime.status, workspace.workspaceId]);
 
+  // Load available skills once on mount for the skill panel integration
+  useEffect(() => {
+    void getSkills().then((res) => setAvailableSkills(res.skills));
+  }, []);
+
   return (
     <section className="page-card page-card--members" data-page-entry="members-runtime" data-members-source={state.source}>
-      <MemberCollabPanel model={state.model} />
+      <MemberCollabPanel model={state.model} availableSkills={availableSkills} />
     </section>
   );
 };
