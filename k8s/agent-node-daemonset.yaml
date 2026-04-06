@@ -15,13 +15,13 @@ spec:
         app: kraken-agent-node
     spec:
       tolerations:
-        # Allow scheduling on control-plane nodes
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
           effect: NoSchedule
       containers:
         - name: agent-node
-          image: alpine:3.19
+          image: open-kraken/agent:latest
+          imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
                 name: kraken-config
@@ -30,6 +30,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: KRAKEN_LOG_LEVEL
+              value: "info"
           volumeMounts:
             - name: data
               mountPath: /data
@@ -42,17 +44,11 @@ spec:
             limits:
               cpu: "200m"
               memory: "256Mi"
-          command:
-            - sh
-            - -c
-            - |
-              echo "Agent node starting on $(KRAKEN_NODE_ID), backend: $KRAKEN_BACKEND_URL"
-              while true; do
-                wget -qO- "$KRAKEN_BACKEND_URL/healthz" > /dev/null 2>&1 \
-                  && echo "[$(KRAKEN_NODE_ID)] heartbeat ok" \
-                  || echo "[$(KRAKEN_NODE_ID)] backend unreachable"
-                sleep 30
-              done
+          livenessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/agent-alive"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
       volumes:
         - name: data
           persistentVolumeClaim:

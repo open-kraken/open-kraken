@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AppShell } from '@/app/layouts/AppShell';
-import { createMockClient } from '@/mocks/mock-client.mjs';
+import { createMockClient } from '@/mocks/mock-client';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute, type AppRouteId } from '@/routes';
 import { TestI18n } from '@/test/i18n-test-utils';

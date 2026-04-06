@@ -14,6 +14,8 @@ services:
       OPEN_KRAKEN_APP_DATA_ROOT: /data
       OPEN_KRAKEN_WEB_DIST_DIR: /web/dist
       OPEN_KRAKEN_LOG_LEVEL: info
+      OPEN_KRAKEN_JWT_SECRET: "${OPEN_KRAKEN_JWT_SECRET:-}"
+      OPEN_KRAKEN_RATE_LIMIT_RPS: "100"
       # Browser on host:3000 calling API on host:8080 sends Origin http://localhost:3000
       OPEN_KRAKEN_WS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
       OPEN_KRAKEN_SKILL_ROOT: /skills
@@ -51,55 +53,46 @@ services:
     networks:
       - kraken-net
 
-  # Placeholder sidecars (health loop only). Replace with real agent binaries when ready.
   kraken-agent-node1:
-    image: alpine:3.19
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    image: open-kraken/agent:dev
     container_name: kraken-agent-node1
     environment:
       KRAKEN_BACKEND_URL: http://kraken-backend:8080
       KRAKEN_NODE_ID: agent-node-1
       KRAKEN_DATA_DIR: /data
       KRAKEN_SKILLS_DIR: /skills
+      KRAKEN_LOG_LEVEL: info
     volumes:
       - kraken-data:/data
       - kraken-skills:/skills
     depends_on:
       kraken-backend:
         condition: service_healthy
-    command: >
-      sh -c "
-        echo 'Agent node 1 started. Backend: $$KRAKEN_BACKEND_URL';
-        while true; do
-          wget -qO- $$KRAKEN_BACKEND_URL/healthz > /dev/null 2>&1 && echo '[node1] heartbeat ok' || echo '[node1] backend unreachable';
-          sleep 30;
-        done
-      "
     restart: unless-stopped
     networks:
       - kraken-net
 
   kraken-agent-node2:
-    image: alpine:3.19
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    image: open-kraken/agent:dev
     container_name: kraken-agent-node2
     environment:
       KRAKEN_BACKEND_URL: http://kraken-backend:8080
       KRAKEN_NODE_ID: agent-node-2
       KRAKEN_DATA_DIR: /data
       KRAKEN_SKILLS_DIR: /skills
+      KRAKEN_LOG_LEVEL: info
     volumes:
       - kraken-data:/data
       - kraken-skills:/skills
     depends_on:
       kraken-backend:
         condition: service_healthy
-    command: >
-      sh -c "
-        echo 'Agent node 2 started. Backend: $$KRAKEN_BACKEND_URL';
-        while true; do
-          wget -qO- $$KRAKEN_BACKEND_URL/healthz > /dev/null 2>&1 && echo '[node2] heartbeat ok' || echo '[node2] backend unreachable';
-          sleep 30;
-        done
-      "
     restart: unless-stopped
     networks:
       - kraken-net

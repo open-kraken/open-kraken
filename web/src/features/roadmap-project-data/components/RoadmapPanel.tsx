@@ -1,7 +1,13 @@
+import { useMemo, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { translatePanelDetail } from '@/i18n/panel-detail';
 import type { PanelFeedback } from '../store';
 import type { RoadmapDocument, RoadmapTaskItem } from '../api-client';
+import { RoadmapProgressSummary } from './RoadmapProgressSummary';
+import { RoadmapToolbar, type ViewMode, type StatusFilter } from './RoadmapToolbar';
+import { RoadmapTaskCard } from './RoadmapTaskCard';
+import { RoadmapKanban } from './RoadmapKanban';
+import styles from '../roadmap-feature.module.css';
 
 export type RoadmapPanelProps = {
   value: RoadmapDocument;
@@ -12,9 +18,10 @@ export type RoadmapPanelProps = {
   onReload: () => void;
   onKeepDraft: () => void;
   onDiscardAndReload: () => void;
+  onAddTask: () => void;
+  onDeleteTask: (taskId: string) => void;
+  onMoveTask: (taskId: string, direction: 'up' | 'down') => void;
 };
-
-const STATUS_OPTIONS = ['todo', 'in_progress', 'done', 'blocked'] as const;
 
 export const RoadmapPanel = ({
   value,
@@ -24,14 +31,25 @@ export const RoadmapPanel = ({
   onSave,
   onReload,
   onKeepDraft,
-  onDiscardAndReload
+  onDiscardAndReload,
+  onAddTask,
+  onDeleteTask,
+  onMoveTask
 }: RoadmapPanelProps) => {
   const { t } = useI18n();
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const detailText = feedback.detailKey ? t(feedback.detailKey) : translatePanelDetail(feedback.detail, t);
 
+  const filteredTasks = useMemo(
+    () => statusFilter === 'all' ? value.tasks : value.tasks.filter((task) => task.status === statusFilter),
+    [value.tasks, statusFilter]
+  );
+
   return (
     <section className="roadmap-project-panel" data-tone={feedback.tone} aria-label="roadmap-panel">
+      {/* Header */}
       <header className="roadmap-project-panel__header">
         <div>
           <p className="roadmap-project-panel__eyebrow">{t('roadmapPanel.eyebrow')}</p>
@@ -47,6 +65,7 @@ export const RoadmapPanel = ({
         </div>
       </header>
 
+      {/* Status banner */}
       <div className="roadmap-project-panel__banner" data-tone={feedback.tone}>
         <strong>{t(feedback.titleKey)}</strong>
         <p>{detailText}</p>
@@ -67,61 +86,71 @@ export const RoadmapPanel = ({
         ) : null}
       </div>
 
+      {/* Progress summary */}
+      <RoadmapProgressSummary tasks={value.tasks} />
+
+      {/* Objective */}
       <label className="roadmap-project-panel__field">
         <span>{t('roadmapPanel.objective')}</span>
         <textarea
           value={value.objective}
           onChange={(event) => onObjectiveChange(event.currentTarget.value)}
           disabled={feedback.disableInputs}
-          rows={4}
+          rows={3}
         />
       </label>
 
-      <div className="roadmap-project-panel__task-list">
-        {value.tasks.map((task) => (
-          <article key={task.id} className="roadmap-project-panel__task-card">
-            <div className="roadmap-project-panel__task-meta">
-              <span className="roadmap-project-panel__task-number">
-                {t('roadmapPanel.taskNumber', { n: task.number })}
-              </span>
-              <label className="roadmap-project-panel__checkbox">
-                <input
-                  type="checkbox"
-                  checked={task.pinned}
-                  onChange={(event) => onTaskChange(task.id, { pinned: event.currentTarget.checked })}
-                  disabled={feedback.disableInputs}
-                />
-                {t('roadmapPanel.pinned')}
-              </label>
-            </div>
+      {/* Toolbar */}
+      <RoadmapToolbar
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        onAddTask={onAddTask}
+        disableAdd={feedback.disableInputs}
+      />
 
-            <label className="roadmap-project-panel__field">
-              <span>{t('roadmapPanel.taskTitle')}</span>
-              <input
-                type="text"
-                value={task.title}
-                onChange={(event) => onTaskChange(task.id, { title: event.currentTarget.value })}
-                disabled={feedback.disableInputs}
-              />
-            </label>
-
-            <label className="roadmap-project-panel__field">
-              <span>{t('roadmapPanel.taskStatus')}</span>
-              <select
-                value={task.status}
-                onChange={(event) => onTaskChange(task.id, { status: event.currentTarget.value })}
-                disabled={feedback.disableInputs}
-              >
-                {STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
-                    {t(`taskStatus.${status}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </article>
-        ))}
-      </div>
+      {/* Task content */}
+      {filteredTasks.length === 0 ? (
+        <div className={styles['roadmap-empty']}>
+          <div className={styles['roadmap-empty__icon']}>&#9744;</div>
+          <p className={styles['roadmap-empty__text']}>
+            {value.tasks.length === 0 ? t('roadmapPanel.emptyState') : t('roadmapPanel.filterAll')}
+          </p>
+          {value.tasks.length === 0 && (
+            <button
+              type="button"
+              className={styles['roadmap-empty__cta']}
+              onClick={onAddTask}
+              disabled={feedback.disableInputs}
+            >
+              {t('roadmapPanel.emptyStateCta')}
+            </button>
+          )}
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className={styles['roadmap-task-list']}>
+          {filteredTasks.map((task, index) => (
+            <RoadmapTaskCard
+              key={task.id}
+              task={task}
+              disableInputs={feedback.disableInputs}
+              isFirst={index === 0}
+              isLast={index === filteredTasks.length - 1}
+              onTaskChange={onTaskChange}
+              onDelete={onDeleteTask}
+              onMove={onMoveTask}
+            />
+          ))}
+        </div>
+      ) : (
+        <RoadmapKanban
+          tasks={filteredTasks}
+          disableInputs={feedback.disableInputs}
+          onTaskChange={onTaskChange}
+          onDelete={onDeleteTask}
+        />
+      )}
     </section>
   );
 };

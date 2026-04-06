@@ -1,0 +1,43 @@
+{
+  "nodes": [
+    {
+      "id": "agent-node-1",
+      "hostname": "k8s-worker-01",
+      "nodeType": "k8s_pod",
+      "status": "online",
+      "workspaceId": "ws_open_kraken",
+      "labels": {
+        "env": "production",
+        "region": "us-east-1",
+        "agent_id": "assistant_1"
+      },
+      "registeredAt": "2026-04-01T10:00:00Z",
+      "lastHeartbeatAt": "2026-04-06T12:00:00Z"
+    },
+    {
+      "id": "agent-node-2",
+      "hostname": "k8s-worker-02",
+      "nodeType": "k8s_pod",
+      "status": "online",
+      "workspaceId": "ws_open_kraken",
+      "labels": {
+        "env": "production",
+        "region": "us-west-2"
+      },
+      "registeredAt": "2026-04-01T10:05:00Z",
+      "lastHeartbeatAt": "2026-04-06T12:00:00Z"
+    },
+    {
+      "id": "dev-node-1",
+      "hostname": "claire-macbook",
+      "nodeType": "bare_metal",
+      "status": "degraded",
+      "workspaceId": "ws_open_kraken",
+      "labels": {
+        "env": "development"
+      },
+      "registeredAt": "2026-04-02T08:00:00Z",
+      "lastHeartbeatAt": "2026-04-06T11:30:00Z"
+    }
+  ]
+}

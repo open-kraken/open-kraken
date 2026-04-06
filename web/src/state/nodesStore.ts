@@ -8,12 +8,13 @@
 import { useState, useCallback } from 'react';
 import type { Node } from '@/types/node';
 import { getNodes, assignAgentToNode, unassignAgentFromNode } from '@/api/nodes';
+import { useAsyncStore, type AsyncLoadState } from './useAsyncStore';
 
 // ---------------------------------------------------------------------------
 // State shape
 // ---------------------------------------------------------------------------
 
-export type NodesLoadState = 'idle' | 'loading' | 'success' | 'error';
+export type NodesLoadState = AsyncLoadState;
 
 export type NodesStoreState = {
   nodes: Node[];
@@ -32,24 +33,13 @@ export type NodesStoreState = {
  * Intended to be used at the NodesPage level and passed down as props where needed.
  */
 export const useNodesStore = () => {
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [loadState, setLoadState] = useState<NodesLoadState>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-
-  /** Reload the full node list from the API / mock. */
-  const loadNodes = useCallback(async () => {
-    setLoadState('loading');
-    setErrorMessage(null);
-    try {
-      const response = await getNodes();
-      setNodes(response.nodes);
-      setLoadState('success');
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to load nodes');
-      setLoadState('error');
-    }
+  const loadFn = useCallback(async () => {
+    const response = await getNodes();
+    return response.nodes;
   }, []);
+
+  const store = useAsyncStore<Node[]>([], loadFn);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const selectNode = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId);
@@ -57,22 +47,22 @@ export const useNodesStore = () => {
 
   /** Assign an agent (member) to a node and update store in place. */
   const assignAgent = useCallback(async (nodeId: string, memberId: string) => {
-    const response = await assignAgentToNode(nodeId, { memberId });
-    setNodes((prev) => prev.map((n) => (n.id === nodeId ? response.node : n)));
-  }, []);
+    await assignAgentToNode(nodeId, { memberId });
+    void store.load();
+  }, [store.load]);
 
   /** Remove an agent assignment from a node and update store in place. */
   const unassignAgent = useCallback(async (nodeId: string, memberId: string) => {
-    const response = await unassignAgentFromNode(nodeId, memberId);
-    setNodes((prev) => prev.map((n) => (n.id === nodeId ? response.node : n)));
-  }, []);
+    await unassignAgentFromNode(nodeId, memberId);
+    void store.load();
+  }, [store.load]);
 
   return {
-    nodes,
-    loadState,
-    errorMessage,
+    nodes: store.data,
+    loadState: store.loadState,
+    errorMessage: store.errorMessage,
     selectedNodeId,
-    loadNodes,
+    loadNodes: store.load,
     selectNode,
     assignAgent,
     unassignAgent

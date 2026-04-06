@@ -1,5 +1,5 @@
 /**
- * Central ledger API — GET /ledger/events (base …/api/v1).
+ * Central ledger API — GET & POST /ledger/events (base …/api/v1).
  */
 
 import { getHttpClient } from '@/api/http-binding';
@@ -73,4 +73,23 @@ export async function getLedgerEvents(query: LedgerQuery): Promise<LedgerEventsR
   const body = await http.get<{ items?: LedgerItemApi[]; total?: number }>(path);
   const items = (body.items ?? []).map(mapItem);
   return { items, total: Number(body.total ?? items.length) };
+}
+
+export type CreateLedgerEventInput = {
+  workspaceId: string;
+  teamId?: string;
+  memberId?: string;
+  nodeId?: string;
+  eventType: string;
+  summary: string;
+  correlationId?: string;
+  sessionId?: string;
+  context?: Record<string, unknown>;
+};
+
+/** POST /ledger/events — record a new audit event. */
+export async function createLedgerEvent(input: CreateLedgerEventInput): Promise<LedgerEvent> {
+  const http = getHttpClient();
+  const raw = await http.post<LedgerItemApi>('/ledger/events', input);
+  return mapItem(raw);
 }

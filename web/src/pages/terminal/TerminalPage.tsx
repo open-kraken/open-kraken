@@ -5,6 +5,7 @@ import { translateRealtimeDetail, translateRealtimeStatusLabel } from '@/i18n/re
 import { TerminalPanel } from '@/features/terminal/TerminalPanel';
 import { normalizeMembersEnvelope, type MemberFixture } from '@/features/members/member-page-model';
 import { useAppShell } from '@/state/app-shell-store';
+import { sendTerminalInput, closeTerminalSession } from '@/api/terminal';
 import { useTerminalPanelRuntime } from './terminal-runtime';
 
 const terminalEventVocabulary = ['terminal.attach', 'terminal.snapshot', 'terminal.delta', 'terminal.status'];
@@ -35,26 +36,21 @@ export const TerminalPage = () => {
   });
 
   const [roster, setRoster] = useState<MemberFixture[]>([]);
+  const [closingSession, setClosingSession] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void apiClient
       .getMembers()
       .then((response) => {
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setRoster(normalizeMembersEnvelope(response));
       })
       .catch(() => {
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setRoster([]);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [apiClient]);
 
   const setHashForTerminal = useCallback((terminalId: string) => {
@@ -82,6 +78,42 @@ export const TerminalPage = () => {
 
   const activeTerminalId =
     terminalRuntime.state.activeTerminalId ?? terminalRuntime.state.session?.terminalId ?? bootTerminalId;
+
+  /** Send text input to the active terminal session. */
+  const handleSendInput = useCallback((data: string) => {
+    const sessionId = terminalRuntime.state.session?.terminalId;
+    if (!sessionId) return;
+    void sendTerminalInput(sessionId, data + '\n').catch((err) => {
+      pushNotification({
+        tone: 'error',
+        title: t('terminal.inputError'),
+        detail: err instanceof Error ? err.message : 'Input send failed'
+      });
+    });
+  }, [terminalRuntime.state.session?.terminalId, pushNotification, t]);
+
+  /** Close the active terminal session. */
+  const handleCloseSession = useCallback(async () => {
+    const sessionId = terminalRuntime.state.session?.terminalId;
+    if (!sessionId) return;
+    setClosingSession(true);
+    try {
+      await closeTerminalSession(sessionId);
+      pushNotification({
+        tone: 'info',
+        title: t('terminal.sessionClosed'),
+        detail: `Session ${sessionId} closed.`
+      });
+    } catch (err) {
+      pushNotification({
+        tone: 'error',
+        title: t('terminal.closeError'),
+        detail: err instanceof Error ? err.message : 'Close failed'
+      });
+    } finally {
+      setClosingSession(false);
+    }
+  }, [terminalRuntime.state.session?.terminalId, pushNotification, t]);
 
   return (
     <section className="page-card page-card--terminal" data-route-page="terminal">
@@ -184,15 +216,10 @@ export const TerminalPage = () => {
           <div data-terminal-runtime="connected-panel">
             <TerminalPanel
               state={terminalRuntime.state}
-              onAttach={() => {
-                void terminalRuntime.attach();
-              }}
-              onRetry={() => {
-                void terminalRuntime.retry();
-              }}
-              onToggleFollow={() => {
-                terminalRuntime.toggleFollow();
-              }}
+              onAttach={() => { void terminalRuntime.attach(); }}
+              onRetry={() => { void terminalRuntime.retry(); }}
+              onToggleFollow={() => { terminalRuntime.toggleFollow(); }}
+              onSendInput={handleSendInput}
             />
           </div>
         </section>
@@ -220,6 +247,17 @@ export const TerminalPage = () => {
                 status: terminalRuntime.state.runtime.statusLabel
               })}
             />
+            {/* Session control actions */}
+            <div className="terminal-session-controls">
+              <button
+                type="button"
+                className="terminal-session-controls__close"
+                onClick={() => void handleCloseSession()}
+                disabled={!terminalRuntime.state.session?.terminalId || closingSession}
+              >
+                {closingSession ? t('terminal.closing') : t('terminal.closeSession')}
+              </button>
+            </div>
           </div>
         </section>
 

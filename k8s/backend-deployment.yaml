@@ -24,6 +24,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: kraken-config
+            - secretRef:
+                name: kraken-secrets
           volumeMounts:
             - name: data
               mountPath: /data

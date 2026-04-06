@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	runtimecfg "open-kraken/backend/go/internal/platform/runtime"
 )
@@ -10,11 +11,14 @@ import (
 func NewRuntimeHandler(cfg runtimecfg.Config, apiHandler http.Handler) http.Handler {
 	staticHandler := NewStaticHandler(cfg.WebDistDir)
 	healthHandler := NewHealthHandler(cfg.ServiceName, staticHandler.AvailabilityChecker())
+	metrics := NewMetrics()
 
 	router := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/healthz":
 			healthHandler.ServeHTTP(w, r)
+		case r.URL.Path == "/metrics":
+			MetricsHandler(metrics).ServeHTTP(w, r)
 		case isAPIRequest(r.URL.Path, cfg.APIBasePath, cfg.WSPath):
 			apiHandler.ServeHTTP(w, r)
 		default:
@@ -22,7 +26,28 @@ func NewRuntimeHandler(cfg runtimecfg.Config, apiHandler http.Handler) http.Hand
 		}
 	})
 
-	return WithRequestContext(WithAccessLog(cfg.ServiceName, router))
+	// Build the middleware chain (innermost to outermost).
+	var handler http.Handler = router
+
+	// Request validation (body size limits, Content-Type).
+	handler = WithRequestValidation(handler)
+
+	// JWT authentication (no-op when secret is empty).
+	handler = WithAuth([]byte(cfg.JWTSecret), handler)
+
+	// Per-IP rate limiting (disabled when RateLimitRPS is 0).
+	if cfg.RateLimitRPS > 0 {
+		limiter := NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitRPS*2, time.Second)
+		handler = WithRateLimit(limiter, handler)
+	}
+
+	// Metrics collection.
+	handler = WithMetrics(metrics, handler)
+
+	// Access log + request ID (outermost).
+	handler = WithRequestContext(WithAccessLog(cfg.ServiceName, handler))
+
+	return handler
 }
 
 func isAPIRequest(path, apiBasePath, wsPath string) bool {

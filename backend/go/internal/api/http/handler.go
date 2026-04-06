@@ -28,6 +28,7 @@ type ExtendedServices struct {
 	TokenService  *tokentrack.Service
 	MemoryService *memory.Service
 	LedgerService *ledger.Service
+	AuthAccounts  []handlers.KnownAccount
 }
 
 // NewHandler creates the default handler using in-process defaults (no extended services).
@@ -99,6 +100,11 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 		ledgerHandler := handlers.NewLedgerHandler(ext.LedgerService)
 		mux.HandleFunc(JoinAPI(apiBasePath, "ledger/events"), ledgerHandler.HandleEvents)
 	}
+
+	// Authentication endpoints (always registered).
+	authHandler := handlers.NewAuthHandler(ext.AuthAccounts)
+	mux.HandleFunc(JoinAPI(apiBasePath, "auth/login"), authHandler.HandleLogin)
+	mux.HandleFunc(JoinAPI(apiBasePath, "auth/me"), authHandler.HandleMe)
 
 	return mux
 }

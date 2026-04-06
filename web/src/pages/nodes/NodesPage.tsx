@@ -2,6 +2,7 @@
  * NodesPage — main page for the Node Management feature (T08).
  * Provides a list view and card/topology view toggle for registered nodes.
  * Handles WebSocket events: node.snapshot, node.updated, node.offline.
+ * Agent assignment uses real workspace members fetched from the API.
  */
 
 import { useEffect, useState } from 'react';
@@ -12,47 +13,63 @@ import { NodeList } from '@/features/nodes/NodeList';
 import { NodeCard } from '@/features/nodes/NodeCard';
 import { NodeAgentAssign } from '@/features/nodes/NodeAgentAssign';
 import type { Node } from '@/types/node';
+import styles from '@/features/nodes/nodes-feature.module.css';
 import type { AgentOption } from '@/features/nodes/NodeAgentAssign';
-import type { RealtimeEnvelope } from '@/realtime/realtime-client';
 
 /** View mode: 'list' shows a table, 'topology' shows node cards in a grid. */
 type ViewMode = 'list' | 'topology';
 
-// Mock agent options derived from the workspace — replace with real member list from apiClient
-const MOCK_AGENTS: AgentOption[] = [
-  { memberId: 'agent-frontend-1', displayName: 'Frontend Engineer' },
-  { memberId: 'agent-backend-1', displayName: 'Backend Engineer' },
-  { memberId: 'agent-qa-1', displayName: 'QA Engineer' },
-  { memberId: 'agent-lead-1', displayName: 'Tech Lead' }
-];
-
 export const NodesPage = () => {
   const { t } = useI18n();
-  const { realtimeClient } = useAppShell();
+  const { realtimeClient, apiClient } = useAppShell();
   const store = useNodesStore();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [assignTargetNodeId, setAssignTargetNodeId] = useState<string | null>(null);
+  const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
 
   // Load nodes on mount
   useEffect(() => {
     void store.loadNodes();
   }, [store.loadNodes]);
 
+  // Load real workspace members for agent assignment
+  useEffect(() => {
+    let cancelled = false;
+    setAgentsLoading(true);
+    void apiClient
+      .getMembers()
+      .then((response) => {
+        if (cancelled) return;
+        const members = response.members ?? [];
+        setAgentOptions(
+          members.map((m) => ({
+            memberId: m.memberId,
+            displayName: m.displayName ?? m.memberId
+          }))
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAgentOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAgentsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [apiClient]);
+
   // Subscribe to realtime node events
   useEffect(() => {
-    // node.snapshot: full node list pushed by server on connect
     const snapshotSub = realtimeClient.subscribe<{ nodes: Node[] }>('node.snapshot', (event) => {
-      // Replace the full list via a reload so we stay consistent with API shape
       void store.loadNodes();
-      void event; // acknowledged
+      void event;
     });
 
-    // node.updated: single node was updated
     const updatedSub = realtimeClient.subscribe<Node>('node.updated', (_event) => {
       void store.loadNodes();
     });
 
-    // node.offline: a node went offline
     const offlineSub = realtimeClient.subscribe<{ nodeId: string }>('node.offline', (_event) => {
       void store.loadNodes();
     });
@@ -62,7 +79,6 @@ export const NodesPage = () => {
       updatedSub.unsubscribe();
       offlineSub.unsubscribe();
     };
-    // store.loadNodes is stable (useCallback with no deps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realtimeClient]);
 
@@ -108,10 +124,10 @@ export const NodesPage = () => {
       </div>
 
       {/* View mode toggle */}
-      <div className="nodes-toolbar">
+      <div className={styles['nodes-toolbar']}>
         <button
           type="button"
-          className={`nodes-toolbar__btn${viewMode === 'list' ? ' nodes-toolbar__btn--active' : ''}`}
+          className={`${styles['nodes-toolbar__btn']}${viewMode === 'list' ? ` ${styles['nodes-toolbar__btn--active']}` : ''}`}
           onClick={() => setViewMode('list')}
           aria-pressed={viewMode === 'list'}
         >
@@ -119,7 +135,7 @@ export const NodesPage = () => {
         </button>
         <button
           type="button"
-          className={`nodes-toolbar__btn${viewMode === 'topology' ? ' nodes-toolbar__btn--active' : ''}`}
+          className={`${styles['nodes-toolbar__btn']}${viewMode === 'topology' ? ` ${styles['nodes-toolbar__btn--active']}` : ''}`}
           onClick={() => setViewMode('topology')}
           aria-pressed={viewMode === 'topology'}
         >
@@ -128,7 +144,7 @@ export const NodesPage = () => {
 
         <button
           type="button"
-          className="nodes-toolbar__btn nodes-toolbar__btn--refresh"
+          className={`${styles['nodes-toolbar__btn']} ${styles['nodes-toolbar__btn--refresh']}`}
           onClick={() => void store.loadNodes()}
           disabled={store.loadState === 'loading'}
         >
@@ -183,9 +199,9 @@ export const NodesPage = () => {
       {assignTarget && (
         <NodeAgentAssign
           node={assignTarget}
-          allAgents={MOCK_AGENTS}
-          onAssign={store.assignAgent}
-          onUnassign={store.unassignAgent}
+          allAgents={agentOptions}
+          onAssign={async (nodeId, memberId) => { await store.assignAgent(nodeId, memberId); }}
+          onUnassign={async (nodeId, memberId) => { await store.unassignAgent(nodeId, memberId); }}
           onClose={() => setAssignTargetNodeId(null)}
         />
       )}

@@ -1,0 +1,53 @@
+{
+  "events": [
+    {
+      "id": "tok_001",
+      "memberId": "owner_1",
+      "nodeId": "agent-node-1",
+      "model": "claude-3.5-sonnet",
+      "inputTokens": 1200,
+      "outputTokens": 800,
+      "cost": 0.012,
+      "timestamp": "2026-04-06T09:00:00Z"
+    },
+    {
+      "id": "tok_002",
+      "memberId": "assistant_1",
+      "nodeId": "agent-node-1",
+      "model": "claude-3.5-sonnet",
+      "inputTokens": 3500,
+      "outputTokens": 2100,
+      "cost": 0.035,
+      "timestamp": "2026-04-06T09:15:00Z"
+    },
+    {
+      "id": "tok_003",
+      "memberId": "assistant_1",
+      "nodeId": "agent-node-2",
+      "model": "claude-3-haiku",
+      "inputTokens": 500,
+      "outputTokens": 150,
+      "cost": 0.001,
+      "timestamp": "2026-04-06T09:30:00Z"
+    },
+    {
+      "id": "tok_004",
+      "memberId": "owner_1",
+      "nodeId": "agent-node-2",
+      "model": "claude-3.5-sonnet",
+      "inputTokens": 2000,
+      "outputTokens": 1500,
+      "cost": 0.025,
+      "timestamp": "2026-04-06T10:00:00Z"
+    }
+  ],
+  "expectedStats": {
+    "team": {
+      "inputTokens": 7200,
+      "outputTokens": 4550,
+      "totalTokens": 11750,
+      "totalCost": 0.073,
+      "eventCount": 4
+    }
+  }
+}

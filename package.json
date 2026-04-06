@@ -19,6 +19,7 @@
     "test:web:routes": "npm --prefix ./web run test:web:routes",
     "test:web:unit": "npm --prefix ./web run test:web:unit",
     "test:e2e:browser": "node ./scripts/verify-browser-smoke.mjs",
+    "test:e2e:playwright": "npx playwright test --config=e2e/playwright.config.ts",
     "test:e2e:smoke": "node --test ./e2e/smoke/*.test.mjs",
     "verify:contract-sync": "node ./scripts/verify-contract-sync.mjs",
     "verify:production-readiness": "node ./scripts/verify-production-readiness.mjs",

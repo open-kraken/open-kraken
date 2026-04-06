@@ -1,0 +1,57 @@
+{
+  "events": [
+    {
+      "id": "led_001",
+      "workspaceId": "ws_open_kraken",
+      "teamId": "team_platform",
+      "memberId": "owner_1",
+      "nodeId": "agent-node-1",
+      "eventType": "command.execute",
+      "summary": "deployed backend to staging",
+      "correlationId": "deploy-001",
+      "sessionId": "sess-owner-1",
+      "context": {
+        "target": "staging",
+        "version": "0.1.0",
+        "duration": "45s"
+      },
+      "timestamp": "2026-04-06T09:00:00Z"
+    },
+    {
+      "id": "led_002",
+      "workspaceId": "ws_open_kraken",
+      "teamId": "team_platform",
+      "memberId": "assistant_1",
+      "nodeId": "agent-node-1",
+      "eventType": "code.review",
+      "summary": "reviewed PR #42: migration handler refactor",
+      "correlationId": "review-042",
+      "sessionId": "sess-assist-1",
+      "context": {
+        "prNumber": 42,
+        "filesChanged": 8,
+        "linesAdded": 120,
+        "linesRemoved": 45
+      },
+      "timestamp": "2026-04-06T09:30:00Z"
+    },
+    {
+      "id": "led_003",
+      "workspaceId": "ws_open_kraken",
+      "teamId": "team_delivery",
+      "memberId": "member_1",
+      "nodeId": "agent-node-2",
+      "eventType": "test.run",
+      "summary": "ran integration test suite: 42 passed, 0 failed",
+      "correlationId": "test-run-003",
+      "sessionId": "sess-member-1",
+      "context": {
+        "suite": "integration",
+        "passed": 42,
+        "failed": 0,
+        "duration": "12s"
+      },
+      "timestamp": "2026-04-06T10:00:00Z"
+    }
+  ]
+}

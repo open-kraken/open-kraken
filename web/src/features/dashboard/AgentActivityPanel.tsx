@@ -1,116 +1,51 @@
 /**
- * AgentActivityPanel lists each agent's current status, active task,
- * and cumulative token usage for the reporting period (T09).
+ * AgentActivityPanel — per-agent status, task, and token usage table (T09).
  */
 
 import { useI18n } from '@/i18n/I18nProvider';
 import type { AgentActivity } from '@/types/token';
+import s from './dashboard.module.css';
 
-export type AgentActivityPanelProps = {
-  activities: AgentActivity[];
-};
+export type AgentActivityPanelProps = { activities: AgentActivity[] };
 
-const STATUS_COLOR: Record<string, string> = {
-  running: '#16a34a',
-  working: '#16a34a',
-  idle: '#6b7280',
-  offline: '#dc2626',
-  error: '#dc2626',
-  success: '#3b82f6'
-};
-
-const getStatusColor = (status: string): string =>
-  STATUS_COLOR[status.toLowerCase()] ?? '#6b7280';
-
-/**
- * AgentActivityPanel
- * Table of agents with their current status, task, and token breakdown.
- *
- * @param activities - Array of AgentActivity items to render.
- */
 export const AgentActivityPanel = ({ activities }: AgentActivityPanelProps) => {
   const { t } = useI18n();
 
   if (activities.length === 0) {
-    return (
-      <div style={{ color: '#6b7280', padding: '24px', textAlign: 'center' }}>
-        {t('agentActivity.empty')}
-      </div>
-    );
+    return <div className={s['data-table__empty']}>{t('agentActivity.empty')}</div>;
   }
 
   return (
-    <div className="agent-activity-panel" style={{ overflowX: 'auto' }}>
-      <table
-        style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}
-        aria-label={t('agentActivity.aria')}
-      >
+    <div className={s['data-table-wrap']}>
+      <table className={s['data-table']} aria-label={t('agentActivity.aria')}>
         <thead>
-          <tr style={{ borderBottom: '1px solid #374151', color: '#9ca3af', textAlign: 'left' }}>
-            <th style={{ padding: '8px 12px' }}>{t('agentActivity.agent')}</th>
-            <th style={{ padding: '8px 12px' }}>{t('agentActivity.status')}</th>
-            <th style={{ padding: '8px 12px' }}>{t('agentActivity.task')}</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('agentActivity.input')}</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('agentActivity.output')}</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('agentActivity.total')}</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>{t('agentActivity.cost')}</th>
+          <tr>
+            <th>{t('agentActivity.agent')}</th>
+            <th>{t('agentActivity.status')}</th>
+            <th>{t('agentActivity.task')}</th>
+            <th data-align="right">{t('agentActivity.input')}</th>
+            <th data-align="right">{t('agentActivity.output')}</th>
+            <th data-align="right">{t('agentActivity.total')}</th>
+            <th data-align="right">{t('agentActivity.cost')}</th>
           </tr>
         </thead>
         <tbody>
-          {activities.map((activity) => (
-            <tr
-              key={activity.memberId}
-              style={{ borderBottom: '1px solid #1f2937' }}
-              data-member-id={activity.memberId}
-            >
-              <td style={{ padding: '10px 12px', fontWeight: 500 }}>{activity.memberName}</td>
-              <td style={{ padding: '10px 12px' }}>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    fontSize: '0.8rem',
-                    color: getStatusColor(activity.status)
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: '50%',
-                      backgroundColor: getStatusColor(activity.status),
-                      flexShrink: 0
-                    }}
-                  />
-                  {activity.status}
+          {activities.map((a) => (
+            <tr key={a.memberId} data-member-id={a.memberId}>
+              <td className={s['data-table__name']}>{a.memberName}</td>
+              <td>
+                <span className={s['status-cell']}>
+                  <span className={s['status-dot']} data-status={a.status.toLowerCase()} />
+                  {a.status}
                 </span>
               </td>
-              <td style={{ padding: '10px 12px', color: '#9ca3af', maxWidth: '200px' }}>
-                <span
-                  title={activity.currentTask}
-                  style={{
-                    display: 'block',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {activity.currentTask ?? t('system.emDash')}
-                </span>
+              <td>
+                <span className={s['task-cell']} title={a.currentTask}>{a.currentTask ?? '—'}</span>
               </td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#d1d5db' }}>
-                {activity.tokenStats.inputTokens.toLocaleString()}
-              </td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#d1d5db' }}>
-                {activity.tokenStats.outputTokens.toLocaleString()}
-              </td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
-                {activity.tokenStats.totalTokens.toLocaleString()}
-              </td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#9ca3af' }}>
-                ${activity.tokenStats.cost.toFixed(2)}
-              </td>
+              <td data-align="right">{a.tokenStats.inputTokens.toLocaleString()}</td>
+              <td data-align="right">{a.tokenStats.outputTokens.toLocaleString()}</td>
+              <td data-align="right" className={s['data-table__bold']}>{a.tokenStats.totalTokens.toLocaleString()}</td>
+              <td data-align="right" className={s['data-table__muted']}>${a.tokenStats.cost.toFixed(2)}</td>
             </tr>
           ))}
         </tbody>

@@ -31,6 +31,11 @@ type Config struct {
 	WSAllowAnyOrigin bool
 	// WSAllowedOrigins lists extra permitted Origin values (full URL, e.g. http://localhost:5173).
 	WSAllowedOrigins []string
+	// JWTSecret is the HMAC-SHA256 signing key for JWT authentication.
+	// When empty, JWT auth middleware is disabled (development mode).
+	JWTSecret string
+	// RateLimitRPS is the per-IP rate limit in requests per second. 0 disables.
+	RateLimitRPS int
 }
 
 func Load() (Config, error) {
@@ -46,6 +51,8 @@ func Load() (Config, error) {
 	}
 	cfg.WSAllowAnyOrigin = parseBoolEnv("OPEN_KRAKEN_WS_ALLOW_ANY_ORIGIN")
 	cfg.WSAllowedOrigins = splitComma(os.Getenv("OPEN_KRAKEN_WS_ALLOWED_ORIGINS"))
+	cfg.JWTSecret = os.Getenv("OPEN_KRAKEN_JWT_SECRET")
+	cfg.RateLimitRPS = parseIntEnv("OPEN_KRAKEN_RATE_LIMIT_RPS", 0)
 
 	if cfg.APIBasePath == cfg.WSPath {
 		return Config{}, fmt.Errorf("OPEN_KRAKEN_API_BASE_PATH and OPEN_KRAKEN_WS_PATH must be distinct")
@@ -89,6 +96,18 @@ func Load() (Config, error) {
 func parseBoolEnv(key string) bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
 	return v == "1" || v == "true" || v == "yes"
+}
+
+func parseIntEnv(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	var n int
+	if _, err := fmt.Sscanf(raw, "%d", &n); err != nil {
+		return fallback
+	}
+	return n
 }
 
 func splitComma(raw string) []string {

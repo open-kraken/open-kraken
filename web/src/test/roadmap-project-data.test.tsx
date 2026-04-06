@@ -145,6 +145,9 @@ test('roadmap and project data panels share feedback semantics for loading, savi
         onReload={() => undefined}
         onKeepDraft={() => undefined}
         onDiscardAndReload={() => undefined}
+        onAddTask={() => undefined}
+        onDeleteTask={() => undefined}
+        onMoveTask={() => undefined}
       />
     </TestI18n>
   );

@@ -7,6 +7,7 @@
 import { useI18n } from '@/i18n/I18nProvider';
 import type { Node } from '@/types/node';
 import { NodeStatusBadge } from './NodeStatusBadge';
+import styles from './nodes-feature.module.css';
 
 export type NodeCardProps = {
   node: Node;
@@ -31,17 +32,17 @@ export const NodeCard = ({ node, isSelected = false, onSelect, onAssignClick }: 
 
   return (
     <article
-      className={`node-card${isSelected ? ' node-card--selected' : ''}`}
+      className={`${styles['node-card']}${isSelected ? ` ${styles['node-card--selected']}` : ''}`}
       data-node-id={node.id}
       data-node-status={node.status}
       style={{ cursor: onSelect ? 'pointer' : 'default' }}
       onClick={() => onSelect?.(node.id)}
     >
-      <div className="node-card__row">
+      <div className={styles['node-card__row']}>
         <div>
-          <strong className="node-card__hostname">{node.hostname}</strong>
+          <strong className={styles['node-card__hostname']}>{node.hostname}</strong>
           <div style={{ marginTop: '4px' }}>
-            <span className={`node-card__type node-card__type--${node.nodeType}`}>
+            <span className={`${styles['node-card__type']} ${styles[`node-card__type--${node.nodeType}`] ?? ''}`}>
               {node.nodeType === 'k8s_pod' ? t('nodeCard.k8s') : t('nodeCard.bareMetal')}
             </span>
           </div>
@@ -50,25 +51,25 @@ export const NodeCard = ({ node, isSelected = false, onSelect, onAssignClick }: 
       </div>
 
       {labelEntries.length > 0 && (
-        <div className="node-card__labels">
+        <div className={styles['node-card__labels']}>
           {labelEntries.map(([key, value]) => (
-            <span key={key} className="node-card__label-pill">
+            <span key={key} className={styles['node-card__label-pill']}>
               {key}={value}
             </span>
           ))}
         </div>
       )}
 
-      <div className="node-card__agents">
-        <span className="node-card__agents-label">{t('nodeCard.assignedLabel')}</span>
+      <div className={styles['node-card__agents']}>
+        <span className={styles['node-card__agents-label']}>{t('nodeCard.assignedLabel')}</span>
         {node.assignedAgents.length === 0 ? (
-          <span className="node-card__agents-value node-card__agents-value--empty">{t('nodeCard.none')}</span>
+          <span className={`${styles['node-card__agents-value']} ${styles['node-card__agents-value--empty']}`}>{t('nodeCard.none')}</span>
         ) : (
-          <span className="node-card__agents-value">{node.assignedAgents.join(', ')}</span>
+          <span className={styles['node-card__agents-value']}>{node.assignedAgents.join(', ')}</span>
         )}
       </div>
 
-      <div className="node-card__timestamps">
+      <div className={styles['node-card__timestamps']}>
         <div>
           {t('nodeCard.registered')} {new Date(node.registeredAt).toLocaleString()}
         </div>
@@ -80,7 +81,7 @@ export const NodeCard = ({ node, isSelected = false, onSelect, onAssignClick }: 
       {onAssignClick && (
         <button
           type="button"
-          className="node-card__assign-btn"
+          className={styles['node-card__assign-btn']}
           onClick={(e) => {
             e.stopPropagation();
             onAssignClick(node.id);

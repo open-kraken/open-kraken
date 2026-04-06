@@ -6,6 +6,7 @@ export type RoadmapTaskItem = {
   title: string;
   status: RoadmapTaskStatus;
   pinned: boolean;
+  assigneeId?: string | null;
 };
 
 export type RoadmapDocument = {
@@ -71,7 +72,8 @@ export const normalizeRoadmapDocument = (response: RoadmapResponse): RoadmapDocu
           : index + 1,
     title: String(task.title ?? ''),
     status: String(task.status ?? 'todo'),
-    pinned: Boolean(task.pinned)
+    pinned: Boolean(task.pinned),
+    assigneeId: (task as Record<string, unknown>).assigneeId as string | null ?? null
   }));
 
   return {

@@ -1,0 +1,29 @@
+{
+  "skills": [
+    {
+      "name": "code-review",
+      "description": "Reviews code changes for quality, correctness, and style.",
+      "content": "Review the code diff and provide structured feedback."
+    },
+    {
+      "name": "deploy",
+      "description": "Executes deployment pipelines for staging and production.",
+      "content": "Run the deployment steps according to the target environment."
+    },
+    {
+      "name": "test-runner",
+      "description": "Discovers and runs test suites, reporting failures.",
+      "content": "Execute the test suite and report results with failure details."
+    },
+    {
+      "name": "documentation",
+      "description": "Generates and updates project documentation.",
+      "content": "Update documentation to reflect the current state of the codebase."
+    }
+  ],
+  "bindings": {
+    "owner_1": ["code-review", "deploy"],
+    "assistant_1": ["code-review", "test-runner", "documentation"],
+    "member_1": ["test-runner"]
+  }
+}

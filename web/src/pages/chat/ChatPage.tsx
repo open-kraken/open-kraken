@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import workspaceFixture from '../../../../backend/tests/fixtures/workspace-fixture.json';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatConversation, ChatMessagePageResponse } from '@/api/api-client';
 import { useI18n } from '@/i18n/I18nProvider';
 import { translateRealtimeDetail } from '@/i18n/realtime-copy';
@@ -26,6 +25,7 @@ type MessageRouteItem = {
   id: string;
   senderId: string;
   status: string;
+  createdAt?: number;
 };
 
 type ChatPageRouteModel = {
@@ -55,17 +55,9 @@ type ChatRouteData = {
 type ChatRealtimeEvent = {
   body?: string;
   messageId?: string;
-  status?: string;
-};
-
-const fixtureConversationItems = workspaceFixture.conversations;
-const fixtureMessageMap = workspaceFixture.messages as Record<string, Array<{
-  content?: { text?: string };
-  createdAt?: number;
-  id: string;
   senderId?: string;
   status?: string;
-}>>;
+};
 
 const mapShellRealtimeState = (status: RealtimeStatus): ChatPageRealtimeState => {
   switch (status) {
@@ -137,20 +129,6 @@ const buildPageNotice = ({
   }
 };
 
-const buildFixtureMessagePage = (conversationId: string | null): ChatMessagePageResponse => ({
-  items:
-    conversationId === null
-      ? []
-      : (fixtureMessageMap[conversationId] ?? []).map((message) => ({
-          id: message.id,
-          senderId: message.senderId,
-          content: message.content,
-          createdAt: message.createdAt,
-          status: message.status
-        })),
-  nextBeforeId: null
-});
-
 export const buildChatPageRouteModel = ({
   composerErrorMessage = null,
   composerStatus = 'idle',
@@ -159,7 +137,8 @@ export const buildChatPageRouteModel = ({
   messagePage,
   realtimeDetail,
   realtimeStatus,
-  workspaceId
+  workspaceId,
+  activeConversationIdOverride
 }: {
   composerErrorMessage?: string | null;
   composerStatus?: ComposerStatus;
@@ -169,6 +148,7 @@ export const buildChatPageRouteModel = ({
   realtimeDetail: string;
   realtimeStatus: RealtimeStatus;
   workspaceId: string;
+  activeConversationIdOverride?: string | null;
 }): ChatPageRouteModel => {
   const conversations = conversationItems.map((conversation) => ({
     id: conversation.id,
@@ -176,19 +156,19 @@ export const buildChatPageRouteModel = ({
     title: conversation.customName ?? conversation.id,
     unreadCount: conversation.unreadCount ?? 0
   }));
-  const activeConversationId = conversations[0]?.id ?? null;
+  const activeConversationId = activeConversationIdOverride ?? conversations[0]?.id ?? null;
   const messages = (messagePage.items ?? []).map((message) => ({
     content: message.content?.text ?? '',
     id: message.id,
     senderId: message.senderId ?? 'unknown',
-    status: message.status ?? 'sent'
+    status: message.status ?? 'sent',
+    createdAt: message.createdAt
   }));
   const realtimeState = mapShellRealtimeState(realtimeStatus);
   const composerDisabled =
     activeConversationId === null ||
     isSwitchingConversation ||
-    composerStatus === 'sending' ||
-    realtimeState !== 'live';
+    composerStatus === 'sending';
 
   return {
     activeConversationId,
@@ -252,13 +232,22 @@ const chatNoticeCopy = (
   }
 };
 
+/** Format a unix-ms timestamp to a short time string. */
+const formatTime = (ts?: number) => {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+};
+
 export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeedbackOverride }) => {
   const { t } = useI18n();
   const { apiClient, realtime, realtimeClient, workspace } = useAppShell();
-  const [conversationItems, setConversationItems] = useState<ChatConversation[]>(fixtureConversationItems);
-  const [messagePage, setMessagePage] = useState<ChatMessagePageResponse>(
-    buildFixtureMessagePage(fixtureConversationItems[0]?.id ?? null)
-  );
+  const [conversationItems, setConversationItems] = useState<ChatConversation[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [messagePage, setMessagePage] = useState<ChatMessagePageResponse>({ items: [], nextBeforeId: null });
   const [composerState, setComposerState] = useState<{
     errorMessage: string | null;
     status: ComposerStatus;
@@ -266,31 +255,32 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
     errorMessage: feedbackOverride?.composerErrorMessage ?? null,
     status: feedbackOverride?.composerStatus ?? 'idle'
   });
+  const [composerText, setComposerText] = useState('');
+  const [isSwitching, setIsSwitching] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messagePage.items.length]);
+
+  // Initial data load
   useEffect(() => {
     let cancelled = false;
 
     void loadChatRouteData(apiClient)
       .then((data) => {
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setConversationItems(data.conversationItems);
+        const firstId = data.conversationItems[0]?.id ?? null;
+        setActiveConvId(firstId);
         setMessagePage(data.messagePage);
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-        setConversationItems(fixtureConversationItems);
-        setMessagePage(buildFixtureMessagePage(fixtureConversationItems[0]?.id ?? null));
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [apiClient]);
 
+  // Sync feedbackOverride
   useEffect(() => {
     setComposerState({
       errorMessage: feedbackOverride?.composerErrorMessage ?? null,
@@ -298,6 +288,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
     });
   }, [feedbackOverride?.composerErrorMessage, feedbackOverride?.composerStatus]);
 
+  // Realtime events
   useEffect(() => {
     const subscription = realtimeClient.subscribe<ChatRealtimeEvent>('workspace.chat', (event) => {
       if (event.type === 'chat.delta' && event.payload?.messageId) {
@@ -307,7 +298,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
             ...current.items,
             {
               id: event.payload.messageId ?? `msg_${Date.now()}`,
-              senderId: 'unknown',
+              senderId: event.payload.senderId ?? 'unknown',
               content: { type: 'text', text: event.payload.body ?? '' },
               createdAt: Date.now(),
               status: 'sent'
@@ -324,20 +315,98 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => { subscription.unsubscribe(); };
   }, [realtimeClient]);
+
+  /** Switch to a different conversation. */
+  const switchConversation = useCallback(async (conversationId: string) => {
+    if (conversationId === activeConvId) return;
+    setIsSwitching(true);
+    setActiveConvId(conversationId);
+    try {
+      const page = await apiClient.getMessages(conversationId);
+      setMessagePage(page);
+    } finally {
+      setIsSwitching(false);
+    }
+  }, [activeConvId, apiClient]);
+
+  /** Send a message via the API. */
+  const sendMessage = useCallback(async () => {
+    const text = composerText.trim();
+    if (!text || !activeConvId) return;
+
+    setComposerState({ errorMessage: null, status: 'sending' });
+
+    // Optimistic: append the message locally before the API responds
+    const optimisticId = `local_${Date.now()}`;
+    setMessagePage((current) => ({
+      ...current,
+      items: [
+        ...current.items,
+        {
+          id: optimisticId,
+          senderId: 'owner_1',
+          content: { type: 'text', text },
+          createdAt: Date.now(),
+          status: 'sending'
+        }
+      ]
+    }));
+    setComposerText('');
+
+    try {
+      await apiClient.sendMessage(activeConvId, {
+        senderId: 'owner_1',
+        content: { type: 'text', text },
+        isAI: false
+      });
+      // Mark the optimistic message as sent
+      setMessagePage((current) => ({
+        ...current,
+        items: current.items.map((m) =>
+          m.id === optimisticId ? { ...m, status: 'sent' } : m
+        )
+      }));
+      setComposerState({ errorMessage: null, status: 'idle' });
+    } catch (err) {
+      // Mark message as failed and show error
+      setMessagePage((current) => ({
+        ...current,
+        items: current.items.map((m) =>
+          m.id === optimisticId ? { ...m, status: 'failed' } : m
+        )
+      }));
+      setComposerState({
+        errorMessage: err instanceof Error ? err.message : 'Send failed',
+        status: 'failed'
+      });
+    }
+  }, [composerText, activeConvId, apiClient]);
+
+  /** Handle Enter key in composer (Shift+Enter for newline). */
+  const handleComposerKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
+    }
+  }, [sendMessage]);
+
+  /** Retry sending after a failure — reset composer state. */
+  const handleRetry = useCallback(() => {
+    setComposerState({ errorMessage: null, status: 'idle' });
+  }, []);
 
   const model = buildChatPageRouteModel({
     composerErrorMessage: composerState.errorMessage,
     composerStatus: composerState.status,
     conversationItems,
-    isSwitchingConversation: feedbackOverride?.isSwitchingConversation,
+    isSwitchingConversation: isSwitching || feedbackOverride?.isSwitchingConversation,
     messagePage,
     realtimeDetail: realtime.detail,
     realtimeStatus: realtime.status,
-    workspaceId: workspace.workspaceId
+    workspaceId: workspace.workspaceId,
+    activeConversationIdOverride: activeConvId
   });
 
   const pageMeta = useMemo(
@@ -376,17 +445,32 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
       <div className="chat-route-page__layout">
         <aside className="chat-route-page__conversations" data-chat-slot="conversations">
           <h2>{t('chat.conversations')}</h2>
-          {model.conversations.map((conversation) => (
-            <article
-              key={conversation.id}
-              className="chat-route-page__conversation"
-              data-conversation-active={String(conversation.id === model.activeConversationId)}
-            >
-              <strong>{conversation.title}</strong>
-              <span>{conversation.preview}</span>
-              <small>{t('chat.unread', { count: conversation.unreadCount })}</small>
-            </article>
-          ))}
+          {model.conversations.length === 0 ? (
+            <p className="chat-route-page__empty">{t('chat.noConversations')}</p>
+          ) : (
+            model.conversations.map((conversation) => (
+              <article
+                key={conversation.id}
+                className="chat-route-page__conversation"
+                data-conversation-active={String(conversation.id === model.activeConversationId)}
+                role="button"
+                tabIndex={0}
+                onClick={() => void switchConversation(conversation.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    void switchConversation(conversation.id);
+                  }
+                }}
+              >
+                <strong>{conversation.title}</strong>
+                <span>{conversation.preview}</span>
+                {conversation.unreadCount > 0 && (
+                  <small className="chat-route-page__unread">{t('chat.unread', { count: conversation.unreadCount })}</small>
+                )}
+              </article>
+            ))
+          )}
         </aside>
 
         <section className="chat-route-page__messages" data-chat-slot="messages">
@@ -394,24 +478,69 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
             <h2>{model.activeConversationId ?? t('chat.noConversation')}</h2>
             <span data-chat-realtime={model.realtime.state}>{realtimeStateLabel}</span>
           </header>
-          {model.messages.length === 0 ? (
-            <p>{t('chat.noMessages')}</p>
+
+          {isSwitching ? (
+            <p className="chat-route-page__loading">{t('chat.loadingMessages')}</p>
+          ) : model.messages.length === 0 ? (
+            <p className="chat-route-page__empty">{t('chat.noMessages')}</p>
           ) : (
-            model.messages.map((message) => (
-              <article key={message.id} className="chat-route-page__message" data-message-status={message.status}>
-                <strong>{message.senderId}</strong>
-                <p>{message.content}</p>
-              </article>
-            ))
+            <div className="chat-route-page__message-list">
+              {model.messages.map((message) => (
+                <article
+                  key={message.id}
+                  className={`chat-route-page__message chat-route-page__message--${message.status}`}
+                  data-message-status={message.status}
+                  data-sender={message.senderId}
+                >
+                  <div className="chat-route-page__message-meta">
+                    <strong>{message.senderId}</strong>
+                    {message.createdAt && (
+                      <time className="chat-route-page__message-time">{formatTime(message.createdAt)}</time>
+                    )}
+                  </div>
+                  <p>{message.content}</p>
+                  {message.status === 'failed' && (
+                    <small className="chat-route-page__message-failed">{t('chat.messageFailed')}</small>
+                  )}
+                  {message.status === 'sending' && (
+                    <small className="chat-route-page__message-sending">{t('chat.messageSending')}</small>
+                  )}
+                </article>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
           )}
         </section>
 
         <section className="chat-route-page__composer" data-chat-slot="composer">
           <h2>{t('chat.composer')}</h2>
-          <textarea defaultValue="" placeholder={t('chat.placeholder')} readOnly />
-          <button type="button" disabled={model.composer.disabled}>
-            {model.composer.status === 'sending' ? t('chat.sending') : t('chat.send')}
-          </button>
+          <textarea
+            value={composerText}
+            onChange={(e) => setComposerText(e.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            placeholder={t('chat.placeholder')}
+            disabled={model.composer.disabled}
+            rows={3}
+            aria-label={t('chat.composerAria')}
+          />
+          <div className="chat-route-page__composer-actions">
+            <button
+              type="button"
+              onClick={() => void sendMessage()}
+              disabled={model.composer.disabled || composerText.trim().length === 0}
+            >
+              {model.composer.status === 'sending' ? t('chat.sending') : t('chat.send')}
+            </button>
+            {model.composer.status === 'failed' && (
+              <button type="button" className="chat-route-page__retry" onClick={handleRetry}>
+                {t('chat.retry')}
+              </button>
+            )}
+          </div>
+          {composerState.errorMessage && (
+            <p className="chat-route-page__composer-error">{composerState.errorMessage}</p>
+          )}
+          <small className="chat-route-page__composer-hint">{t('chat.composerHint')}</small>
         </section>
       </div>
     </section>

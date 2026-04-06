@@ -18,6 +18,8 @@ export type HttpClientOptions = {
   workspaceId: string;
   fetchImpl?: typeof fetch;
   requestIdFactory?: () => string;
+  /** Bearer token for Authorization header. */
+  authToken?: string;
 };
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
@@ -120,6 +122,7 @@ export class HttpClient {
         'Content-Type': 'application/json',
         'X-Request-Id': requestId,
         'X-Workspace-Id': this.options.workspaceId,
+        ...(this.options.authToken ? { Authorization: this.options.authToken } : {}),
         ...init.headers
       }
     });

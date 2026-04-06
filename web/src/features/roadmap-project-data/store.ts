@@ -150,6 +150,68 @@ export const replaceRoadmapTasks = (state: RoadmapEditorState, tasks: RoadmapTas
   };
 };
 
+export const addRoadmapTask = (state: RoadmapEditorState): RoadmapEditorState => {
+  if (state.phase === 'loading' || state.phase === 'saving' || state.readOnlyReason) {
+    return state;
+  }
+  const nextNumber = state.draft.tasks.reduce((max, t) => Math.max(max, t.number), 0) + 1;
+  const newTask: RoadmapTaskItem = {
+    id: crypto.randomUUID(),
+    number: nextNumber,
+    title: '',
+    status: 'todo',
+    pinned: false,
+    assigneeId: null
+  };
+  const tasks = [...state.draft.tasks, newTask];
+  const draft = { ...state.draft, tasks: deepClone(sortRoadmapTasks(tasks)) };
+  return {
+    ...state,
+    draft,
+    phase: 'dirty',
+    saveError: null,
+    reloadRequestedWhileDirty: false
+  };
+};
+
+export const removeRoadmapTask = (state: RoadmapEditorState, taskId: string): RoadmapEditorState => {
+  if (state.phase === 'loading' || state.phase === 'saving' || state.readOnlyReason) {
+    return state;
+  }
+  const tasks = state.draft.tasks.filter((t) => t.id !== taskId);
+  const draft = { ...state.draft, tasks };
+  return {
+    ...state,
+    draft,
+    phase: roadmapEqual(draft, state.persisted) ? 'loaded' : 'dirty',
+    saveError: null,
+    reloadRequestedWhileDirty: false
+  };
+};
+
+export const reorderRoadmapTask = (state: RoadmapEditorState, taskId: string, direction: 'up' | 'down'): RoadmapEditorState => {
+  if (state.phase === 'loading' || state.phase === 'saving' || state.readOnlyReason) {
+    return state;
+  }
+  const sorted = deepClone(sortRoadmapTasks(state.draft.tasks));
+  const index = sorted.findIndex((t) => t.id === taskId);
+  if (index < 0) return state;
+  const swapIndex = direction === 'up' ? index - 1 : index + 1;
+  if (swapIndex < 0 || swapIndex >= sorted.length) return state;
+  // Swap number fields to change sort order
+  const tempNumber = sorted[index].number;
+  sorted[index].number = sorted[swapIndex].number;
+  sorted[swapIndex].number = tempNumber;
+  const draft = { ...state.draft, tasks: sortRoadmapTasks(sorted) };
+  return {
+    ...state,
+    draft,
+    phase: roadmapEqual(draft, state.persisted) ? 'loaded' : 'dirty',
+    saveError: null,
+    reloadRequestedWhileDirty: false
+  };
+};
+
 export const updateProjectDataDraftText = (state: ProjectDataEditorState, draftText: string): ProjectDataEditorState => {
   if (state.phase === 'loading' || state.phase === 'saving' || state.persisted.readOnlyReason) {
     return state;

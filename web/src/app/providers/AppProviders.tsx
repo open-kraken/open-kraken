@@ -1,6 +1,6 @@
 import type { PropsWithChildren } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { createApiClient as createLegacyApiClient } from '@/api/create-client.mjs';
+import { createApiClient as createLegacyApiClient } from '@/api/create-client';
 import { appEnv } from '@/config/env';
 import { createApiClient } from '@/api/api-client';
 import { bindHttpClient } from '@/api/http-binding';
@@ -11,6 +11,7 @@ import { I18nProvider } from '@/i18n/I18nProvider';
 import { MESSAGES } from '@/i18n/messages';
 import { readStoredLocale } from '@/i18n/locale-storage';
 import { appRoutes, resolveAppRoute, type AppRouteId } from '@/routes';
+import { useAuth } from '@/auth/AuthProvider';
 
 const tr = (key: string) => {
   const loc = readStoredLocale();
@@ -47,6 +48,7 @@ const resolveApiBaseUrl = () => {
 };
 
 export const AppProviders = ({ children }: PropsWithChildren) => {
+  const { token: authToken } = useAuth();
   const [pathname, setPathname] = useState(() => normalizePathname(window.location.pathname || defaultPath));
   const [notifications, setNotifications] = useState<ShellToast[]>([]);
   const [realtime, setRealtime] = useState<RealtimeStatusValue>(initialRealtimeStatus);
@@ -60,9 +62,10 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
   const httpClient = useMemo(() => {
     return new HttpClient({
       baseUrl: resolveApiBaseUrl(),
-      workspaceId: appEnv.defaultWorkspaceId
+      workspaceId: appEnv.defaultWorkspaceId,
+      authToken: authToken ?? undefined
     });
-  }, []);
+  }, [authToken]);
 
   useEffect(() => {
     bindHttpClient(httpClient);

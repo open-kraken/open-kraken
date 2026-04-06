@@ -1,0 +1,47 @@
+import { appEnv } from '@/config/env';
+import type { AuthAccount } from './auth-types';
+
+const resolveAuthBaseUrl = () => {
+  const fromEnv = appEnv.apiBaseUrl;
+  if (fromEnv !== 'http://127.0.0.1:8080/api/v1') {
+    return fromEnv;
+  }
+  if (typeof window !== 'undefined' && window.location.origin.startsWith('http')) {
+    return `${window.location.origin}/api/v1`;
+  }
+  return fromEnv;
+};
+
+export type LoginResponse = {
+  token: string;
+  account: AuthAccount;
+};
+
+export async function login(memberId: string, password: string): Promise<LoginResponse> {
+  const baseUrl = resolveAuthBaseUrl().replace(/\/+$/, '');
+  const response = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ memberId, password })
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error((body as { message?: string }).message ?? 'Login failed');
+  }
+
+  return (await response.json()) as LoginResponse;
+}
+
+export async function fetchMe(token: string): Promise<AuthAccount> {
+  const baseUrl = resolveAuthBaseUrl().replace(/\/+$/, '');
+  const response = await fetch(`${baseUrl}/auth/me`, {
+    headers: { Authorization: token }
+  });
+
+  if (!response.ok) {
+    throw new Error('Session expired');
+  }
+
+  return (await response.json()) as AuthAccount;
+}

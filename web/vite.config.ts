@@ -13,6 +13,11 @@ const viteConfig = {
     // Prefer TypeScript entrypoints over legacy .mjs when the import has no extension.
     extensions: ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.json']
   },
+  css: {
+    modules: {
+      localsConvention: 'dashesOnly' as const
+    }
+  },
   server: {
     host: '127.0.0.1',
     port: 3100,

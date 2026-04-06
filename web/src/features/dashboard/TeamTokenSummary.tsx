@@ -1,10 +1,11 @@
 /**
- * TeamTokenSummary displays aggregate token consumption metrics for the team (T09).
- * Shows: total tokens consumed, estimated total cost, and number of active agents.
+ * TeamTokenSummary — aggregate token consumption metric cards (T09).
+ * Shows: period, total tokens, estimated cost, active agents.
  */
 
 import { useI18n } from '@/i18n/I18nProvider';
 import type { TokenStats, AgentActivity } from '@/types/token';
+import s from './dashboard.module.css';
 
 export type TeamTokenSummaryProps = {
   stats: TokenStats[];
@@ -12,67 +13,35 @@ export type TeamTokenSummaryProps = {
   period: string;
 };
 
-/**
- * TeamTokenSummary
- * Renders three summary cards: total tokens, total cost, and active agent count.
- *
- * @param stats - Per-member token statistics.
- * @param activities - Current agent activity list (used to count active agents).
- * @param period - The reporting period label.
- */
 export const TeamTokenSummary = ({ stats, activities, period }: TeamTokenSummaryProps) => {
   const { t } = useI18n();
-  const totalTokens = stats.reduce((acc, s) => acc + s.totalTokens, 0);
-  const totalCost = stats.reduce((acc, s) => acc + s.cost, 0);
-  // Active = agents whose status is 'running' or 'working'
+  const totalTokens = stats.reduce((acc, x) => acc + x.totalTokens, 0);
+  const totalCost = stats.reduce((acc, x) => acc + x.cost, 0);
   const activeAgents = activities.filter((a) =>
     ['running', 'working', 'busy', 'in_progress'].includes(a.status.toLowerCase())
   ).length;
 
-  const cardStyle: React.CSSProperties = {
-    padding: '16px 20px',
-    backgroundColor: '#111827',
-    border: '1px solid #374151',
-    borderRadius: '8px',
-    flex: '1 1 160px'
-  };
-
   return (
-    <section
-      className="team-token-summary"
-      aria-label={t('dash.summaryAria')}
-      style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '24px' }}
-    >
-      <div style={cardStyle}>
-        <p className="page-eyebrow" style={{ marginBottom: '4px', fontSize: '0.7rem' }}>
-          {t('dash.period')}
-        </p>
-        <strong style={{ fontSize: '1.25rem' }}>{period || t('system.emDash')}</strong>
-        <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>{t('dash.reportingWindow')}</p>
+    <section className={s['summary-strip']} aria-label={t('dash.summaryAria')}>
+      <div className={s['summary-card']}>
+        <p className={s['summary-card__label']}>{t('dash.period')}</p>
+        <strong className={s['summary-card__value']}>{period || '—'}</strong>
+        <p className={s['summary-card__hint']}>{t('dash.reportingWindow')}</p>
       </div>
-
-      <div style={cardStyle}>
-        <p className="page-eyebrow" style={{ marginBottom: '4px', fontSize: '0.7rem' }}>
-          {t('dash.totalTokens')}
-        </p>
-        <strong style={{ fontSize: '1.5rem' }}>{totalTokens.toLocaleString()}</strong>
-        <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>{t('dash.acrossMembers')}</p>
+      <div className={s['summary-card']}>
+        <p className={s['summary-card__label']}>{t('dash.totalTokens')}</p>
+        <strong className={s['summary-card__value']}>{totalTokens.toLocaleString()}</strong>
+        <p className={s['summary-card__hint']}>{t('dash.acrossMembers')}</p>
       </div>
-
-      <div style={cardStyle}>
-        <p className="page-eyebrow" style={{ marginBottom: '4px', fontSize: '0.7rem' }}>
-          {t('dash.estimatedCost')}
-        </p>
-        <strong style={{ fontSize: '1.5rem' }}>${totalCost.toFixed(2)}</strong>
-        <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>{t('dash.usdHint')}</p>
+      <div className={s['summary-card']}>
+        <p className={s['summary-card__label']}>{t('dash.estimatedCost')}</p>
+        <strong className={s['summary-card__value']}>${totalCost.toFixed(2)}</strong>
+        <p className={s['summary-card__hint']}>{t('dash.usdHint')}</p>
       </div>
-
-      <div style={cardStyle}>
-        <p className="page-eyebrow" style={{ marginBottom: '4px', fontSize: '0.7rem' }}>
-          {t('dash.activeAgents')}
-        </p>
-        <strong style={{ fontSize: '1.5rem' }}>{activeAgents}</strong>
-        <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>{t('dash.currentlyRunning')}</p>
+      <div className={s['summary-card']}>
+        <p className={s['summary-card__label']}>{t('dash.activeAgents')}</p>
+        <strong className={s['summary-card__value']}>{activeAgents}</strong>
+        <p className={s['summary-card__hint']}>{t('dash.currentlyRunning')}</p>
       </div>
     </section>
   );

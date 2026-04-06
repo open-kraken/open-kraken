@@ -1,6 +1,6 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
-import { createApiClient } from '../api/create-client.mjs';
+import { createApiClient } from '../api/create-client';
 import { ProjectDataPanel } from '../features/roadmap-project-data/components/ProjectDataPanel';
 import { RoadmapPanel } from '../features/roadmap-project-data/components/RoadmapPanel';
 import type {
@@ -23,6 +23,9 @@ import {
   markProjectDataSaving,
   markRoadmapLoading,
   markRoadmapSaving,
+  addRoadmapTask,
+  removeRoadmapTask,
+  reorderRoadmapTask,
   replaceRoadmapTasks,
   requestReload,
   selectPanelFeedback,
@@ -186,6 +189,9 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
             setRoadmapState((current) => clearReloadRequest(current));
             void loadAll();
           }}
+          onAddTask={() => setRoadmapState((current) => addRoadmapTask(current))}
+          onDeleteTask={(taskId) => setRoadmapState((current) => removeRoadmapTask(current, taskId))}
+          onMoveTask={(taskId, direction) => setRoadmapState((current) => reorderRoadmapTask(current, taskId, direction))}
         />
 
         <ProjectDataPanel

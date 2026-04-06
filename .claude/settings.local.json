@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "WebFetch(domain:127.0.0.1)",
+      "Bash(ls:*)",
+      "Bash(grep -l \"className=\" src/components/**/*.tsx src/features/**/*.tsx src/pages/**/*.tsx)",
+      "Bash(grep \"\\\\.mjs\" src/**/*.ts src/**/*.tsx)",
+      "Bash(find:*)",
+      "Bash(grep -r \"var\\(--app-\" src/styles/*.css)",
+      "Bash(mv src/api/config.mjs src/api/config.ts)",
+      "Bash(mv src/api/http-client-legacy.mjs src/api/http-client-legacy.ts)",
+      "Bash(mv src/api/live-client.mjs src/api/live-client.ts)",
+      "Bash(mv src/api/create-client.mjs src/api/create-client.ts)",
+      "Bash(mv src/fixtures/workspace-fixture.mjs src/fixtures/workspace-fixture.ts)",
+      "Bash(npx tsc:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:3100/)",
+      "Bash(wc:*)",
+      "Bash(grep -E \"\\\\.\\(css|module\\\\.css\\)$\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(json.dumps\\(m, indent=2\\)\\) for m in d.get\\('members',[]\\)]\")",
+      "Bash(python3 -c ':*)",
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(GOWORK=off go vet ./...)"
+    ]
+  }
+}
