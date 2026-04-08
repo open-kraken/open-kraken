@@ -1,0 +1,233 @@
+/* ═══════════════════════════════════════════════════════════════
+   Members Page — Lark Contacts / Organization Structure feel
+
+   Layout: Left org sidebar + right member grid/detail
+   Design: Clean cards with role accent, status dots, skill chips
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Page Shell ──────────────────────────────────────────────── */
+
+.route-page--members {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-radius: var(--app-radius-panel);
+  border: 1px solid var(--app-border-subtle);
+  background: var(--app-bg-elevated);
+  overflow: hidden;
+  height: calc(100vh - 7rem);
+}
+
+/* ─── Top Toolbar (metrics bar) ───────────────────────────────── */
+
+.route-page--members .page-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-5);
+  padding: var(--app-space-3) var(--app-space-5);
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: var(--app-surface-strong);
+  flex-shrink: 0;
+  font-size: var(--app-text-xs);
+  color: var(--app-text-muted);
+}
+
+.route-page--members .page-toolbar strong {
+  color: var(--app-text-strong);
+  font-weight: 700;
+  font-size: var(--app-text-sm);
+}
+
+/* ─── Members Workbench Layout ────────────────────────────────── */
+
+.members-page--workbench {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Team tab switcher */
+.members-page__team-switch {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--app-border-subtle);
+  padding: 0 var(--app-space-4);
+  background: var(--app-surface-strong);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.members-page__team-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--app-space-3) var(--app-space-4);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+  color: var(--app-text-muted);
+  font-size: var(--app-text-sm);
+  transition: all var(--app-motion-fast);
+  white-space: nowrap;
+}
+
+.members-page__team-tab:hover {
+  color: var(--app-text-strong);
+  background: var(--app-bg-hover);
+}
+
+.members-page__team-tab--active {
+  color: var(--app-accent);
+  border-bottom-color: var(--app-accent);
+  font-weight: 600;
+}
+
+.members-page__team-name {
+  font-weight: inherit;
+}
+
+.members-page__team-count {
+  font-size: var(--app-text-xs);
+  color: var(--app-text-faint);
+}
+
+.members-page__team-tab--active .members-page__team-count {
+  color: var(--app-accent);
+}
+
+/* Context bar */
+.members-page__context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--app-space-2) var(--app-space-5);
+  background: var(--app-bg-canvas);
+  border-bottom: 1px solid var(--app-border-subtle);
+  flex-shrink: 0;
+}
+
+.members-page__context-kv {
+  display: flex;
+  gap: var(--app-space-5);
+  margin: 0;
+  font-size: var(--app-text-xs);
+}
+
+.members-page__context-kv div {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+}
+
+.members-page__context-kv dt {
+  color: var(--app-text-faint);
+  font-weight: 400;
+}
+
+.members-page__context-kv dd {
+  margin: 0;
+  color: var(--app-text-strong);
+  font-weight: 500;
+}
+
+/* ─── Members Grid ────────────────────────────────────────────── */
+
+.route-page--members .route-page__grid--members-workbench {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--app-space-4) var(--app-space-5);
+}
+
+.route-page--members .route-page__panel--roster {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.route-page--members .route-page__panel-header {
+  margin-bottom: var(--app-space-4);
+}
+
+/* Member card grid — Lark style: 2-col on desktop */
+.members-workbench-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: var(--app-space-3);
+}
+
+/* ─── Member Card Enhancements ────────────────────────────────── */
+
+/* Lark-style: rounded avatar, hover elevation */
+.members-page--workbench .member-card {
+  border-radius: var(--app-radius-card);
+  padding: var(--app-space-4);
+  transition: all 150ms ease;
+}
+
+.members-page--workbench .member-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  transform: translateY(-1px);
+}
+
+.members-page--workbench .member-card__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 0.9rem;
+}
+
+/* Online status dot on avatar */
+.members-page--workbench .member-card__avatar {
+  position: relative;
+}
+
+.members-page--workbench .member-card[data-terminal-status="online"] .member-card__avatar::after,
+.members-page--workbench .member-card[data-terminal-status="working"] .member-card__avatar::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--app-surface-elevated);
+}
+
+.members-page--workbench .member-card[data-terminal-status="online"] .member-card__avatar::after {
+  background: var(--app-health-ok);
+}
+
+.members-page--workbench .member-card[data-terminal-status="working"] .member-card__avatar::after {
+  background: var(--app-health-warn);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* ─── Roster Admin Section ────────────────────────────────────── */
+
+.route-page--members .members-roster-admin {
+  border-top: 1px solid var(--app-border-subtle);
+  padding: var(--app-space-5);
+  background: var(--app-bg-canvas);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .members-workbench-list {
+    grid-template-columns: 1fr;
+  }
+
+  .members-page__team-switch {
+    padding: 0 var(--app-space-2);
+  }
+}
+
+@media (max-width: 640px) {
+  .route-page--members {
+    height: auto;
+  }
+}

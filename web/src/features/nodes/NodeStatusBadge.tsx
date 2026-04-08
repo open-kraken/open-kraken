@@ -5,17 +5,10 @@
 
 import { useI18n } from '@/i18n/I18nProvider';
 import type { NodeStatus } from '@/types/node';
+import styles from './nodes-feature.module.css';
 
 export type NodeStatusBadgeProps = {
   status: NodeStatus;
-};
-
-// Inline styles so the badge works without a dedicated CSS file.
-// Map to semantic classes (node-status-badge--*) once a stylesheet is added.
-const STATUS_STYLE: Record<NodeStatus, React.CSSProperties> = {
-  online: { backgroundColor: '#16a34a', color: '#fff' },
-  degraded: { backgroundColor: '#ea580c', color: '#fff' },
-  offline: { backgroundColor: '#dc2626', color: '#fff' }
 };
 
 /**
@@ -27,18 +20,15 @@ const STATUS_STYLE: Record<NodeStatus, React.CSSProperties> = {
 export const NodeStatusBadge = ({ status }: NodeStatusBadgeProps) => {
   const { t } = useI18n();
   const label = t(`nodeStatus.${status}`);
+  const toneClass =
+    status === 'online'
+      ? styles['node-status-badge--online']
+      : status === 'degraded'
+        ? styles['node-status-badge--degraded']
+        : styles['node-status-badge--offline'];
   return (
     <span
-      className={`node-status-badge node-status-badge--${status}`}
-      style={{
-        ...STATUS_STYLE[status],
-        display: 'inline-block',
-        padding: '2px 8px',
-        borderRadius: '4px',
-        fontSize: '0.75rem',
-        fontWeight: 600,
-        letterSpacing: '0.02em'
-      }}
+      className={`${styles['node-status-badge']} ${toneClass}`}
       aria-label={t('nodeCard.statusAria', { status: label })}
     >
       {label}

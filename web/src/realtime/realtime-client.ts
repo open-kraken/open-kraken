@@ -38,17 +38,24 @@ export class RealtimeClient {
   connect() {
     this.status = 'connecting';
     this.transport.open(this.cursor);
-    this.status = 'connected';
+    // Status remains 'connecting' until the first dispatched event confirms the connection.
   }
 
   disconnect() {
     this.transport.close();
+    this.listeners.clear();
+    this.lastSequenceByChannel.clear();
     this.status = 'disconnected';
   }
 
   reconnect() {
     this.status = 'reconnecting';
     this.transport.open(this.cursor);
+    // Status remains 'reconnecting' until the next dispatched event.
+  }
+
+  /** Called by the transport layer once the underlying connection is open. */
+  markConnected() {
     this.status = 'connected';
   }
 
@@ -75,6 +82,11 @@ export class RealtimeClient {
   }
 
   dispatch<TPayload>(event: RealtimeEnvelope<TPayload>) {
+    // Receiving an event confirms the connection is live.
+    if (this.status === 'connecting' || this.status === 'reconnecting') {
+      this.status = 'connected';
+    }
+
     const previousSequence = this.lastSequenceByChannel.get(event.channel);
 
     if (previousSequence === undefined && this.cursor === null && event.sequence !== 1) {

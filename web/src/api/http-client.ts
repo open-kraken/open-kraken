@@ -13,6 +13,9 @@ export class HttpClientError extends Error {
   }
 }
 
+import { appEnv } from '../config/env';
+import { newTraceparentValue } from '../observability/trace-context';
+
 export type HttpClientOptions = {
   baseUrl: string;
   workspaceId: string;
@@ -20,6 +23,12 @@ export type HttpClientOptions = {
   requestIdFactory?: () => string;
   /** Bearer token for Authorization header. */
   authToken?: string;
+  /** Request timeout in milliseconds. Defaults to 30 000 (30 s). */
+  timeoutMs?: number;
+  /**
+   * When true (default), send W3C traceparent for OpenTelemetry/Langfuse. Override to disable per client.
+   */
+  traceContext?: boolean;
 };
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
@@ -27,7 +36,10 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
 };
 
 const normalizeUrl = (baseUrl: string, path: string) => {
-  return new URL(path, `${baseUrl.replace(/\/+$/, '')}/`).toString();
+  // Strip leading slash so `new URL` appends to base path instead of replacing it.
+  // e.g. baseUrl="http://host/api/v1", path="/nodes" → "http://host/api/v1/nodes"
+  const relative = path.replace(/^\/+/, '');
+  return new URL(relative, `${baseUrl.replace(/\/+$/, '')}/`).toString();
 };
 
 const defaultRequestIdFactory = () => {
@@ -91,13 +103,18 @@ const parseErrorEnvelope = async (response: Response, requestId: string): Promis
 export class HttpClient {
   private readonly fetchImpl: typeof fetch;
   private readonly requestIdFactory: () => string;
+  private readonly traceContext: boolean;
   /** Workspace id for X-Workspace-Id; also used to build /workspaces/{id}/… paths in the API client. */
   readonly workspaceId: string;
 
   constructor(private readonly options: HttpClientOptions) {
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // Bind so native `fetch` is never invoked as an unbound method (Illegal invocation in some runtimes).
+    this.fetchImpl =
+      options.fetchImpl ??
+      ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
     this.requestIdFactory = options.requestIdFactory ?? defaultRequestIdFactory;
     this.workspaceId = options.workspaceId;
+    this.traceContext = options.traceContext ?? appEnv.browserTraceContext;
   }
 
   get<T>(path: string, init?: Omit<RequestOptions, 'body' | 'method'>) {
@@ -114,25 +131,49 @@ export class HttpClient {
 
   async request<T>(path: string, init: RequestOptions): Promise<T> {
     const requestId = this.requestIdFactory();
-    const response = await this.fetchImpl(normalizeUrl(this.options.baseUrl, path), {
-      ...init,
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'X-Request-Id': requestId,
-        'X-Workspace-Id': this.options.workspaceId,
-        ...(this.options.authToken ? { Authorization: this.options.authToken } : {}),
-        ...init.headers
+    const timeoutMs = this.options.timeoutMs ?? 30_000;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+      response = await this.fetchImpl(normalizeUrl(this.options.baseUrl, path), {
+        ...init,
+        signal: controller.signal,
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Request-Id': requestId,
+          'X-Workspace-Id': this.options.workspaceId,
+          ...(this.traceContext ? { traceparent: newTraceparentValue() } : {}),
+          ...(this.options.authToken ? { Authorization: this.options.authToken } : {}),
+          ...init.headers
+        }
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new HttpClientError({
+          code: 'timeout',
+          message: `Request timed out after ${timeoutMs}ms`,
+          requestId,
+          status: 0
+        });
       }
-    });
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!response.ok) {
       throw new HttpClientError(await parseErrorEnvelope(response, requestId));
     }
 
     if (response.status === 204) {
-      return undefined as T;
+      // Return undefined — callers that expect a body should not use methods
+      // that may return 204 with a non-void T.
+      return undefined as unknown as T;
     }
 
     return (await response.json()) as T;

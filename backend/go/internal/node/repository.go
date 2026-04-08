@@ -33,6 +33,8 @@ type nodeRecord struct {
 	NodeType        NodeType          `json:"nodeType"`
 	Status          NodeStatus        `json:"status"`
 	Labels          map[string]string `json:"labels,omitempty"`
+	MaxAgents       int               `json:"maxAgents,omitempty"`
+	Agents          []string          `json:"agents,omitempty"`
 	RegisteredAt    time.Time         `json:"registeredAt"`
 	LastHeartbeatAt time.Time         `json:"lastHeartbeatAt"`
 }
@@ -179,6 +181,8 @@ func toRecord(n Node) nodeRecord {
 		NodeType:        n.NodeType,
 		Status:          n.Status,
 		Labels:          n.Labels,
+		MaxAgents:       n.MaxAgents,
+		Agents:          n.Agents,
 		RegisteredAt:    n.RegisteredAt,
 		LastHeartbeatAt: n.LastHeartbeatAt,
 	}
@@ -191,6 +195,8 @@ func toNode(r nodeRecord) Node {
 		NodeType:        r.NodeType,
 		Status:          r.Status,
 		Labels:          r.Labels,
+		MaxAgents:       r.MaxAgents,
+		Agents:          r.Agents,
 		RegisteredAt:    r.RegisteredAt,
 		LastHeartbeatAt: r.LastHeartbeatAt,
 	}

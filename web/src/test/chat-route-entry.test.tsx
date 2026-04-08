@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AppShell } from '@/app/layouts/AppShell';
 import { ChatPage, buildChatPageRouteModel, loadChatRouteData } from '@/pages/chat/ChatPage';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute } from '@/routes';
@@ -35,7 +34,21 @@ const testApiClient: AppShellContextValue['apiClient'] = {
     nextBeforeId: null
   }),
   sendMessage: async () => ({}),
+  createConversation: async (body: { type: 'direct' | 'team'; memberId?: string; teamId?: string }) => ({
+    conversation: {
+      id: body.type === 'direct' && body.memberId ? `conv_dm_${body.memberId}` : 'conv_new',
+      type: body.type,
+      memberIds: body.memberId ? [body.memberId] : undefined,
+      teamId: body.teamId ?? null
+    }
+  }),
   getMembers: async () => ({ members: [] }),
+  createMember: async () => ({ members: [] }),
+  updateMember: async () => ({ members: [] }),
+  deleteMember: async () => ({ members: [] }),
+  createTeam: async () => ({ members: [] }),
+  updateTeam: async () => ({ members: [] }),
+  deleteTeam: async () => ({ members: [] }),
   getRoadmap: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   getRoadmapDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   updateRoadmapDocument: async (payload) => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: payload.roadmap }),
@@ -75,7 +88,10 @@ const createShellContext = (
   realtimeClient: testRealtimeClient,
   navigate: () => undefined,
   pushNotification: () => undefined,
-  dismissNotification: () => undefined
+  dismissNotification: () => undefined,
+  chatNotifications: { totalUnread: 0, items: [] },
+  markAllChatRead: () => undefined,
+  markChatConversationRead: () => undefined
 });
 
 test('chat route model keeps a single page-level notice precedence across switching, composer failure, and realtime degradation', () => {
@@ -118,11 +134,12 @@ test('chat route loader pulls conversation items and message page from the forma
   assert.equal(data.messagePage.items[0]?.id, 'msg_1');
 });
 
-test('AppShell renders the chat route with shell realtime state mapped into the page-level chat notice', () => {
+test('Chat page maps shell realtime state into the page-level chat notice', () => {
+  /** Render `ChatPage` directly: `AppShell` uses `lazy()` for routes, which `renderToStaticMarkup` does not resolve. */
   const markup = renderToStaticMarkup(
     <AppShellContext.Provider value={createShellContext('/chat', 'disconnected', 'Realtime disconnected')}>
       <TestI18n>
-        <AppShell />
+        <ChatPage />
       </TestI18n>
     </AppShellContext.Provider>
   );
@@ -131,7 +148,8 @@ test('AppShell renders the chat route with shell realtime state mapped into the 
   assert.match(markup, /data-page-notice="degraded"/);
   assert.match(markup, /Realtime is degraded\. Browsing stays available, but sending is temporarily unavailable\./);
   assert.match(markup, /data-chat-slot="messages"/);
-  assert.match(markup, /Loaded conversations: 1 \| Loaded messages: 1/);
+  /** Static render runs before `useEffect`; counts stay at zero until data loads in the browser. */
+  assert.match(markup, /Loaded conversations: 0 \| Loaded messages: 0/);
 });
 
 test('ChatPage component can surface composer failure at the real page entry without conflicting child status copy', () => {

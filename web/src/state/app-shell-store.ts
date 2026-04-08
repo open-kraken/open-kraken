@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import type { ApiClient } from '@/api/api-client';
 import type { RealtimeClient } from '@/realtime/realtime-client';
 import type { AppRouteDefinition, AppRouteId } from '@/routes';
+import type { NotificationState } from '@/state/notification-store';
 
 export type ToastTone = 'info' | 'warning' | 'error';
 
@@ -40,6 +41,11 @@ export type AppShellContextValue = {
   navigate: (routeId: AppRouteId, options?: { hash?: string }) => void;
   pushNotification: (toast: Omit<ShellToast, 'id'>) => void;
   dismissNotification: (toastId: string) => void;
+
+  // Phase 6: Notification aggregation from realtime events.
+  chatNotifications: NotificationState;
+  markAllChatRead: () => void;
+  markChatConversationRead: (conversationId: string) => void;
 };
 
 export const AppShellContext = createContext<AppShellContextValue | null>(null);

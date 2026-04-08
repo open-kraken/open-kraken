@@ -40,6 +40,10 @@ Contract docs that must stay in sync with these runtime surfaces:
 - Frontend minimum baseline:
   - Page load success/failure, API failure count by feature area, websocket reconnect attempts, and terminal panel attach failure count.
 
+### LLM observability (Langfuse)
+
+For **per-invocation** LLM tracing, prompts, and cost attribution on model calls that typically run **outside** the Go monolith (agents/workers), use **[Langfuse](https://langfuse.com/)** via **OpenTelemetry OTLP/HTTP** to Langfuse’s `/api/public/otel` endpoint. This **complements** workspace **`tokentrack`** (rollups in SQLite) and the **ledger** (audit narrative); it does not replace them. See **`docs/observability/langfuse-integration.md`** for endpoints, auth headers, and correlation attributes (`langfuse.trace.metadata.*`, workspace/member ids).
+
 ### Health checks
 
 - Server minimum baseline:

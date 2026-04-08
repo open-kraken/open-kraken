@@ -139,6 +139,7 @@ test('roadmap and project data panels share feedback semantics for loading, savi
           tasks: [{ id: 'task_1', number: 1, title: 'First', status: 'todo', pinned: true }]
         }}
         feedback={neutral}
+        members={[]}
         onObjectiveChange={() => undefined}
         onTaskChange={() => undefined}
         onSave={() => undefined}

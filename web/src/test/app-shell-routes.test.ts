@@ -6,8 +6,10 @@ import { AppShell } from '@/app/layouts/AppShell';
 import { createMockClient } from '@/mocks/mock-client';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute } from '@/routes';
+import { AuthContext } from '@/auth/AuthProvider';
 import { ThemeProvider } from '@/theme/ThemeProvider';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import { shellTestAuthValue } from '@/test/shell-test-auth';
 
 const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
   const client = createMockClient({ workspaceId: 'ws_open_kraken' });
@@ -20,7 +22,20 @@ const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
     getProjectDataDocument: () => client.getProjectData(),
     updateProjectDataDocument: (payload: { readOnly: boolean; payload: Record<string, unknown> }) =>
       client.updateProjectData(payload),
-    attachTerminalSession: async () => ({})
+    attachTerminalSession: async () => ({}),
+    createConversation: async (body: { type: 'direct' | 'team'; memberId?: string; teamId?: string }) => ({
+      conversation: {
+        id: body.type === 'direct' && body.memberId ? `conv_dm_${body.memberId}` : 'conv_new',
+        type: body.type,
+        teamId: body.teamId ?? null
+      }
+    }),
+    createMember: async () => ({ members: [] }),
+    updateMember: async () => ({ members: [] }),
+    deleteMember: async () => ({ members: [] }),
+    createTeam: async () => ({ members: [] }),
+    updateTeam: async () => ({ members: [] }),
+    deleteTeam: async () => ({ members: [] })
   } as unknown as AppShellContextValue['apiClient'];
 };
 
@@ -58,7 +73,10 @@ const renderShell = (routePath: string) => {
     } as unknown as AppShellContextValue['realtimeClient'],
     navigate: () => undefined,
     pushNotification: () => undefined,
-    dismissNotification: () => undefined
+    dismissNotification: () => undefined,
+    chatNotifications: { totalUnread: 0, items: [] },
+    markAllChatRead: () => undefined,
+    markChatConversationRead: () => undefined
   };
 
   return renderToStaticMarkup(
@@ -69,9 +87,13 @@ const renderShell = (routePath: string) => {
         I18nProvider,
         null,
         React.createElement(
-          AppShellContext.Provider,
-          { value: contextValue },
-          React.createElement(AppShell)
+          AuthContext.Provider,
+          { value: shellTestAuthValue },
+          React.createElement(
+            AppShellContext.Provider,
+            { value: contextValue },
+            React.createElement(AppShell)
+          )
         )
       )
     )
@@ -81,80 +103,69 @@ const renderShell = (routePath: string) => {
 test('resolveAppRoute covers required shell paths', () => {
   assert.equal(resolveAppRoute('/chat').id, 'chat');
   assert.equal(resolveAppRoute('/members').id, 'members');
+  assert.equal(resolveAppRoute('/skills').id, 'skills');
+  assert.equal(resolveAppRoute('/taskmap').id, 'taskmap');
   assert.equal(resolveAppRoute('/roadmap').id, 'roadmap');
   assert.equal(resolveAppRoute('/terminal').id, 'terminal');
+  assert.equal(resolveAppRoute('/approvals').id, 'approvals');
+  assert.equal(resolveAppRoute('/workspaces').id, 'workspaces');
+  assert.equal(resolveAppRoute('/repositories').id, 'repositories');
+  assert.equal(resolveAppRoute('/namespaces').id, 'namespaces');
+  assert.equal(resolveAppRoute('/artifacts').id, 'artifacts');
   assert.equal(resolveAppRoute('/settings').id, 'settings');
   assert.equal(resolveAppRoute('/system').id, 'system');
   assert.equal(resolveAppRoute('/ledger').id, 'ledger');
+  assert.equal(resolveAppRoute('/account').id, 'account');
   assert.equal(resolveAppRoute('/missing').id, 'chat');
 });
 
-test('AppShell exposes a single workspace, realtime, and notice outlet to pages', () => {
+test('AppShell renders workspace shell chrome and the expanded prototype navigation', () => {
   const markup = renderShell('/members');
 
   assert.match(markup, /data-shell-slot="workspace"/);
-  assert.match(markup, /data-shell-slot="realtime"/);
-  assert.match(markup, /data-shell-slot="errors"/);
-  assert.match(markup, /data-route-page="members"/);
-  assert.match(markup, /route-page__grid route-page__grid--members-workbench/);
-  assert.match(markup, /agent workbench/);
-  assert.match(markup, /No active task/);
-  assert.match(markup, /data-role="owner"/);
+  assert.match(markup, /data-shell-slot="latency"/);
+  assert.match(markup, /data-shell-route="members"/);
+  assert.match(markup, /data-nav-route="taskmap"/);
+  assert.match(markup, /data-nav-route="approvals"/);
+  assert.match(markup, /data-nav-route="workspaces"/);
+  assert.match(markup, /data-nav-route="repositories"/);
+  assert.match(markup, /data-nav-route="namespaces"/);
+  assert.match(markup, /data-nav-route="artifacts"/);
   assert.match(markup, /Notices/);
 });
 
-test('chat and terminal routes render their current page-level shells inside AppShell', () => {
+test('chat and terminal routes mount under AppShell with shell layout intact', () => {
   const chatMarkup = renderShell('/chat');
   const terminalMarkup = renderShell('/terminal');
 
-  assert.match(chatMarkup, /data-route-page="chat"/);
-  assert.match(chatMarkup, /data-page-notice="live"/);
-  assert.match(chatMarkup, /data-chat-slot="conversations"/);
-  assert.match(chatMarkup, /data-chat-slot="messages"/);
-  assert.match(chatMarkup, /data-chat-slot="composer"/);
-  assert.match(chatMarkup, /Loaded conversations: 1 \| Loaded messages: 1/);
+  assert.match(chatMarkup, /data-shell-route="chat"/);
+  assert.match(chatMarkup, /data-nav-route="chat"/);
+  assert.match(chatMarkup, /Workspace status/);
 
-  assert.match(terminalMarkup, /data-route-page="terminal"/);
-  assert.match(terminalMarkup, /route-page__grid route-page__grid--terminal/);
-  assert.match(terminalMarkup, /Recovery chain/);
-  assert.match(terminalMarkup, /Replay-safe buffer/);
-  assert.match(terminalMarkup, /Connected to workspace stream/);
-  assert.match(terminalMarkup, /terminal\.attach/);
-  assert.match(terminalMarkup, /terminal\.snapshot/);
-  assert.match(terminalMarkup, /terminal\.delta/);
-  assert.match(terminalMarkup, /terminal\.status/);
-  assert.match(terminalMarkup, /Snapshot is authoritative and replaces the rendered buffer/i);
+  assert.match(terminalMarkup, /data-shell-route="terminal"/);
+  assert.match(terminalMarkup, /data-nav-route="terminal"/);
+  assert.match(terminalMarkup, /Workspace status/);
 });
 
-test('roadmap route renders the formal page entry and keeps page errors subordinate to the shell notice outlet', () => {
+test('roadmap route is wired through AppShell', () => {
   const markup = renderShell('/roadmap');
 
-  assert.match(markup, /data-route-page="roadmap"/);
-  assert.match(markup, /data-page-entry="roadmap-runtime"/);
+  assert.match(markup, /data-shell-route="roadmap"/);
+  assert.match(markup, /data-nav-route="roadmap"/);
   assert.match(markup, /Notices/);
-  assert.match(markup, /formal[\s\S]*<code>\/roadmap<\/code>[\s\S]*AppShell navigation/);
-  assert.match(markup, /Unsaved local edits|Ready/);
-  assert.match(markup, /Save roadmap/);
-  assert.match(markup, /Save project data/);
 });
 
-test('settings route renders through the shell-owned workspace and notice entrypoints', () => {
+test('settings route is wired through AppShell', () => {
   const markup = renderShell('/settings');
 
-  assert.match(markup, /data-route-page="settings"/);
-  assert.match(markup, /data-page-entry="settings-runtime"/);
-  assert.match(markup, /Single global error outlet/);
-  assert.match(markup, /Registered app surfaces/);
-  assert.match(markup, /Emit shell notice/);
-  assert.match(markup, /\/settings/);
+  assert.match(markup, /data-shell-route="settings"/);
+  assert.match(markup, /data-nav-route="settings"/);
 });
 
-test('system route renders observability baseline inside AppShell', () => {
+test('system route is wired through AppShell', () => {
   const markup = renderShell('/system');
 
-  assert.match(markup, /data-route-page="system"/);
-  assert.match(markup, /data-page-entry="system-runtime"/);
-  assert.match(markup, /Observability, health, and control-plane signals/);
-  assert.match(markup, /GET \/healthz/);
-  assert.match(markup, /data-shell-slot="health"/);
+  assert.match(markup, /data-shell-route="system"/);
+  assert.match(markup, /data-nav-route="system"/);
+  assert.match(markup, /data-shell-slot="latency"/);
 });

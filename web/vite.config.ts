@@ -1,11 +1,14 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 
 const webSrc = path.dirname(fileURLToPath(import.meta.url));
 
-const viteConfig = {
+export default defineConfig({
   appType: 'spa',
   base: '/',
+  plugins: [tailwindcss()],
   resolve: {
     alias: {
       '@': path.join(webSrc, 'src')
@@ -15,7 +18,12 @@ const viteConfig = {
   },
   css: {
     modules: {
-      localsConvention: 'dashesOnly' as const
+      /**
+       * `dashesOnly` made Vite emit only camelCase keys (`ledgerPage`) while the app uses
+       * bracket keys (`styles['ledger-page']`), so classes were undefined in `vite` dev — filters looked unstyled.
+       * `dashes` keeps original dashed names in the import object (matches esbuild production build).
+       */
+      localsConvention: 'dashes' as const
     }
   },
   server: {
@@ -30,6 +38,4 @@ const viteConfig = {
       }
     }
   }
-};
-
-export default viteConfig;
+});

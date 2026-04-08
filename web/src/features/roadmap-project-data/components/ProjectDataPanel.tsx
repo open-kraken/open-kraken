@@ -28,17 +28,22 @@ export const ProjectDataPanel = ({
   const detailText = feedback.detailKey ? t(feedback.detailKey) : translatePanelDetail(feedback.detail, t);
 
   return (
-    <section className="roadmap-project-panel" data-tone={feedback.tone} aria-label="project-data-panel">
+    <section
+      className="roadmap-project-panel roadmap-project-panel--data"
+      data-tone={feedback.tone}
+      aria-label="project-data-panel"
+    >
       <header className="roadmap-project-panel__header">
-        <div>
+        <div className="roadmap-project-panel__title-block">
           <p className="roadmap-project-panel__eyebrow">{t('projectDataPanel.eyebrow')}</p>
           <h2 className="roadmap-project-panel__title">{t('projectDataPanel.title')}</h2>
+          <p className="roadmap-project-panel__subtitle">{t('projectDataPanel.subtitle')}</p>
         </div>
         <div className="roadmap-project-panel__actions">
-          <button type="button" onClick={onReload} disabled={feedback.disableReload}>
+          <button type="button" data-action="reload" onClick={onReload} disabled={feedback.disableReload}>
             {t('projectDataPanel.reload')}
           </button>
-          <button type="button" onClick={onSave} disabled={feedback.disableSave}>
+          <button type="button" data-action="save" onClick={onSave} disabled={feedback.disableSave}>
             {t('projectDataPanel.save')}
           </button>
         </div>

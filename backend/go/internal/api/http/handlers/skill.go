@@ -18,6 +18,42 @@ func NewSkillHandler(svc *skill.Service, membersPrefix string) *SkillHandler {
 	return &SkillHandler{svc: svc, membersPrefix: membersPrefix}
 }
 
+// HandleSkillImport handles POST /api/skills/import with conflict resolution.
+func (h *SkillHandler) HandleSkillImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Strategy string             `json:"strategy"` // "merge", "replace", "validate"
+		Entries  []skill.ImportEntry `json:"entries"`
+	}
+	if !decodeJSON(r, &body, w) {
+		return
+	}
+	strategy := skill.ImportStrategy(body.Strategy)
+	if strategy == "" {
+		strategy = skill.ImportStrategyValidate
+	}
+	switch strategy {
+	case skill.ImportStrategyMerge, skill.ImportStrategyReplace, skill.ImportStrategyValidate:
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "strategy must be merge, replace, or validate"})
+		return
+	}
+	result, err := h.svc.ImportSkills(r.Context(), body.Entries, strategy)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"applied":   result.Applied,
+		"skipped":   result.Skipped,
+		"conflicts": result.Conflicts,
+		"dryRun":    result.DryRun,
+	})
+}
+
 // HandleSkills handles GET /api/skills.
 func (h *SkillHandler) HandleSkills(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -64,11 +100,12 @@ func (h *SkillHandler) handleBindSkills(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	ctx := r.Context()
-	for _, name := range body.Skills {
-		if err := h.svc.BindSkill(ctx, memberID, name); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
+	if body.Skills == nil {
+		body.Skills = []string{}
+	}
+	if err := h.svc.ReplaceMemberSkills(ctx, memberID, body.Skills); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
 	}
 	entries, err := h.svc.ListMemberSkills(ctx, memberID)
 	if err != nil {

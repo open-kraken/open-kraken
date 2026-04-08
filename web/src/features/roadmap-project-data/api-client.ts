@@ -7,6 +7,11 @@ export type RoadmapTaskItem = {
   status: RoadmapTaskStatus;
   pinned: boolean;
   assigneeId?: string | null;
+  teamId?: string | null;
+  dependencies?: string[];
+  startedAt?: string | null;
+  dueAt?: string | null;
+  completedAt?: string | null;
 };
 
 export type RoadmapDocument = {
@@ -62,19 +67,27 @@ const compareTasks = (left: RoadmapTaskItem, right: RoadmapTaskItem) => {
 export const sortRoadmapTasks = (tasks: RoadmapTaskItem[]): RoadmapTaskItem[] => [...tasks].sort(compareTasks);
 
 export const normalizeRoadmapDocument = (response: RoadmapResponse): RoadmapDocument => {
-  const tasks = (response.roadmap.tasks ?? []).map((task, index) => ({
-    id: String(task.id ?? `task_${index + 1}`),
-    number:
-      typeof task.number === 'number'
-        ? task.number
-        : typeof task.order === 'number'
-          ? task.order
-          : index + 1,
-    title: String(task.title ?? ''),
-    status: String(task.status ?? 'todo'),
-    pinned: Boolean(task.pinned),
-    assigneeId: (task as Record<string, unknown>).assigneeId as string | null ?? null
-  }));
+  const tasks = (response.roadmap.tasks ?? []).map((task, index) => {
+    const raw = task as Record<string, unknown>;
+    return {
+      id: String(task.id ?? `task_${index + 1}`),
+      number:
+        typeof task.number === 'number'
+          ? task.number
+          : typeof task.order === 'number'
+            ? task.order
+            : index + 1,
+      title: String(task.title ?? ''),
+      status: String(task.status ?? 'todo'),
+      pinned: Boolean(task.pinned),
+      assigneeId: (raw.assigneeId as string) || null,
+      teamId: (raw.teamId as string) || null,
+      dependencies: Array.isArray(raw.dependencies) ? (raw.dependencies as string[]) : [],
+      startedAt: (raw.startedAt as string) || null,
+      dueAt: (raw.dueAt as string) || null,
+      completedAt: (raw.completedAt as string) || null,
+    };
+  });
 
   return {
     objective: String(response.roadmap.objective ?? ''),

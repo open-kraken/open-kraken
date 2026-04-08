@@ -119,15 +119,15 @@ export const HealthToolbarCard = () => {
 
   return (
     <div
-      className="app-shell__toolbar-chip app-shell__toolbar-chip--health"
+      className="app-shell__statusbar-chip app-shell__statusbar-chip--health"
       data-shell-slot="health"
       data-health-phase={phase}
       data-health-tone={tone}
       title={detail}
     >
       <span className="sr-only">{t('health.label')}</span>
-      <span className="app-shell__toolbar-health-dot" data-tone={tone} aria-hidden />
-      <span className="app-shell__toolbar-chip-health-text">{summary}</span>
+      <span className="app-shell__statusbar-dot" data-tone={tone} aria-hidden />
+      <span className="app-shell__statusbar-chip-status">{summary}</span>
     </div>
   );
 };

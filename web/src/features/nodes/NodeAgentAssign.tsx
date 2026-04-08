@@ -5,8 +5,10 @@
  */
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { Node } from '@/types/node';
+import styles from './nodes-feature.module.css';
 
 export type AgentOption = {
   memberId: string;
@@ -61,41 +63,41 @@ export const NodeAgentAssign = ({ node, allAgents, onAssign, onUnassign, onClose
     }
   };
 
-  return (
+  const dialog = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="node-assign-dialog-title"
-      className="node-assign-backdrop"
+      className={styles['node-assign-backdrop']}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="node-assign-dialog">
-        <div className="node-assign-dialog__header">
-          <h2 id="node-assign-dialog-title" className="node-assign-dialog__title">
+      <div className={styles['node-assign-dialog']}>
+        <div className={styles['node-assign-dialog__header']}>
+          <h2 id="node-assign-dialog-title" className={styles['node-assign-dialog__title']}>
             {t('nodeAssign.title', { hostname: node.hostname })}
           </h2>
-          <button type="button" aria-label={t('nodeAssign.close')} className="node-assign-dialog__close" onClick={onClose}>
+          <button type="button" aria-label={t('nodeAssign.close')} className={styles['node-assign-dialog__close']} onClick={onClose}>
             ✕
           </button>
         </div>
 
         {allAgents.length === 0 ? (
-          <p className="node-assign-dialog__empty">{t('nodeAssign.empty')}</p>
+          <p className={styles['node-assign-dialog__empty']}>{t('nodeAssign.empty')}</p>
         ) : (
-          <ul className="node-assign-dialog__list">
+          <ul className={styles['node-assign-dialog__list']}>
             {allAgents.map((agent) => {
               const isAssigned = node.assignedAgents.includes(agent.memberId);
               const isPending = pendingIds.has(agent.memberId);
 
               return (
-                <li key={agent.memberId} className="node-assign-dialog__row">
-                  <span className="node-assign-dialog__name">{agent.displayName}</span>
+                <li key={agent.memberId} className={styles['node-assign-dialog__row']}>
+                  <span className={styles['node-assign-dialog__name']}>{agent.displayName}</span>
                   <button
                     type="button"
                     disabled={isPending}
-                    className={`node-assign-dialog__action ${isAssigned ? 'node-assign-dialog__action--remove' : 'node-assign-dialog__action--add'}`}
+                    className={`${styles['node-assign-dialog__action']} ${isAssigned ? styles['node-assign-dialog__action--remove'] : styles['node-assign-dialog__action--add']}`}
                     onClick={() => (isAssigned ? handleUnassign(agent.memberId) : handleAssign(agent.memberId))}
                   >
                     {isPending ? t('nodeAssign.pending') : isAssigned ? t('nodeAssign.remove') : t('nodeAssign.assign')}
@@ -106,12 +108,16 @@ export const NodeAgentAssign = ({ node, allAgents, onAssign, onUnassign, onClose
           </ul>
         )}
 
-        <div className="node-assign-dialog__footer">
-          <button type="button" className="node-assign-dialog__done" onClick={onClose}>
+        <div className={styles['node-assign-dialog__footer']}>
+          <button type="button" className={styles['node-assign-dialog__done']} onClick={onClose}>
             Done
           </button>
         </div>
       </div>
     </div>
   );
+
+  // Portal to document.body so the backdrop covers the entire viewport,
+  // regardless of parent overflow/positioning context.
+  return createPortal(dialog, document.body);
 };

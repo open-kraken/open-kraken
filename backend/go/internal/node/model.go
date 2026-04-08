@@ -17,6 +17,10 @@ var (
 	ErrInvalidHostname = errors.New("node: hostname is required")
 	// ErrInvalidType is returned when NodeType is not a known value.
 	ErrInvalidType = errors.New("node: type must be k8s_pod or bare_metal")
+	// ErrHostnameConflict is returned when a node with the same hostname already exists.
+	ErrHostnameConflict = errors.New("node: hostname already registered")
+	// ErrMaxAgentsReached is returned when a node has reached its agent capacity.
+	ErrMaxAgentsReached = errors.New("node: maximum agent capacity reached")
 )
 
 // NodeStatus represents the operational state of a node.
@@ -52,8 +56,33 @@ type Node struct {
 	// WorkspaceID scopes this node to a workspace for event isolation.
 	// Defaults to the server's default workspace when omitted at registration.
 	WorkspaceID     string
+	// MaxAgents is the maximum number of agents that can be assigned to this node.
+	// 0 means unlimited.
+	MaxAgents       int
+	// Agents tracks the IDs of agents currently assigned to this node.
+	Agents          []string
 	RegisteredAt    time.Time
 	LastHeartbeatAt time.Time
+}
+
+// AgentCount returns the number of agents currently assigned.
+func (n Node) AgentCount() int {
+	return len(n.Agents)
+}
+
+// HasAgent reports whether the given agentID is assigned to this node.
+func (n Node) HasAgent(agentID string) bool {
+	for _, id := range n.Agents {
+		if id == agentID {
+			return true
+		}
+	}
+	return false
+}
+
+// CanAcceptAgent reports whether the node can accept one more agent.
+func (n Node) CanAcceptAgent() bool {
+	return n.MaxAgents == 0 || len(n.Agents) < n.MaxAgents
 }
 
 // Validate returns a non-nil error when required fields are absent or invalid.

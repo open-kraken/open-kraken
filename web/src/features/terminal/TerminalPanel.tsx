@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { selectTerminalPanelViewModel } from './terminal-store.ts';
 import type { TerminalPanelState } from './terminal-types.ts';
+import { XtermRenderer } from './XtermRenderer';
 
 export type TerminalPanelProps = {
   state: TerminalPanelState;
@@ -9,6 +10,8 @@ export type TerminalPanelProps = {
   onRetry: () => void;
   onToggleFollow: () => void;
   onSendInput?: (data: string) => void;
+  onResize?: (cols: number, rows: number) => void;
+  onAckBytes?: (n: number) => void;
 };
 
 const runtimeLabel = (raw: string, t: (k: string) => string) => {
@@ -26,7 +29,9 @@ export const TerminalPanel = ({
   onAttach,
   onRetry,
   onToggleFollow,
-  onSendInput
+  onSendInput,
+  onResize,
+  onAckBytes,
 }: TerminalPanelProps) => {
   const { t } = useI18n();
   const view = selectTerminalPanelViewModel(state);
@@ -59,7 +64,7 @@ export const TerminalPanel = ({
   const handleInputSubmit = useCallback(() => {
     const data = inputValue;
     if (!data || !onSendInput) return;
-    onSendInput(data);
+    onSendInput(data + '\r');
     setInputValue('');
     inputRef.current?.focus();
   }, [inputValue, onSendInput]);
@@ -71,44 +76,65 @@ export const TerminalPanel = ({
     }
   }, [handleInputSubmit]);
 
+  // Forward xterm user input to the terminal session.
+  const handleXtermInput = useCallback((data: string) => {
+    onSendInput?.(data);
+  }, [onSendInput]);
+
   return (
     <section
+      className="terminal-panel"
       data-ui-state={view.uiState}
       data-follow-output={String(view.followOutput)}
+      data-intelligence-status={view.intelligenceStatus}
       aria-label="terminal-panel"
     >
-      <header>
-        <div>
-          <h2>{title}</h2>
-          <p>{body}</p>
-          <p data-role="session-identity">
+      <header className="terminal-panel__header">
+        <div className="terminal-panel__meta">
+          <h2 className="terminal-panel__title">{title}</h2>
+          <p className="terminal-panel__body">{body}</p>
+          <p className="terminal-panel__session-id" data-role="session-identity">
             {state.session
               ? `${state.session.terminalId} / ${state.session.memberId}`
               : t('terminalPanel.noSession')}
           </p>
         </div>
-        <span data-role="status-badge">{statusBadge}</span>
+        <div className="terminal-panel__controls">
+          <span className="terminal-panel__status-badge" data-role="status-badge" data-intelligence-status={view.intelligenceStatus}>
+            {statusBadge}
+          </span>
+          <button type="button" className="terminal-panel__btn" onClick={onPrimaryAction}>
+            {primaryLabel}
+          </button>
+          <button type="button" className="terminal-panel__btn terminal-panel__btn--subtle" onClick={onToggleFollow}>
+            {followHint}
+          </button>
+        </div>
       </header>
 
-      <div>
-        <button type="button" onClick={onPrimaryAction}>
-          {primaryLabel}
-        </button>
-        <button type="button" onClick={onToggleFollow}>
-          {followHint}
-        </button>
-      </div>
+      {view.errorMessage ? (
+        <p className="terminal-panel__error" data-role="terminal-error">{view.errorMessage}</p>
+      ) : null}
 
-      {view.errorMessage ? <p data-role="terminal-error">{view.errorMessage}</p> : null}
-
+      {/* Use XtermRenderer for real terminal output */}
       {view.showOutput ? (
-        <pre data-role="terminal-output">{view.outputText}</pre>
+        <XtermRenderer
+          outputText={view.outputText}
+          followOutput={view.followOutput}
+          onInput={handleXtermInput}
+          onResize={onResize}
+          onAckBytes={onAckBytes}
+          intelligenceStatus={view.intelligenceStatus}
+          shellReady={view.shellReady}
+        />
       ) : (
-        <div data-role="terminal-empty">{body}</div>
+        <div className="terminal-panel__empty" data-role="terminal-empty">
+          <p>{body}</p>
+        </div>
       )}
 
-      {/* Terminal input — visible when session is attached and running */}
-      {onSendInput && (
+      {/* Fallback text input for non-PTY mode */}
+      {onSendInput && !view.showOutput && (
         <div className="terminal-panel__input" data-role="terminal-input">
           <span className="terminal-panel__prompt">&gt;</span>
           <input

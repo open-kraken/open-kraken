@@ -49,6 +49,96 @@ func (s *Service) UnbindSkill(ctx context.Context, memberID, skillName string) e
 	return nil
 }
 
+// ReplaceMemberSkills sets the full binding list for a member (replaces any previous list).
+func (s *Service) ReplaceMemberSkills(ctx context.Context, memberID string, skillNames []string) error {
+	if memberID == "" {
+		return fmt.Errorf("skill replace: memberID is required")
+	}
+	if err := s.binding.SetSkills(ctx, memberID, skillNames); err != nil {
+		return fmt.Errorf("skill replace: %w", err)
+	}
+	return nil
+}
+
+// ImportSkills imports member-skill bindings with the given strategy.
+// Unknown skills (not in catalog) are reported as conflicts.
+func (s *Service) ImportSkills(ctx context.Context, entries []ImportEntry, strategy ImportStrategy) (ImportResult, error) {
+	// Build catalog index.
+	catalog, err := s.loader.Load()
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("skill import: load catalog: %w", err)
+	}
+	catalogSet := make(map[string]bool, len(catalog))
+	for _, e := range catalog {
+		catalogSet[e.Name] = true
+	}
+
+	result := ImportResult{DryRun: strategy == ImportStrategyValidate}
+	var conflicts []ImportConflict
+
+	for _, entry := range entries {
+		if entry.MemberID == "" {
+			continue
+		}
+
+		// Validate all skills against catalog.
+		validSkills := make([]string, 0, len(entry.SkillNames))
+		for _, name := range entry.SkillNames {
+			if !catalogSet[name] {
+				conflicts = append(conflicts, ImportConflict{
+					MemberID:  entry.MemberID,
+					SkillName: name,
+					Reason:    "unknown_skill",
+				})
+				result.Skipped++
+				continue
+			}
+			validSkills = append(validSkills, name)
+		}
+
+		if strategy == ImportStrategyValidate {
+			result.Applied += len(validSkills)
+			continue
+		}
+
+		switch strategy {
+		case ImportStrategyReplace:
+			if err := s.binding.SetSkills(ctx, entry.MemberID, validSkills); err != nil {
+				return result, fmt.Errorf("skill import replace: %w", err)
+			}
+			result.Applied += len(validSkills)
+
+		case ImportStrategyMerge:
+			existing, _ := s.binding.ListByMember(ctx, entry.MemberID)
+			existingSet := make(map[string]bool, len(existing))
+			for _, name := range existing {
+				existingSet[name] = true
+			}
+			for _, name := range validSkills {
+				if existingSet[name] {
+					conflicts = append(conflicts, ImportConflict{
+						MemberID:  entry.MemberID,
+						SkillName: name,
+						Reason:    "already_bound",
+					})
+					result.Skipped++
+					continue
+				}
+				if err := s.binding.Bind(ctx, entry.MemberID, name); err != nil {
+					return result, fmt.Errorf("skill import merge bind: %w", err)
+				}
+				result.Applied++
+			}
+		}
+	}
+
+	result.Conflicts = conflicts
+	if result.Conflicts == nil {
+		result.Conflicts = []ImportConflict{}
+	}
+	return result, nil
+}
+
 // ListMemberSkills returns all skills assigned to a member, enriched with
 // the catalog metadata when available.
 func (s *Service) ListMemberSkills(ctx context.Context, memberID string) ([]SkillEntry, error) {

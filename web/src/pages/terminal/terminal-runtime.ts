@@ -12,6 +12,7 @@ import type {
   TerminalCanonicalRealtimeEvent,
   TerminalPanelState
 } from '@/features/terminal/terminal-types.ts';
+import { resolveOrCreateMemberSession } from '@/api/terminal';
 
 type TerminalRuntimeApi = {
   attachTerminal: (terminalId: string) => Promise<TerminalAttachResult>;
@@ -72,7 +73,7 @@ type TerminalEnvelopePayload = {
   payload?: Record<string, unknown>;
 };
 
-const defaultTerminalId = 'term_owner_1';
+const defaultTerminalId = '';
 
 const getTerminalRuntimeApi = (apiClient: unknown): TerminalRuntimeApi => {
   if (!apiClient || typeof apiClient !== 'object') {
@@ -227,11 +228,18 @@ export const createTerminalPanelController = ({
 }: TerminalRuntimeDeps): TerminalPanelController => {
   const runtimeApi = getTerminalRuntimeApi(apiClient);
   const store = createTerminalStore({
-    attachSession: (terminalId) => runtimeApi.attachTerminal(terminalId)
+    attachSession: async (terminalId) => {
+      // term_owner_1 → resolve memberId "owner_1" to a real backend session ID
+      const memberId = terminalId.startsWith('term_') ? terminalId.slice(5) : terminalId;
+      const sessionId = await resolveOrCreateMemberSession('ws_open_kraken', memberId);
+      return runtimeApi.attachTerminal(sessionId);
+    }
   });
 
   const requestResync = async (terminalId: string, reason: string) => {
-    const result = await runtimeApi.attachTerminal(terminalId);
+    const memberId = terminalId.startsWith('term_') ? terminalId.slice(5) : terminalId;
+    const sessionId = await resolveOrCreateMemberSession('ws_open_kraken', memberId);
+    const result = await runtimeApi.attachTerminal(sessionId);
     const current = store.getState();
     pushNotification({
       tone: 'warning',

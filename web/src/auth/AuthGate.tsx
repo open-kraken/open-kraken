@@ -1,4 +1,5 @@
 import type { PropsWithChildren } from 'react';
+import { useI18n } from '@/i18n/I18nProvider';
 import { useAuth } from './AuthProvider';
 import { LoginPage } from './LoginPage';
 
@@ -8,11 +9,12 @@ import { LoginPage } from './LoginPage';
  */
 export const AuthGate = ({ children }: PropsWithChildren) => {
   const { state } = useAuth();
+  const { t } = useI18n();
 
   if (state.status === 'loading') {
     return (
-      <div className="login-page">
-        <p style={{ color: 'var(--app-text-muted)', fontSize: '0.875rem' }}>Restoring session...</p>
+      <div className="login-page login-page--session">
+        <p className="login-page__session-hint">{t('shell.sessionRestoring')}</p>
       </div>
     );
   }

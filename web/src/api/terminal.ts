@@ -52,6 +52,25 @@ export const listTerminalSessions = async (workspaceId: string): Promise<Termina
   return { items: items.map(mapSession) };
 };
 
+/** GET /terminal/member-session — resolve memberId to sessionId; create if needed. */
+export const resolveOrCreateMemberSession = async (workspaceId: string, memberId: string): Promise<string> => {
+  const http = getHttpClient();
+  const result = await http.get<{ sessionId: string; found: boolean }>(
+    `terminal/member-session?workspaceId=${encodeURIComponent(workspaceId)}&memberId=${encodeURIComponent(memberId)}`
+  );
+  if (result.found && result.sessionId) {
+    return result.sessionId;
+  }
+  // No session exists — create one
+  const created = await http.post<{ sessionId: string }>('terminal/sessions', {
+    workspaceId,
+    memberId,
+    terminalType: 'pty',
+    command: 'bash'
+  });
+  return created.sessionId;
+};
+
 /** POST /terminal/sessions/{sessionId}/input — send input to terminal. */
 export const sendTerminalInput = async (sessionId: string, data: string): Promise<void> => {
   const http = getHttpClient();

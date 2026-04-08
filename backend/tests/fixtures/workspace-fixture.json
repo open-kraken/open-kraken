@@ -89,6 +89,31 @@
       "lastMessagePreview": "Terminal session attached.",
       "isDefault": true,
       "unreadCount": 1
+    },
+    {
+      "id": "conv_dm_assistant_1",
+      "type": "direct",
+      "memberIds": ["owner_1", "assistant_1"],
+      "customName": "Planner",
+      "pinned": false,
+      "muted": false,
+      "lastMessageAt": 1743667200000,
+      "lastMessagePreview": "Ping me when the shell is green.",
+      "isDefault": false,
+      "unreadCount": 0
+    },
+    {
+      "id": "conv_team_platform",
+      "type": "team",
+      "teamId": "team_platform",
+      "memberIds": ["owner_1", "assistant_1"],
+      "customName": "Platform",
+      "pinned": false,
+      "muted": false,
+      "lastMessageAt": 1743667200000,
+      "lastMessagePreview": "Stand-up in #general.",
+      "isDefault": false,
+      "unreadCount": 0
     }
   ],
   "messages": {
@@ -99,6 +124,32 @@
         "content": {
           "type": "text",
           "text": "open-kraken mock baseline is ready."
+        },
+        "createdAt": 1743667200000,
+        "isAi": false,
+        "status": "sent"
+      }
+    ],
+    "conv_dm_assistant_1": [
+      {
+        "id": "msg_dm_1",
+        "senderId": "assistant_1",
+        "content": {
+          "type": "text",
+          "text": "Hi @owner_1 — ready when you are."
+        },
+        "createdAt": 1743667200000,
+        "isAi": false,
+        "status": "sent"
+      }
+    ],
+    "conv_team_platform": [
+      {
+        "id": "msg_tp_1",
+        "senderId": "owner_1",
+        "content": {
+          "type": "text",
+          "text": "Team @assistant_1 please review the migration checklist."
         },
         "createdAt": 1743667200000,
         "isAi": false,

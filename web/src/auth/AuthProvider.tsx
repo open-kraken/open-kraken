@@ -3,7 +3,7 @@ import type { AuthAccount, AuthSession, AuthState } from './auth-types';
 import { fetchMe, login as apiLogin } from './auth-api';
 import { clearSession, loadSession, saveSession } from './auth-store';
 
-type AuthContextValue = {
+export type AuthContextValue = {
   state: AuthState;
   login: (memberId: string, password: string) => Promise<void>;
   logout: () => void;
@@ -13,7 +13,7 @@ type AuthContextValue = {
   token: string | null;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);

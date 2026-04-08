@@ -1,43 +1,43 @@
 # scripts
 
-## 职责边界
+## Scope
 
-- 承载统一开发入口、验证脚本、mock 服务、迁移辅助工具、发布辅助脚本和 CI 可复用命令。
-- 这里是跨目录执行入口的唯一归口；不要把 shell/js/python 启动脚本散落到仓库根目录。
-- 业务实现仍应留在 `backend/go` 或 `web`，本目录只负责编排和自动化。
+- Canonical dev entrypoints, verification scripts, mock services, migration helpers, release helpers, and CI-reusable commands.
+- Single home for cross-directory execution entrypoints; do not scatter shell/js/python launchers at the repository root.
+- Product code stays in `backend/go` or `web`; this directory only orchestrates and automates.
 
-## 责任成员
+## Ownership
 
-- 联调脚手架、mock/fixture、部署运行时、迁移工具和统一验证入口相关成员会在这里落代码。
+- Integration scaffolding, mocks/fixtures, deployment/runtime helpers, migration tooling, and unified verification entrypoints.
 
-## 依赖方向
+## Dependency direction
 
-- 可以调用 `backend/go`、`web`、`docs` 和 `e2e` 中已存在的实现或配置。
-- 会被开发者、本地调试流程和 CI 作为统一入口使用。
-- 不应被产品运行时代码反向依赖为核心业务库。
+- May invoke implementations or configuration from `backend/go`, `web`, `docs`, and `e2e`.
+- Used by developers, local workflows, and CI as unified entrypoints.
+- Must not be depended on by product runtime code as a core business library.
 
-## 启动入口
+## Entrypoints
 
-- 当前已存在 mock 服务入口：`node scripts/mock-server/server.mjs`
-- 当前统一迁移 bootstrap 入口：`bash scripts/bootstrap-migration.sh`
-- 当前统一 Go toolchain 检测入口：`bash scripts/check-go-toolchain.sh`
-- 当前统一开发启动入口：`bash scripts/dev-up.sh`
-- 当前统一开发停止入口：`bash scripts/dev-down.sh`
-- 当前统一全量验证入口：`bash scripts/verify-all.sh`
-- 当前 runtime 专项验证入口：`bash scripts/verify-runtime.sh`
-- 当前非 Git 根文件审计入口：`bash scripts/audit-changes.sh --summary`
-- 当前非 Git 根人工复核入口：`bash scripts/audit-changes.sh --review`
+- Mock server: `node scripts/mock-server/server.mjs`
+- Migration bootstrap: `bash scripts/bootstrap-migration.sh`
+- Go toolchain check: `bash scripts/check-go-toolchain.sh`
+- Dev start: `bash scripts/dev-up.sh`
+- Dev stop: `bash scripts/dev-down.sh`
+- Full verification: `bash scripts/verify-all.sh`
+- Runtime verification: `bash scripts/verify-runtime.sh`
+- Non–git-root inventory: `bash scripts/audit-changes.sh --summary`
+- Non–git-root manual review: `bash scripts/audit-changes.sh --review`
 
-## Go 环境约束
+## Go environment rules
 
-- 所有仓库级 Go 命令都必须通过 `scripts/lib/go-env.sh` 解析二进制并清理 shell 注入的 `GOROOT`/`GOPATH`/`GOTOOLDIR`。
-- 不要再要求调用者手工写 `GOROOT=/... go test`；统一入口应自行消化本机环境漂移。
-- `scripts/check-go-toolchain.sh` 是当前唯一的 Go toolchain 检测与报错入口；`scripts/bootstrap-migration.sh --check` 与 `scripts/verify-runtime.sh` 都委托给它。
-- Go 环境漂移的事实口径只允许通过 `bash scripts/check-go-toolchain.sh`、`npm run test:go`、`npm run test:go:workspace`、`npm run test:go:projectdata` 这类仓库入口报告；不要把裸 `go test` 重新写回 README、运行手册或 completion report。
-- 对持久化专项只允许引用 `cd /Users/claire/IdeaProjects/open-kraken && npm run test:go:projectdata`，不要再附带显式 `GOROOT` 或裸 `go test` 命令作为“等价入口”。
+- Repository-level Go commands must resolve the binary via `scripts/lib/go-env.sh` and clear shell-injected `GOROOT` / `GOPATH` / `GOTOOLDIR`.
+- Do not require callers to hand-set `GOROOT=/... go test`; unified entrypoints absorb local drift.
+- `scripts/check-go-toolchain.sh` is the canonical toolchain detection and error reporting entry; `scripts/bootstrap-migration.sh --check` and `scripts/verify-runtime.sh` delegate to it.
+- Report toolchain drift only through repository gates such as `bash scripts/check-go-toolchain.sh`, `npm run test:go`, `npm run test:go:workspace`, `npm run test:go:projectdata`; do not document bare `go test` as an equivalent gate in READMEs or runbooks.
+- For projectdata persistence, reference `npm run test:go:projectdata` from the repository root without adding explicit `GOROOT` or bare `go test` as “equivalent” commands.
 
-## 审计约束
+## Audit rules
 
-- open-kraken 不是 Git 根，不能把 `git status` 当作默认变更审计入口。
-- 建议先运行 `bash scripts/audit-changes.sh --summary` 获取当前文件清单，再运行 `bash scripts/audit-changes.sh --review` 判断是否需要人工复核。
-- `--review` 以 exit code `20` 标记必须人工复核，当前规则覆盖 `.env`、`.DS_Store`、`.idea/*` 与 `.open-kraken-run/backend.log`。
+- open-kraken may not be a git root; do not rely on `git status` as the default change audit.
+- Run `bash scripts/audit-changes.sh --summary` for inventory, then `bash scripts/audit-changes.sh --review` when human review is needed.
+- `--review` exits `20` when review is required (e.g. `.env`, `.DS_Store`, `.idea/*`, `.open-kraken-run/backend.log`).

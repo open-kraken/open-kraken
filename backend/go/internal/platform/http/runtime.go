@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"open-kraken/backend/go/internal/observability"
 	runtimecfg "open-kraken/backend/go/internal/platform/runtime"
 )
 
@@ -46,6 +47,9 @@ func NewRuntimeHandler(cfg runtimecfg.Config, apiHandler http.Handler) http.Hand
 
 	// Access log + request ID (outermost).
 	handler = WithRequestContext(WithAccessLog(cfg.ServiceName, handler))
+
+	// OpenTelemetry HTTP spans (Langfuse OTLP) when InitTracer succeeded.
+	handler = observability.WrapHTTP(handler, observability.HTTPTracingEnabled())
 
 	return handler
 }

@@ -36,6 +36,13 @@ type Config struct {
 	JWTSecret string
 	// RateLimitRPS is the per-IP rate limit in requests per second. 0 disables.
 	RateLimitRPS int
+	// OTELTracesEndpoint is the full OTLP/HTTP URL for traces (e.g. Langfuse …/api/public/otel/v1/traces).
+	OTELTracesEndpoint string
+	// LangfusePublicKey and LangfuseSecretKey are used for Basic auth on the OTLP exporter (server-side only).
+	LangfusePublicKey string
+	LangfuseSecretKey string
+	// TracingEnabled is true when endpoint and both Langfuse keys are non-empty (export to Langfuse via OTLP).
+	TracingEnabled bool
 }
 
 func Load() (Config, error) {
@@ -53,6 +60,14 @@ func Load() (Config, error) {
 	cfg.WSAllowedOrigins = splitComma(os.Getenv("OPEN_KRAKEN_WS_ALLOWED_ORIGINS"))
 	cfg.JWTSecret = os.Getenv("OPEN_KRAKEN_JWT_SECRET")
 	cfg.RateLimitRPS = parseIntEnv("OPEN_KRAKEN_RATE_LIMIT_RPS", 0)
+
+	cfg.OTELTracesEndpoint = strings.TrimSpace(firstNonEmpty(
+		os.Getenv("OPEN_KRAKEN_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"),
+		os.Getenv("OPEN_KRAKEN_OTEL_EXPORTER_OTLP_ENDPOINT"),
+	))
+	cfg.LangfusePublicKey = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_LANGFUSE_PUBLIC_KEY"))
+	cfg.LangfuseSecretKey = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_LANGFUSE_SECRET_KEY"))
+	cfg.TracingEnabled = cfg.OTELTracesEndpoint != "" && cfg.LangfusePublicKey != "" && cfg.LangfuseSecretKey != ""
 
 	if cfg.APIBasePath == cfg.WSPath {
 		return Config{}, fmt.Errorf("OPEN_KRAKEN_API_BASE_PATH and OPEN_KRAKEN_WS_PATH must be distinct")

@@ -1,0 +1,291 @@
+/* ═══════════════════════════════════════════════════════════════
+   Page Panels — Elevated visual treatment for Skills, System,
+   Roadmap, and other panel-based pages.
+
+   Reference: Ledger page gradient callouts + Vercel panel design.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Panel Elevation ─────────────────────────────────────────── */
+
+.route-page__panel {
+  padding: var(--app-space-5);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-card);
+  background: var(--app-surface-strong);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.route-page__panel:hover {
+  border-color: var(--app-border-strong);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+/* Panel header — consistent across all pages */
+.route-page__panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--app-space-4);
+  margin-bottom: var(--app-space-4);
+}
+
+.route-page__panel-header h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--app-text-strong);
+  letter-spacing: -0.01em;
+}
+
+.route-page__panel-header .page-eyebrow {
+  margin: 0 0 2px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--app-accent);
+}
+
+/* Panel refresh button */
+.route-page__panel-refresh {
+  padding: var(--app-space-1) var(--app-space-3);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-control);
+  background: none;
+  color: var(--app-text-muted);
+  font-size: var(--app-text-xs);
+  cursor: pointer;
+  transition: all var(--app-motion-fast);
+}
+
+.route-page__panel-refresh:hover {
+  border-color: var(--app-accent);
+  color: var(--app-accent);
+}
+
+.route-page__panel-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Status Pill ─────────────────────────────────────────────── */
+
+.route-page__status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--app-radius-pill);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--app-border-subtle);
+  background: var(--app-bg-muted);
+  color: var(--app-text-muted);
+}
+
+.route-page__status-pill--live {
+  border-color: color-mix(in srgb, var(--app-health-ok) 30%, transparent);
+  background: color-mix(in srgb, var(--app-health-ok) 10%, transparent);
+  color: var(--app-health-ok);
+}
+
+.route-page__status-pill--live::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--app-health-ok);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ─── Page Action Button (consistent) ─────────────────────────── */
+
+.route-page__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  padding: var(--app-space-2) var(--app-space-4);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-control);
+  background: var(--app-surface-strong);
+  color: var(--app-text-strong);
+  font-size: var(--app-text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--app-motion-fast);
+  text-decoration: none;
+  font-family: var(--app-font-sans);
+}
+
+.route-page__action:hover {
+  border-color: var(--app-accent);
+  color: var(--app-accent);
+  background: var(--app-accent-soft, rgba(62,207,174,0.05));
+}
+
+.route-page__action--secondary {
+  background: none;
+  border-color: var(--app-border-subtle);
+  color: var(--app-text-muted);
+}
+
+.route-page__action--secondary:hover {
+  border-color: var(--app-border-strong);
+  color: var(--app-text-strong);
+}
+
+/* ─── Input/Select Styling ────────────────────────────────────── */
+
+.route-page__input {
+  padding: var(--app-space-2) var(--app-space-3);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-control);
+  background: var(--app-bg-canvas);
+  color: var(--app-text-strong);
+  font-size: var(--app-text-sm);
+  font-family: var(--app-font-sans);
+  outline: none;
+  transition: border-color var(--app-motion-fast);
+  width: 100%;
+}
+
+.route-page__input:focus {
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-accent) 15%, transparent);
+}
+
+/* ─── Key-Value Display (system, settings) ────────────────────── */
+
+.system-route-page__kv {
+  display: grid;
+  gap: var(--app-space-3);
+  margin: 0;
+}
+
+.system-route-page__kv > div {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-3);
+  padding: var(--app-space-2) 0;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.system-route-page__kv > div:last-child {
+  border-bottom: none;
+}
+
+.system-route-page__kv dt {
+  font-size: var(--app-text-xs);
+  color: var(--app-text-faint);
+  min-width: 8rem;
+  flex-shrink: 0;
+}
+
+.system-route-page__kv dd {
+  margin: 0;
+  font-size: var(--app-text-sm);
+  color: var(--app-text-strong);
+  font-weight: 500;
+}
+
+.system-route-page__mono {
+  font-family: var(--app-font-mono);
+  font-size: var(--app-text-xs);
+}
+
+/* ─── Grid Layouts ────────────────────────────────────────────── */
+
+.route-page__grid--settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: var(--app-space-4);
+}
+
+.route-page__grid--system {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
+  gap: var(--app-space-4);
+}
+
+/* ─── Quick Links ─────────────────────────────────────────────── */
+
+.route-page__quick-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--app-space-2);
+  margin-top: var(--app-space-3);
+}
+
+/* ─── Page Toolbar (consistent metrics bar) ───────────────────── */
+
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-5);
+  padding: var(--app-space-3) var(--app-space-5);
+  font-size: var(--app-text-xs);
+  color: var(--app-text-muted);
+}
+
+.page-toolbar strong {
+  color: var(--app-text-strong);
+  font-weight: 700;
+  font-size: var(--app-text-sm);
+}
+
+/* ─── Page Eyebrow (consistent) ───────────────────────────────── */
+
+.page-eyebrow {
+  display: inline-block;
+  margin: 0 0 2px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--app-accent);
+}
+
+.prototype-page {
+  display: grid;
+  gap: var(--app-space-5);
+}
+
+.prototype-page__hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--app-space-4);
+}
+
+.prototype-page__subtitle {
+  max-width: 72ch;
+  margin: var(--app-space-2) 0 0;
+  color: var(--app-text-muted);
+}
+
+.prototype-page__stats {
+  padding: 0;
+  gap: var(--app-space-3);
+  flex-wrap: wrap;
+}
+
+.prototype-page__grid {
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--app-space-4);
+}
+
+.prototype-page__list {
+  display: grid;
+  gap: var(--app-space-2);
+}
+
+.prototype-page__item {
+  margin: 0;
+  padding: var(--app-space-3);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius-control);
+  background: color-mix(in srgb, var(--app-surface-strong) 92%, var(--app-accent) 8%);
+  color: var(--app-text-muted);
+}

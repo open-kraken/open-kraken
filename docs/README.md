@@ -1,25 +1,32 @@
 # docs
 
-## 职责边界
+## Product vision and architecture
 
-- 承载迁移设计、模块映射、契约说明、运行手册、风险清单、验收矩阵与发布说明。
-- 文档是跨成员协作的事实来源，但不是源码落点；不要把实现代码或临时脚本堆到这里。
-- 需要保留的旧 Golutra 信息应以迁移后的文档形式沉淀在本目录，而不是继续写回旧仓库。
+- **[product-vision-and-architecture.md](product-vision-and-architecture.md)** — open-kraken positioning (claw-code × Golutra × OpenClaw as one deliverable), cross-server multi-agent coordination, centralized ledger and memory, frontend observability responsibilities, and **alignment / gaps** vs the current codebase.
+- **[action-items-and-current-state.md](action-items-and-current-state.md)** — **current implementation snapshot**, backlog / action items (scheduling, teams, HA, skill import/export, optional vector memory), and **non-goals** (e.g. P2P mesh).
+- **[architecture/langgraph-and-ray-design-references.md](architecture/langgraph-and-ray-design-references.md)** — **LangGraph** and **Ray** (web-sourced design summaries: agent runtime, checkpoints, tasks/actors; **reference only**, not a default stack).
+- **[observability/langfuse-integration.md](observability/langfuse-integration.md)** — **Langfuse** (LLM traces via OTLP, deployment options, correlation with workspace/member ids; complements **tokentrack** / **ledger**).
 
-## 责任成员
+## Scope
 
-- 架构盘点、API/realtime 契约、鉴权模型、部署方案、数据迁移、生产可用性、测试矩阵与迁移说明相关成员会在这里落文档。
+- Migration design, module mapping, contracts, runbooks, risk lists, acceptance matrices, and release notes.
+- Documentation is the collaboration source of truth, not a code dump; do not park implementation code or throwaway scripts here.
+- Preserve legacy Golutra knowledge as migrated documents in this tree, not by writing back to the old repository.
 
-## 依赖方向
+## Ownership
 
-- 可以引用 `backend/go`、`web`、`scripts`、`e2e` 的事实状态作为说明依据。
-- 会被 `web`、`backend/go`、`scripts` 和协作成员作为契约输入读取。
-- 不应成为运行时代码依赖，也不应反向承载实现层的临时补丁。
+- Architecture reviews, API/realtime contracts, auth models, deployment, data migration, production readiness, test matrices, and migration notes.
 
-## 启动入口
+## Dependency direction
 
-- 当前文档检索入口：`rg -n "migration|contract|auth|mock" docs`
-- 生产可用性入口：`/Users/claire/IdeaProjects/open-kraken/docs/production-readiness/README.md`
-- 当前仓库级生产可用性验证入口：`npm run verify:migration`、`bash scripts/verify-runtime.sh`、`curl -i http://127.0.0.1:8080/healthz`
-- 预期统一文档校验占位：`scripts/verify-all.sh`
-- 预期迁移总览入口：`/Users/claire/IdeaProjects/open-kraken/README.md`
+- May reference factual state in `backend/go`, `web`, `scripts`, and `e2e`.
+- Read by `web`, `backend/go`, `scripts`, and contributors as contract input.
+- Must not become a runtime code dependency or a patch layer for implementation shortcuts.
+
+## Entrypoints
+
+- Search: `rg -n "migration|contract|auth|mock" docs`
+- Production readiness: `production-readiness/README.md`
+- Repository-level checks: `npm run verify:migration`, `bash scripts/verify-runtime.sh`, `curl -i http://127.0.0.1:8080/healthz`
+- Unified doc verification (delegated): `scripts/verify-all.sh`
+- Top-level overview: repository root `README.md`

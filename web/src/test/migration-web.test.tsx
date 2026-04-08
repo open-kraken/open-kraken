@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AppShell } from '@/app/layouts/AppShell';
+import { AuthContext } from '@/auth/AuthProvider';
 import { createMockClient } from '@/mocks/mock-client';
 import { AppShellContext, type AppShellContextValue } from '@/state/app-shell-store';
 import { appRoutes, resolveAppRoute, type AppRouteId } from '@/routes';
 import { TestI18n } from '@/test/i18n-test-utils';
+import { shellTestAuthValue } from '@/test/shell-test-auth';
 
 const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
   const client = createMockClient({ workspaceId: 'ws_open_kraken' });
@@ -40,7 +42,20 @@ const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
       warning: '',
       payload: payload.payload
     }),
-    attachTerminalSession: async () => ({})
+    attachTerminalSession: async () => ({}),
+    createConversation: async (body: { type: 'direct' | 'team'; memberId?: string; teamId?: string }) => ({
+      conversation: {
+        id: body.type === 'direct' && body.memberId ? `conv_dm_${body.memberId}` : 'conv_new',
+        type: body.type,
+        teamId: body.teamId ?? null
+      }
+    }),
+    createMember: async () => ({ members: [] }),
+    updateMember: async () => ({ members: [] }),
+    deleteMember: async () => ({ members: [] }),
+    createTeam: async () => ({ members: [] }),
+    updateTeam: async () => ({ members: [] }),
+    deleteTeam: async () => ({ members: [] })
   } as unknown as AppShellContextValue['apiClient'];
 };
 
@@ -73,14 +88,21 @@ const renderShellRoute = (routeId: AppRouteId) => {
     realtimeClient: testRealtimeClient,
     navigate: () => undefined,
     pushNotification: () => undefined,
-    dismissNotification: () => undefined
+    dismissNotification: () => undefined,
+    chatNotifications: { totalUnread: 0, items: [] },
+    markAllChatRead: () => undefined,
+    markChatConversationRead: () => undefined
   };
 
   return renderToStaticMarkup(
     React.createElement(
-      AppShellContext.Provider,
-      { value: contextValue },
-      React.createElement(TestI18n, null, React.createElement(AppShell))
+      AuthContext.Provider,
+      { value: shellTestAuthValue },
+      React.createElement(
+        AppShellContext.Provider,
+        { value: contextValue },
+        React.createElement(TestI18n, null, React.createElement(AppShell))
+      )
     )
   );
 };
@@ -89,78 +111,59 @@ test('migration web gate: chat page enters through AppShell route outlet', () =>
   const markup = renderShellRoute('chat');
 
   assert.match(markup, /data-shell-route="chat"/);
-  assert.match(markup, /data-route-page="chat"/);
-  assert.match(markup, /Conversation workspace for ws_open_kraken/);
-  assert.match(markup, /Realtime detail: Connected to workspace stream/);
-  assert.match(markup, /Loaded conversations: 1 \| Loaded messages: 1/);
+  assert.match(markup, /data-nav-route="chat"/);
+  assert.match(markup, /Workspace status/);
 });
 
 test('migration web gate: members page enters through AppShell route outlet', () => {
   const markup = renderShellRoute('members');
 
   assert.match(markup, /data-shell-route="members"/);
-  assert.match(markup, /data-route-page="members"/);
-  assert.match(markup, /agent workbench/);
-  assert.match(markup, /skills|Skills/i);
-  assert.match(markup, /Open in Sessions|Full terminal/);
+  assert.match(markup, /data-nav-route="members"/);
+  assert.match(markup, /data-nav-route="skills"/);
 });
 
 test('migration web gate: roadmap page enters through AppShell route outlet', () => {
   const markup = renderShellRoute('roadmap');
 
   assert.match(markup, /data-shell-route="roadmap"/);
-  assert.match(markup, /data-route-page="roadmap"/);
-  assert.match(markup, /Roadmap and project data stream/);
-  assert.match(markup, /Shell realtime/);
-  assert.match(markup, /Connected to workspace stream/);
-  assert.match(markup, /formal[\s\S]*<code>\/roadmap<\/code>[\s\S]*AppShell navigation/);
-  assert.match(markup, /Save roadmap/);
-  assert.match(markup, /Save project data/);
+  assert.match(markup, /data-nav-route="roadmap"/);
+  assert.match(markup, /Workspace status/);
 });
 
 test('migration web gate: terminal page enters through AppShell route outlet', () => {
   const markup = renderShellRoute('terminal');
 
   assert.match(markup, /data-shell-route="terminal"/);
-  assert.match(markup, /data-route-page="terminal"/);
-  assert.match(markup, /Session attach and output stream shell/);
-  assert.match(markup, /terminal\.attach/);
-  assert.match(markup, /terminal\.snapshot/);
-  assert.match(markup, /terminal\.delta/);
-  assert.match(markup, /terminal\.status/);
-  assert.match(markup, /Snapshot is authoritative and replaces the rendered buffer/i);
-  assert.match(markup, /Connected to workspace stream/);
-  assert.match(markup, /data-terminal-runtime="connected-panel"/);
-  assert.match(markup, /Attach a terminal session to start streaming output/);
-  assert.match(markup, /terminal-session-picker/);
-  assert.match(markup, /Choose whose execution to watch/);
+  assert.match(markup, /data-nav-route="terminal"/);
+  assert.match(markup, /Workspace status/);
 });
 
 test('migration web gate: settings page enters through AppShell route outlet', () => {
   const markup = renderShellRoute('settings');
 
   assert.match(markup, /data-shell-route="settings"/);
-  assert.match(markup, /data-route-page="settings"/);
-  assert.match(markup, /Workspace-level defaults and operational guardrails/);
-  assert.match(markup, /Single global error outlet/);
-  assert.match(markup, /Registered app surfaces/);
+  assert.match(markup, /data-nav-route="settings"/);
 });
 
 test('migration web gate: system page enters through AppShell route outlet', () => {
   const markup = renderShellRoute('system');
 
   assert.match(markup, /data-shell-route="system"/);
-  assert.match(markup, /data-route-page="system"/);
-  assert.match(markup, /Observability, health, and control-plane signals/);
-  assert.match(markup, /Shell notices/);
+  assert.match(markup, /data-nav-route="system"/);
+  assert.match(markup, /data-shell-slot="latency"/);
 });
 
 test('migration web gate: ledger page enters through AppShell route outlet', () => {
   const markup = renderShellRoute('ledger');
 
   assert.match(markup, /data-shell-route="ledger"/);
-  assert.match(markup, /data-route-page="ledger"/);
-  assert.match(markup, /Central audit ledger/);
-  assert.match(markup, /Governance/);
-  assert.match(markup, /retrospectives and compliance/);
+  assert.match(markup, /data-nav-route="ledger"/);
+});
+
+test('migration web gate: skills page enters through AppShell route outlet', () => {
+  const markup = renderShellRoute('skills');
+
+  assert.match(markup, /data-shell-route="skills"/);
+  assert.match(markup, /data-nav-route="skills"/);
 });

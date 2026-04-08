@@ -161,7 +161,12 @@ export const addRoadmapTask = (state: RoadmapEditorState): RoadmapEditorState =>
     title: '',
     status: 'todo',
     pinned: false,
-    assigneeId: null
+    assigneeId: null,
+    teamId: null,
+    dependencies: [],
+    startedAt: null,
+    dueAt: null,
+    completedAt: null
   };
   const tasks = [...state.draft.tasks, newTask];
   const draft = { ...state.draft, tasks: deepClone(sortRoadmapTasks(tasks)) };

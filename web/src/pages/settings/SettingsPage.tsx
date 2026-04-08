@@ -2,10 +2,28 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AppLocale } from '@/i18n/locale-storage';
 import { APP_LOCALES } from '@/i18n/locale-storage';
 import { useI18n } from '@/i18n/I18nProvider';
-import { translateRealtimeDetail, translateRealtimeStatusLabel } from '@/i18n/realtime-copy';
 import { useAppShell } from '@/state/app-shell-store';
+import { useAuth } from '@/auth/AuthProvider';
 import { useTheme } from '@/theme/ThemeProvider';
 import { appEnv } from '@/config/env';
+import { SettingsAccountSection } from '@/features/settings/SettingsAccountSection';
+import { SettingsNotificationSection } from '@/features/settings/SettingsNotificationSection';
+import { SettingsKeybindsSection } from '@/features/settings/SettingsKeybindsSection';
+import { getHttpClient } from '@/api/http-binding';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ExternalLink, CheckCircle } from 'lucide-react';
 
 type ApiDiagResult = {
   ok: boolean;
@@ -14,12 +32,59 @@ type ApiDiagResult = {
   error?: string;
 };
 
+type BackendSettings = {
+  memberId: string;
+  displayName?: string;
+  avatar?: string;
+  timezone?: string;
+  browserNotifications?: boolean;
+  soundEnabled?: boolean;
+  dndStart?: string;
+  dndEnd?: string;
+};
+
 export const SettingsPage = () => {
   const { t, locale, setLocale } = useI18n();
-  const { notifications, pushNotification, realtime, routes, workspace } = useAppShell();
+  const { notifications, pushNotification, realtime, workspace, navigate } = useAppShell();
+  const { account } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [apiDiag, setApiDiag] = useState<ApiDiagResult | null>(null);
   const [diagRunning, setDiagRunning] = useState(false);
+  const [backendSettings, setBackendSettings] = useState<BackendSettings | null>(null);
+
+  // Load settings from backend on mount.
+  useEffect(() => {
+    if (!account?.memberId) return;
+    const http = getHttpClient();
+    void http
+      .get<BackendSettings>(`settings?memberId=${encodeURIComponent(account.memberId)}`)
+      .then(setBackendSettings)
+      .catch(() => {
+        /* use defaults */
+      });
+  }, [account?.memberId]);
+
+  const saveSettings = useCallback(
+    async (patch: Partial<BackendSettings>) => {
+      if (!account?.memberId) return;
+      const http = getHttpClient();
+      const merged = { ...backendSettings, ...patch, memberId: account.memberId };
+      try {
+        const saved = await http.request<BackendSettings>('settings', {
+          method: 'PUT',
+          body: merged,
+        });
+        setBackendSettings(saved);
+      } catch {
+        pushNotification({
+          tone: 'error',
+          title: 'Settings save failed',
+          detail: 'Could not persist settings.',
+        });
+      }
+    },
+    [account?.memberId, backendSettings, pushNotification],
+  );
 
   /** Ping the API healthz endpoint and measure latency. */
   const runApiDiagnostic = useCallback(async () => {
@@ -28,7 +93,7 @@ export const SettingsPage = () => {
     try {
       const response = await fetch('/healthz', {
         method: 'GET',
-        headers: { accept: 'application/json' }
+        headers: { accept: 'application/json' },
       });
       const latencyMs = Math.round(performance.now() - start);
       setApiDiag({ ok: response.ok, status: response.status, latencyMs });
@@ -38,7 +103,7 @@ export const SettingsPage = () => {
         ok: false,
         status: null,
         latencyMs,
-        error: err instanceof Error ? err.message : 'Connection failed'
+        error: err instanceof Error ? err.message : 'Connection failed',
       });
     } finally {
       setDiagRunning(false);
@@ -46,194 +111,228 @@ export const SettingsPage = () => {
   }, []);
 
   // Run diagnostic on mount
-  useEffect(() => { void runApiDiagnostic(); }, [runApiDiagnostic]);
+  useEffect(() => {
+    void runApiDiagnostic();
+  }, [runApiDiagnostic]);
+
+  const shortcuts = [
+    { combo: 'Cmd+K', description: 'Open command palette', scope: 'Global' },
+    { combo: 'Cmd+1', description: 'Go to Chat', scope: 'Global' },
+    { combo: 'Cmd+2', description: 'Go to Terminal', scope: 'Global' },
+    { combo: 'Cmd+,', description: 'Open Settings', scope: 'Global' },
+    { combo: 'Cmd+Shift+L', description: 'Toggle theme', scope: 'Global' },
+    { combo: 'Cmd+Enter', description: 'Send message', scope: 'Chat' },
+    { combo: 'Escape', description: 'Close modal/dialog', scope: 'Global' },
+  ];
 
   return (
-    <section className="page-card page-card--settings" data-route-page="settings" data-page-entry="settings-runtime">
-      <div className="route-page__hero">
-        <div>
-          <p className="page-eyebrow">{t('settings.title')}</p>
-          <h1>{t('settings.hero')}</h1>
-          <p className="route-page__intro">{t('settings.intro')}</p>
+    <div className="h-full overflow-auto">
+      <div className="p-6 max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-xl font-bold app-text-strong mb-1">Settings</h1>
+          <p className="text-sm app-text-muted">Manage your workspace preferences</p>
         </div>
-        <div className="route-page__metric-strip">
-          <article className="route-page__metric">
-            <span className="route-page__metric-label">{t('shell.workspace')}</span>
-            <strong>{workspace.workspaceLabel}</strong>
-            <small>{t('settings.membersOnline', { count: workspace.membersOnline ?? 0 })}</small>
-          </article>
-          <article className="route-page__metric">
-            <span className="route-page__metric-label">{t('shell.realtime')}</span>
-            <strong>{translateRealtimeStatusLabel(realtime.status, t)}</strong>
-            <small>{translateRealtimeDetail(realtime.detail, t)}</small>
-          </article>
-        </div>
-      </div>
 
-      <div className="route-page__grid route-page__grid--settings">
-        {/* Language */}
-        <section className="route-page__panel">
-          <header className="route-page__panel-header">
-            <div>
-              <p className="page-eyebrow">{t('settings.languageEyebrow')}</p>
-              <h2>{t('settings.languageTitle')}</h2>
-            </div>
-          </header>
-          <p>{t('settings.languageHint')}</p>
-          <div className="route-page__language-row route-page__field-row">
-            <select
-              id="open-kraken-locale"
-              className="route-page__action"
-              aria-label={t('settings.languageTitle')}
-              value={locale}
-              onChange={(e) => setLocale(e.target.value as AppLocale)}
-            >
-              {APP_LOCALES.map((loc) => (
-                <option key={loc} value={loc}>
-                  {t(`settings.lang.${loc}`)}
-                </option>
-              ))}
-            </select>
+        {/* Quick Links */}
+        <div className="flex gap-2 mb-6">
+          <Button variant="outline" size="sm" onClick={() => navigate('dashboard')}>
+            <ExternalLink size={14} className="mr-1" />
+            Dashboard
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate('ledger')}>
+            <ExternalLink size={14} className="mr-1" />
+            Ledger
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate('nodes')}>
+            <ExternalLink size={14} className="mr-1" />
+            Nodes
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate('skills')}>
+            <ExternalLink size={14} className="mr-1" />
+            Skills
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate('system')}>
+            <ExternalLink size={14} className="mr-1" />
+            System
+          </Button>
+        </div>
+
+        {/* Account Settings (persisted to backend) */}
+        <SettingsAccountSection
+          initial={{
+            displayName: backendSettings?.displayName ?? account?.displayName ?? 'User',
+            avatar: backendSettings?.avatar ?? account?.avatar ?? 'CO',
+            timezone: backendSettings?.timezone ?? 'UTC',
+          }}
+          onSave={(s) => {
+            void saveSettings({
+              displayName: s.displayName,
+              avatar: s.avatar,
+              timezone: s.timezone,
+            });
+            pushNotification({
+              tone: 'info',
+              title: t('settings.accountSaved'),
+              detail: `Display name: ${s.displayName}`,
+            });
+          }}
+        />
+
+        {/* Notification preferences (persisted to backend) */}
+        <SettingsNotificationSection
+          initial={{
+            browserNotifications: backendSettings?.browserNotifications ?? false,
+            soundEnabled: backendSettings?.soundEnabled ?? true,
+            dndStart: backendSettings?.dndStart ?? '22:00',
+            dndEnd: backendSettings?.dndEnd ?? '08:00',
+          }}
+          onSave={(s) => {
+            void saveSettings({
+              browserNotifications: s.browserNotifications,
+              soundEnabled: s.soundEnabled,
+              dndStart: s.dndStart,
+              dndEnd: s.dndEnd,
+            });
+            pushNotification({
+              tone: 'info',
+              title: t('settings.notificationsSaved'),
+              detail: `Browser: ${s.browserNotifications ? 'on' : 'off'}`,
+            });
+          }}
+        />
+
+        {/* Keyboard Shortcuts */}
+        <Card className="p-6 mb-6">
+          <h3 className="font-semibold app-text-strong mb-4">Keyboard Shortcuts</h3>
+          <div className="space-y-2">
+            {shortcuts.map((shortcut, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between py-2 border-b app-border-subtle last:border-0"
+              >
+                <div className="flex-1">
+                  <div className="text-sm app-text-strong">{shortcut.description}</div>
+                  <div className="text-xs app-text-faint">{shortcut.scope}</div>
+                </div>
+                <Badge variant="outline" className="font-mono text-xs">
+                  {shortcut.combo}
+                </Badge>
+              </div>
+            ))}
           </div>
-        </section>
+        </Card>
+
+        {/* Keybinds Section (Phase 9) */}
+        <SettingsKeybindsSection />
 
         {/* Theme */}
-        <section className="route-page__panel">
-          <header className="route-page__panel-header">
+        <Card className="p-6 mb-6">
+          <h3 className="font-semibold app-text-strong mb-4">Appearance</h3>
+          <div className="space-y-4">
             <div>
-              <p className="page-eyebrow">{t('settings.themeEyebrow')}</p>
-              <h2>{t('settings.themeTitle')}</h2>
+              <Label>Theme</Label>
+              <p className="text-sm app-text-faint mb-2">Current: {theme || 'light'}</p>
+              <Button variant="outline" size="sm" onClick={toggleTheme}>
+                Switch to {theme === 'dark' ? 'Light' : 'Dark'} Mode
+              </Button>
             </div>
-          </header>
-          <p>{t('settings.themeHint')}</p>
-          <div className="route-page__field-row route-page__field-row--inline">
-            <span>{t('settings.currentTheme')}: <strong>{theme}</strong></span>
-            <button type="button" className="route-page__action" onClick={toggleTheme}>
-              {theme === 'light' ? t('settings.switchDark') : t('settings.switchLight')}
-            </button>
+
+            <div>
+              <Label htmlFor="language">Language</Label>
+              <Select
+                value={locale}
+                onValueChange={(v) => setLocale(v as AppLocale)}
+              >
+                <SelectTrigger id="language" className="mt-1 max-w-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {APP_LOCALES.map((loc) => (
+                    <SelectItem key={loc} value={loc}>
+                      {t(`settings.lang.${loc}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </section>
+        </Card>
 
-        {/* Shell notices */}
-        <section className="route-page__panel">
-          <header className="route-page__panel-header">
-            <div>
-              <p className="page-eyebrow">{t('settings.shellNoticesEyebrow')}</p>
-              <h2>{t('settings.shellNoticesTitle')}</h2>
-            </div>
-          </header>
-          <p>{t('settings.shellNoticesBody', { count: notifications.length })}</p>
-          <button
-            type="button"
-            className="route-page__action"
-            onClick={() =>
-              pushNotification({
-                tone: 'info',
-                title: t('settings.checkpointTitle'),
-                detail: t('settings.checkpointDetail', { id: workspace.workspaceId }),
-                tag: 'settings-checkpoint'
-              })
-            }
-          >
-            {t('settings.emitNotice')}
-          </button>
-        </section>
-
-        {/* API connection diagnostics */}
-        <section className="route-page__panel">
-          <header className="route-page__panel-header">
-            <div>
-              <p className="page-eyebrow">{t('settings.diagEyebrow')}</p>
-              <h2>{t('settings.diagTitle')}</h2>
-            </div>
-            <button
-              type="button"
-              className="route-page__panel-refresh"
-              onClick={() => void runApiDiagnostic()}
-              disabled={diagRunning}
+        {/* API Diagnostics */}
+        <Card className="p-6 mb-6">
+          <h3 className="font-semibold app-text-strong mb-4">API Diagnostics</h3>
+          <div className="flex items-start gap-4">
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                apiDiag?.ok
+                  ? 'bg-green-100 dark:bg-green-900/30'
+                  : 'bg-gray-100 dark:bg-gray-800'
+              }`}
             >
-              {diagRunning ? t('settings.diagRunning') : t('settings.diagRun')}
-            </button>
-          </header>
-          <dl className="system-route-page__kv">
-            <div>
-              <dt>{t('settings.diagApiBase')}</dt>
-              <dd className="system-route-page__mono">{appEnv.apiBaseUrl}</dd>
+              <CheckCircle
+                size={20}
+                className={apiDiag?.ok ? 'text-green-600' : 'app-text-faint'}
+              />
             </div>
-            <div>
-              <dt>{t('settings.diagWsBase')}</dt>
-              <dd className="system-route-page__mono">{appEnv.wsBaseUrl}</dd>
+            <div className="flex-1">
+              <p className="text-sm app-text-strong mb-1">
+                Status:{' '}
+                {apiDiag
+                  ? apiDiag.ok
+                    ? `OK (${apiDiag.status})`
+                    : apiDiag.error ?? `HTTP ${apiDiag.status}`
+                  : 'Checking...'}
+              </p>
+              <p className="text-sm app-text-muted mb-3">
+                Latency: {apiDiag ? `${apiDiag.latencyMs}ms` : '--'}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void runApiDiagnostic()}
+                disabled={diagRunning}
+              >
+                {diagRunning ? 'Running...' : 'Run Again'}
+              </Button>
             </div>
-            <div>
-              <dt>{t('settings.diagWorkspaceId')}</dt>
-              <dd className="system-route-page__mono">{appEnv.defaultWorkspaceId}</dd>
-            </div>
-            {apiDiag && (
-              <>
-                <div>
-                  <dt>{t('settings.diagStatus')}</dt>
-                  <dd data-diag-ok={String(apiDiag.ok)}>
-                    {apiDiag.ok ? `OK (${apiDiag.status})` : apiDiag.error ?? `HTTP ${apiDiag.status}`}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t('settings.diagLatency')}</dt>
-                  <dd>{apiDiag.latencyMs}ms</dd>
-                </div>
-              </>
-            )}
-          </dl>
-        </section>
+          </div>
+        </Card>
 
-        {/* Workspace info */}
-        <section className="route-page__panel">
-          <header className="route-page__panel-header">
-            <div>
-              <p className="page-eyebrow">{t('settings.workspaceEyebrow')}</p>
-              <h2>{t('settings.workspaceTitle')}</h2>
+        {/* Workspace Info */}
+        <Card className="p-6">
+          <h3 className="font-semibold app-text-strong mb-4">Workspace</h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="app-text-faint">Workspace ID:</span>
+              <span className="font-mono app-text-strong">{workspace.workspaceId}</span>
             </div>
-          </header>
-          <dl className="system-route-page__kv">
-            <div>
-              <dt>{t('settings.workspaceId')}</dt>
-              <dd className="system-route-page__mono">{workspace.workspaceId}</dd>
+            <div className="flex justify-between">
+              <span className="app-text-faint">Members Online:</span>
+              <span className="app-text-strong">{workspace.membersOnline ?? 0}</span>
             </div>
-            <div>
-              <dt>{t('settings.workspaceLabel')}</dt>
-              <dd>{workspace.workspaceLabel}</dd>
+            <div className="flex justify-between">
+              <span className="app-text-faint">Connection:</span>
+              <Badge
+                variant="outline"
+                className={
+                  realtime.status === 'connected'
+                    ? 'text-green-600 border-green-600'
+                    : 'text-yellow-600 border-yellow-600'
+                }
+              >
+                {realtime.status === 'connected' ? 'Connected' : realtime.status}
+              </Badge>
             </div>
-            <div>
-              <dt>{t('settings.workspaceOnline')}</dt>
-              <dd>{workspace.membersOnline ?? 0}</dd>
+            <div className="flex justify-between">
+              <span className="app-text-faint">Cursor Realtime:</span>
+              <span className="font-mono app-text-strong">
+                {realtime.lastCursor ?? '--'}
+              </span>
             </div>
-            <div>
-              <dt>{t('settings.realtimeStatus')}</dt>
-              <dd>{translateRealtimeStatusLabel(realtime.status, t)}</dd>
-            </div>
-            <div>
-              <dt>{t('settings.realtimeCursor')}</dt>
-              <dd className="system-route-page__mono">{realtime.lastCursor ?? t('system.emDash')}</dd>
-            </div>
-          </dl>
-        </section>
-
-        {/* Routes reference */}
-        <section className="route-page__panel">
-          <header className="route-page__panel-header">
-            <div>
-              <p className="page-eyebrow">{t('settings.formalRoutesEyebrow')}</p>
-              <h2>{t('settings.formalRoutesTitle')}</h2>
-            </div>
-          </header>
-          <ul className="route-page__rule-list">
-            {routes.map((r) => (
-              <li key={r.id}>
-                <strong>{r.path}</strong> {t(`routes.${r.id}.description`)}
-              </li>
-            ))}
-          </ul>
-        </section>
+          </div>
+        </Card>
       </div>
-    </section>
+    </div>
   );
 };

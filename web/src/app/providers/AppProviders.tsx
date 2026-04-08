@@ -1,17 +1,19 @@
 import type { PropsWithChildren } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createApiClient as createLegacyApiClient } from '@/api/create-client';
-import { appEnv } from '@/config/env';
+import { appEnv, resolveBrowserApiBaseUrl, resolveBrowserWsBaseUrl } from '@/config/env';
 import { createApiClient } from '@/api/api-client';
 import { bindHttpClient } from '@/api/http-binding';
 import { HttpClient, HttpClientError } from '@/api/http-client';
 import { RealtimeClient } from '@/realtime/realtime-client';
 import { AppShellContext, type RealtimeStatusValue, type ShellToast } from '@/state/app-shell-store';
-import { I18nProvider } from '@/i18n/I18nProvider';
 import { MESSAGES } from '@/i18n/messages';
 import { readStoredLocale } from '@/i18n/locale-storage';
 import { appRoutes, resolveAppRoute, type AppRouteId } from '@/routes';
 import { useAuth } from '@/auth/AuthProvider';
+import { installKeyboardListener } from '@/shared/keyboard/controller';
+import { registerDefaultKeybinds } from '@/shared/keyboard/defaults';
+import { useNotificationRealtime } from '@/features/notifications/useNotificationRealtime';
 
 const tr = (key: string) => {
   const loc = readStoredLocale();
@@ -36,19 +38,8 @@ const initialRealtimeStatus: RealtimeStatusValue = {
   lastCursor: null
 };
 
-const resolveApiBaseUrl = () => {
-  const fromEnv = appEnv.apiBaseUrl;
-  if (fromEnv !== 'http://127.0.0.1:8080/api/v1') {
-    return fromEnv;
-  }
-  if (typeof window !== 'undefined' && window.location.origin.startsWith('http')) {
-    return `${window.location.origin}/api/v1`;
-  }
-  return fromEnv;
-};
-
 export const AppProviders = ({ children }: PropsWithChildren) => {
-  const { token: authToken } = useAuth();
+  const { token: authToken, account } = useAuth();
   const [pathname, setPathname] = useState(() => normalizePathname(window.location.pathname || defaultPath));
   const [notifications, setNotifications] = useState<ShellToast[]>([]);
   const [realtime, setRealtime] = useState<RealtimeStatusValue>(initialRealtimeStatus);
@@ -61,7 +52,7 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
 
   const httpClient = useMemo(() => {
     return new HttpClient({
-      baseUrl: resolveApiBaseUrl(),
+      baseUrl: resolveBrowserApiBaseUrl(),
       workspaceId: appEnv.defaultWorkspaceId,
       authToken: authToken ?? undefined
     });
@@ -74,8 +65,8 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
   const apiClient = useMemo(() => {
     const legacyClient = createLegacyApiClient({
       env: {
-        OPEN_KRAKEN_API_BASE_URL: appEnv.apiBaseUrl,
-        OPEN_KRAKEN_WS_BASE_URL: appEnv.wsBaseUrl,
+        OPEN_KRAKEN_API_BASE_URL: resolveBrowserApiBaseUrl(),
+        OPEN_KRAKEN_WS_BASE_URL: resolveBrowserWsBaseUrl(),
         OPEN_KRAKEN_WORKSPACE_ID: appEnv.defaultWorkspaceId
       }
     }) as Record<string, unknown>;
@@ -131,6 +122,39 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
       realtimeClient.disconnect();
     };
   }, [pathname, realtimeClient]);
+
+  // ── Notification realtime subscriptions (Phase 6) ──
+  const { notificationState: chatNotifications, markAllRead: markAllChatRead, markConversationRead: markChatConversationRead } =
+    useNotificationRealtime(realtimeClient, appEnv.defaultWorkspaceId);
+
+  // ── Presence heartbeat: keep current user online (30s interval) ──
+  useEffect(() => {
+    const wsId = appEnv.defaultWorkspaceId;
+    const memberId = account?.memberId;
+    if (!memberId) return;
+
+    const beat = () => {
+      void apiClient.sendPresenceHeartbeat?.(wsId, memberId).catch(() => {/* ignore */});
+    };
+    beat(); // immediate
+    const id = window.setInterval(beat, 30_000);
+    return () => window.clearInterval(id);
+  }, [apiClient, account]);
+
+  // ── Global keyboard shortcut listener + default keybinds ──
+  const navigateRef = useRef<(routeId: AppRouteId, options?: { hash?: string }) => void>(() => {});
+  const toggleThemeRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    const cleanupListener = installKeyboardListener();
+    const cleanupDefaults = registerDefaultKeybinds({
+      navigateToChat: () => navigateRef.current('chat'),
+      navigateToTerminal: () => navigateRef.current('terminal'),
+      navigateToSettings: () => navigateRef.current('settings'),
+      toggleTheme: () => toggleThemeRef.current(),
+    });
+    return () => { cleanupListener(); cleanupDefaults(); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,18 +220,28 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
           ...toast
         };
         setNotifications((current) => [...current, nextToast]);
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+          setNotifications((current) => current.filter((t) => t.id !== nextToast.id));
+        }, 5000);
       },
       dismissNotification: (toastId: string) => {
         setNotifications((current) => current.filter((toast) => toast.id !== toastId));
       },
       apiClient,
-      realtimeClient
-    };
-  }, [apiClient, notifications, pathname, realtime, realtimeClient, workspace]);
+      realtimeClient,
 
-  return (
-    <AppShellContext.Provider value={contextValue}>
-      <I18nProvider>{children}</I18nProvider>
-    </AppShellContext.Provider>
-  );
+      // Phase 6: chat notification aggregation.
+      chatNotifications,
+      markAllChatRead,
+      markChatConversationRead
+    };
+  }, [apiClient, notifications, pathname, realtime, realtimeClient, workspace, chatNotifications, markAllChatRead, markChatConversationRead]);
+
+  // Keep refs updated so keyboard shortcuts use the latest navigate/toggleTheme.
+  useEffect(() => {
+    navigateRef.current = contextValue.navigate;
+  }, [contextValue.navigate]);
+
+  return <AppShellContext.Provider value={contextValue}>{children}</AppShellContext.Provider>;
 };

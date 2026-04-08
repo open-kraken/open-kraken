@@ -9,15 +9,54 @@
  * - Auto-refresh toggle
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useI18n } from '@/i18n/I18nProvider';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppShell } from '@/state/app-shell-store';
+import { useAuth } from '@/auth/AuthProvider';
 import { getLedgerEvents, createLedgerEvent } from '@/api/ledger';
 import { getNodes } from '@/api/nodes';
 import type { LedgerEvent } from '@/types/ledger';
 import type { MemberFixture, TeamGroupFixture } from '@/features/members/member-page-model';
 import type { Node } from '@/types/node';
-import styles from '@/features/ledger/ledger-page.module.css';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { StatusDot } from '@/components/ui/status-dot';
+import {
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
+  Search,
+  FileText,
+  Download,
+  Clock,
+  User,
+  Terminal,
+  Cpu,
+  Package,
+  GitBranch,
+  Database,
+  Zap,
+  Filter,
+} from 'lucide-react';
 
 type TimePreset = '1h' | '24h' | '7d' | '30d' | 'all';
 
@@ -29,11 +68,11 @@ const EVENT_TYPE_PRESETS = [
   'deploy',
   'git.operation',
   'memory.write',
-  'skill.assign'
+  'skill.assign',
 ] as const;
 
 function formatLocalTime(iso: string): string {
-  if (!iso) return '—';
+  if (!iso) return '\u2014';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
@@ -59,19 +98,64 @@ function formatContext(ctx: Record<string, unknown>): string {
   }
 }
 
-/** Derive the event-type pill color class suffix. */
-function eventTypeTone(type: string): string {
-  if (type.startsWith('terminal')) return 'terminal';
-  if (type.startsWith('llm')) return 'llm';
-  if (type.startsWith('tool')) return 'tool';
-  if (type.startsWith('deploy')) return 'deploy';
-  if (type.startsWith('git')) return 'git';
-  return 'default';
+/* ── Event type badge with icon ── */
+
+function getEventBadge(type: string) {
+  const eventTypes: Record<string, { icon: React.ReactNode; className: string; label: string }> = {
+    terminal: {
+      icon: <Terminal size={12} />,
+      className: 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300',
+      label: 'Terminal',
+    },
+    llm: {
+      icon: <Zap size={12} />,
+      className: 'bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-950 dark:text-purple-300',
+      label: 'LLM',
+    },
+    tool: {
+      icon: <Package size={12} />,
+      className: 'bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950 dark:text-orange-300',
+      label: 'Tool',
+    },
+    deploy: {
+      icon: <Cpu size={12} />,
+      className: 'bg-green-50 text-green-700 border-green-300 dark:bg-green-950 dark:text-green-300',
+      label: 'Deploy',
+    },
+    git: {
+      icon: <GitBranch size={12} />,
+      className: 'bg-pink-50 text-pink-700 border-pink-300 dark:bg-pink-950 dark:text-pink-300',
+      label: 'Git',
+    },
+    memory: {
+      icon: <Database size={12} />,
+      className: 'bg-cyan-50 text-cyan-700 border-cyan-300 dark:bg-cyan-950 dark:text-cyan-300',
+      label: 'Memory',
+    },
+    skill: {
+      icon: <FileText size={12} />,
+      className: 'bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-950 dark:text-teal-300',
+      label: 'Skill',
+    },
+  };
+
+  // Match type prefix (e.g., "terminal.command" -> "terminal")
+  const prefix = type.split('.')[0];
+  const config = eventTypes[prefix] || eventTypes.terminal;
+
+  return (
+    <Badge variant="outline" className={`gap-1.5 ${config.className}`}>
+      {config.icon}
+      <span>{config.label}</span>
+    </Badge>
+  );
 }
 
+/* ── Main Page ── */
+
 export const LedgerPage = () => {
-  const { t } = useI18n();
-  const { apiClient, workspace } = useAppShell();
+  const { apiClient, workspace, navigate } = useAppShell();
+  const { account } = useAuth();
 
   // ── Roster (teams + members) for filter dropdowns ──
   const [membersEnvelope, setMembersEnvelope] = useState<{
@@ -83,7 +167,7 @@ export const LedgerPage = () => {
   const [nodes, setNodes] = useState<Node[]>([]);
 
   // ── Filters ──
-  const [timePreset, setTimePreset] = useState<TimePreset>('7d');
+  const [timePreset, setTimePreset] = useState<TimePreset>('24h');
   const [teamId, setTeamId] = useState('');
   const [memberId, setMemberId] = useState('');
   const [nodeId, setNodeId] = useState('');
@@ -94,7 +178,6 @@ export const LedgerPage = () => {
   const [items, setItems] = useState<LedgerEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // ── Expanded row ──
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -102,13 +185,6 @@ export const LedgerPage = () => {
   // ── Auto-refresh ──
   const [autoRefresh, setAutoRefresh] = useState(false);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Record event form ──
-  const [showRecordForm, setShowRecordForm] = useState(false);
-  const [recordEventType, setRecordEventType] = useState('terminal.command');
-  const [recordSummary, setRecordSummary] = useState('');
-  const [recordMemberId, setRecordMemberId] = useState('');
-  const [recording, setRecording] = useState(false);
 
   // ── Time range calc ──
   const { since, until } = useMemo(() => {
@@ -184,10 +260,14 @@ export const LedgerPage = () => {
     );
   }, [items, keyword]);
 
+  const uniqueMembers = useMemo(
+    () => new Set(items.map((e) => e.memberId)).size,
+    [items]
+  );
+
   // ── Load data ──
   const load = useCallback(async () => {
     setLoadState('loading');
-    setErrorMessage(null);
     try {
       const res = await getLedgerEvents({
         workspaceId: workspace.workspaceId,
@@ -197,13 +277,12 @@ export const LedgerPage = () => {
         eventType: eventType || undefined,
         since,
         until,
-        limit: 500
+        limit: 500,
       });
       setItems(res.items);
       setTotal(res.total);
       setLoadState('success');
-    } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : String(e));
+    } catch {
       setLoadState('error');
     }
   }, [workspace.workspaceId, teamId, memberId, nodeId, eventType, since, until]);
@@ -219,29 +298,9 @@ export const LedgerPage = () => {
     return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
   }, [autoRefresh, load]);
 
-  // ── Record event ──
-  const handleRecordEvent = useCallback(async () => {
-    if (!recordSummary.trim() || !recordEventType) return;
-    setRecording(true);
-    try {
-      await createLedgerEvent({
-        workspaceId: workspace.workspaceId,
-        memberId: recordMemberId || 'owner_1',
-        eventType: recordEventType,
-        summary: recordSummary.trim()
-      });
-      setRecordSummary('');
-      void load();
-    } catch {
-      // error handled silently — the refresh will show or not show the event
-    } finally {
-      setRecording(false);
-    }
-  }, [workspace.workspaceId, recordMemberId, recordEventType, recordSummary, load]);
-
   // ── Reset filters ──
   const resetFilters = useCallback(() => {
-    setTimePreset('7d');
+    setTimePreset('24h');
     setTeamId('');
     setMemberId('');
     setNodeId('');
@@ -249,274 +308,379 @@ export const LedgerPage = () => {
     setKeyword('');
   }, []);
 
-  const activeFilterCount = [teamId, memberId, nodeId, eventType, keyword].filter(Boolean).length +
-    (timePreset !== '7d' ? 1 : 0);
+  const activeFilterCount =
+    [teamId, memberId, nodeId, eventType, keyword].filter(Boolean).length +
+    (timePreset !== '24h' ? 1 : 0);
+
+  // ── Get member display info ──
+  const getMemberInfo = useCallback(
+    (mid: string) => membersEnvelope.members.find((m) => m.memberId === mid),
+    [membersEnvelope.members]
+  );
 
   return (
-    <section className={`page-card ${styles['ledger-page']}`} data-route-page="ledger" data-page-entry="ledger-runtime">
-      {/* Hero */}
-      <div className="route-page__hero">
-        <div>
-          <p className="page-eyebrow">{t('ledger.eyebrow')}</p>
-          <h1>{t('ledger.title')}</h1>
-          <p className="route-page__intro">{t('ledger.intro')}</p>
-        </div>
-        <div className="route-page__metric-strip">
-          <div className="route-page__metric">
-            <span className="route-page__metric-label">{t('ledger.metricTotal')}</span>
-            <strong>{total}</strong>
-            <small>{t('ledger.metricTotalHint')}</small>
+    <div className="h-full flex flex-col">
+      {/* Compact Header */}
+      <div className="app-surface-strong border-b app-border-subtle px-6 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-base font-bold app-text-strong">Audit Ledger</h1>
+            </div>
+            {/* Inline Metrics */}
+            <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <FileText size={14} className="app-text-muted" />
+                <span className="font-semibold app-text-strong">{total}</span>
+                <span className="app-text-faint">events</span>
+              </div>
+              <div className="w-px h-3 bg-gray-300 dark:bg-gray-700" />
+              <div className="flex items-center gap-1.5">
+                <span className="app-text-faint">Shown:</span>
+                <span className="font-semibold app-text-strong">{filteredItems.length}</span>
+              </div>
+              <div className="w-px h-3 bg-gray-300 dark:bg-gray-700" />
+              <div className="flex items-center gap-1.5">
+                <User size={14} className="app-accent-text" />
+                <span className="font-semibold app-text-strong">{uniqueMembers}</span>
+                <span className="app-text-faint">members</span>
+              </div>
+            </div>
           </div>
-          <div className="route-page__metric">
-            <span className="route-page__metric-label">{t('ledger.metricShown')}</span>
-            <strong>{filteredItems.length}</strong>
-            <small>{keyword ? t('ledger.metricFiltered') : t('ledger.metricLoaded')}</small>
-          </div>
-          <div className="route-page__metric">
-            <span className="route-page__metric-label">{t('ledger.metricFilters')}</span>
-            <strong>{activeFilterCount}</strong>
-            <small>{t('ledger.metricActiveFilters')}</small>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="auto-refresh"
+                checked={autoRefresh}
+                onCheckedChange={setAutoRefresh}
+              />
+              <Label htmlFor="auto-refresh" className="text-xs app-text-muted cursor-pointer">
+                Auto-refresh
+              </Label>
+            </div>
+            <Button variant="outline" size="sm" className="h-8" onClick={() => void load()}>
+              <RefreshCw size={14} className="mr-1" />
+              Refresh
+            </Button>
+            {activeFilterCount > 0 && (
+              <Button variant="outline" size="sm" className="h-8" onClick={resetFilters}>
+                <Filter size={14} className="mr-1" />
+                Clear Filters
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      <p className={styles['ledger-hint']}>{t('ledger.hintVsDashboard')}</p>
+      {/* Filters */}
+      <div className="app-bg-canvas px-6 py-3 border-b app-border-subtle">
+        <div className="grid grid-cols-5 gap-3 mb-3">
+          <Select value={timePreset} onValueChange={(v) => setTimePreset(v as TimePreset)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1h">Last hour</SelectItem>
+              <SelectItem value="24h">Last 24 hours</SelectItem>
+              <SelectItem value="7d">Last 7 days</SelectItem>
+              <SelectItem value="30d">Last 30 days</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+            </SelectContent>
+          </Select>
 
-      {/* Filters bar */}
-      <div className={styles['ledger-filters']} aria-label={t('ledger.filtersAria')}>
-        <div className={styles['ledger-filters__field']}>
-          <label htmlFor="ledger-preset">{t('ledger.timeRange')}</label>
-          <select id="ledger-preset" value={timePreset} onChange={(ev) => setTimePreset(ev.target.value as TimePreset)}>
-            <option value="1h">{t('ledger.preset1h')}</option>
-            <option value="24h">{t('ledger.preset24h')}</option>
-            <option value="7d">{t('ledger.preset7d')}</option>
-            <option value="30d">{t('ledger.preset30d')}</option>
-            <option value="all">{t('ledger.presetAll')}</option>
-          </select>
-        </div>
-        <div className={styles['ledger-filters__field']}>
-          <label htmlFor="ledger-team">{t('ledger.team')}</label>
-          <select id="ledger-team" value={teamId} onChange={(ev) => { setTeamId(ev.target.value); setMemberId(''); }}>
-            <option value="">{t('ledger.allTeams')}</option>
-            {teamOptions.map((opt) => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-        <div className={styles['ledger-filters__field']}>
-          <label htmlFor="ledger-member">{t('ledger.member')}</label>
-          <select id="ledger-member" value={memberId} onChange={(ev) => setMemberId(ev.target.value)}>
-            <option value="">{t('ledger.allMembers')}</option>
-            {memberOptions.map((m) => (
-              <option key={m.memberId} value={m.memberId}>{m.displayName ?? m.memberId}</option>
-            ))}
-          </select>
-        </div>
-        <div className={styles['ledger-filters__field']}>
-          <label htmlFor="ledger-node">{t('ledger.node')}</label>
-          <select id="ledger-node" value={nodeId} onChange={(ev) => setNodeId(ev.target.value)}>
-            <option value="">{t('ledger.allNodes')}</option>
-            {nodes.map((n) => (
-              <option key={n.id} value={n.id}>{n.hostname || n.id}</option>
-            ))}
-          </select>
-        </div>
-        <div className={styles['ledger-filters__field']}>
-          <label htmlFor="ledger-type">{t('ledger.eventType')}</label>
-          <select id="ledger-type" value={eventType} onChange={(ev) => setEventType(ev.target.value)}>
-            {EVENT_TYPE_PRESETS.map((v) => (
-              <option key={v || 'any'} value={v}>{v || t('ledger.anyType')}</option>
-            ))}
-          </select>
-        </div>
-        <div className={styles['ledger-filters__field']}>
-          <label htmlFor="ledger-search">{t('ledger.search')}</label>
-          <input
-            id="ledger-search"
-            type="text"
-            value={keyword}
-            onChange={(ev) => setKeyword(ev.target.value)}
-            placeholder={t('ledger.searchPlaceholder')}
-          />
-        </div>
-        <div className={styles['ledger-filters__actions']}>
-          <button type="button" onClick={() => void load()} disabled={loadState === 'loading'}>
-            {loadState === 'loading' ? t('ledger.loading') : t('ledger.refresh')}
-          </button>
-          {activeFilterCount > 0 && (
-            <button type="button" onClick={resetFilters} className={styles['ledger-filters__reset']}>
-              {t('ledger.resetFilters')}
-            </button>
-          )}
-          <label className={styles['ledger-filters__auto']}>
-            <input type="checkbox" checked={autoRefresh} onChange={(ev) => setAutoRefresh(ev.target.checked)} />
-            {t('ledger.autoRefresh')}
-          </label>
-        </div>
-      </div>
-
-      {/* Record event toggle */}
-      <div className={styles['ledger-record-toggle']}>
-        <button type="button" onClick={() => setShowRecordForm(!showRecordForm)}>
-          {showRecordForm ? t('ledger.hideRecordForm') : t('ledger.showRecordForm')}
-        </button>
-      </div>
-
-      {/* Record event form */}
-      {showRecordForm && (
-        <div className={styles['ledger-record-form']}>
-          <div className={styles['ledger-filters__field']}>
-            <label htmlFor="record-type">{t('ledger.recordType')}</label>
-            <select id="record-type" value={recordEventType} onChange={(ev) => setRecordEventType(ev.target.value)}>
-              {EVENT_TYPE_PRESETS.filter(Boolean).map((v) => (
-                <option key={v} value={v}>{v}</option>
+          <Select value={teamId || 'all-teams'} onValueChange={(v) => { setTeamId(v === 'all-teams' ? '' : v); setMemberId(''); }}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-teams">All Teams</SelectItem>
+              {teamOptions.map((opt) => (
+                <SelectItem key={opt.id} value={opt.id}>
+                  {opt.label}
+                </SelectItem>
               ))}
-            </select>
-          </div>
-          <div className={styles['ledger-filters__field']}>
-            <label htmlFor="record-member">{t('ledger.recordMember')}</label>
-            <select id="record-member" value={recordMemberId} onChange={(ev) => setRecordMemberId(ev.target.value)}>
-              <option value="">{t('ledger.recordMemberDefault')}</option>
+            </SelectContent>
+          </Select>
+
+          <Select value={memberId || 'all-members'} onValueChange={(v) => setMemberId(v === 'all-members' ? '' : v)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-members">All Members</SelectItem>
               {memberOptions.map((m) => (
-                <option key={m.memberId} value={m.memberId}>{m.displayName ?? m.memberId}</option>
+                <SelectItem key={m.memberId} value={m.memberId}>
+                  {m.displayName ?? m.memberId}
+                </SelectItem>
               ))}
-            </select>
-          </div>
-          <div className={`${styles['ledger-filters__field']} ${styles['ledger-record-form__summary']}`}>
-            <label htmlFor="record-summary">{t('ledger.recordSummary')}</label>
-            <input
-              id="record-summary"
-              type="text"
-              value={recordSummary}
-              onChange={(ev) => setRecordSummary(ev.target.value)}
-              placeholder={t('ledger.recordSummaryPlaceholder')}
-              onKeyDown={(ev) => { if (ev.key === 'Enter') void handleRecordEvent(); }}
+            </SelectContent>
+          </Select>
+
+          <Select value={eventType || 'all-types'} onValueChange={(v) => setEventType(v === 'all-types' ? '' : v)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-types">All Types</SelectItem>
+              <SelectItem value="terminal.command">Terminal</SelectItem>
+              <SelectItem value="llm.call">LLM</SelectItem>
+              <SelectItem value="tool.run">Tool</SelectItem>
+              <SelectItem value="deploy">Deploy</SelectItem>
+              <SelectItem value="git.operation">Git</SelectItem>
+              <SelectItem value="memory.write">Memory</SelectItem>
+              <SelectItem value="skill.assign">Skill</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 app-text-faint" />
+            <Input
+              placeholder="Search events..."
+              className="pl-9"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
             />
           </div>
-          <div className={styles['ledger-filters__actions']}>
-            <button type="button" onClick={() => void handleRecordEvent()} disabled={recording || !recordSummary.trim()}>
-              {recording ? t('ledger.recording') : t('ledger.record')}
-            </button>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="text-xs app-text-faint">
+            Showing {filteredItems.length} events · Filters: {activeFilterCount} active
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Error */}
-      {loadState === 'error' && (
-        <div role="alert" className={styles['ledger-error']}>
-          {t('ledger.loadError', { message: errorMessage ?? '' })}
-        </div>
-      )}
+      {/* Events Table */}
+      <div className="flex-1 overflow-auto px-6 py-4">
+        {loadState === 'loading' && items.length === 0 && (
+          <div className="text-center py-12 app-text-muted">
+            <RefreshCw size={24} className="mx-auto mb-3 animate-spin opacity-50" />
+            <p className="text-sm">Loading audit events...</p>
+          </div>
+        )}
 
-      {/* Loading */}
-      {loadState === 'loading' && items.length === 0 && (
-        <div role="status" className={styles['ledger-empty']}>{t('ledger.loading')}</div>
-      )}
+        {loadState === 'error' && (
+          <div className="text-center py-12">
+            <p className="text-sm text-red-500">Failed to load ledger events.</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => void load()}>
+              Retry
+            </Button>
+          </div>
+        )}
 
-      {/* Empty */}
-      {filteredItems.length === 0 && loadState === 'success' && (
-        <div className={styles['ledger-empty']} role="status">
-          {keyword ? t('ledger.noSearchResults') : t('ledger.empty')}
-        </div>
-      )}
+        {filteredItems.length === 0 && loadState === 'success' && (
+          <div className="text-center py-12 app-text-muted">
+            <FileText size={48} className="mx-auto mb-4 opacity-30" />
+            <p className="text-sm">{keyword ? 'No events match your search' : 'No audit events found'}</p>
+          </div>
+        )}
 
-      {/* Table */}
-      {filteredItems.length > 0 && (
-        <div className={styles['ledger-table-wrap']}>
-          <table className={styles['ledger-table']}>
-            <thead>
-              <tr>
-                <th className={styles['ledger-col--time']}>{t('ledger.colTime')}</th>
-                <th>{t('ledger.colMember')}</th>
-                <th>{t('ledger.colType')}</th>
-                <th>{t('ledger.colSummary')}</th>
-                <th>{t('ledger.colNode')}</th>
-                <th className={styles['ledger-col--id']}>{t('ledger.colCorrelation')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map((row) => {
-                const isExpanded = expandedId === row.id;
-                const hasContext = row.context && Object.keys(row.context).length > 0;
-                return (
-                  <tr
-                    key={row.id}
-                    className={isExpanded ? styles['ledger-row--expanded'] : undefined}
-                    data-event-type={eventTypeTone(row.eventType)}
-                  >
-                    <td className={styles['ledger-col--time']}>
-                      <time dateTime={row.timestamp} title={formatLocalTime(row.timestamp)}>
-                        {relativeTime(row.timestamp)}
-                      </time>
-                      <span className={styles['ledger-time-abs']}>{formatLocalTime(row.timestamp)}</span>
-                    </td>
-                    <td>
-                      <code>{row.memberId || '—'}</code>
-                      {row.teamId && <span className={styles['ledger-team-tag']}>{row.teamId}</span>}
-                    </td>
-                    <td>
-                      <span className={`${styles['ledger-type-pill']} ${styles[`ledger-type-pill--${eventTypeTone(row.eventType)}`] ?? ''}`}>
-                        {row.eventType}
-                      </span>
-                    </td>
-                    <td className={styles['ledger-col--summary']}>
-                      <span>{row.summary}</span>
-                      {(hasContext || row.sessionId || row.correlationId) && (
-                        <button
-                          type="button"
-                          className={styles['ledger-expand-btn']}
-                          onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                          aria-expanded={isExpanded}
-                          aria-label={t('ledger.expandRow')}
-                        >
-                          {isExpanded ? '▾' : '▸'}
-                        </button>
-                      )}
+        {filteredItems.length > 0 && (
+          <Card className="overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50 dark:bg-gray-900">
+                  <TableHead className="w-10" />
+                  <TableHead className="w-[140px]">
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} />
+                      <span>Time</span>
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-[200px]">
+                    <div className="flex items-center gap-2">
+                      <User size={14} />
+                      <span>Executor</span>
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-[120px]">Type</TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-2">
+                      <FileText size={14} />
+                      <span>Action / Command</span>
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-[100px] text-right">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredItems.map((event) => {
+                  const isExpanded = expandedId === event.id;
+                  const member = getMemberInfo(event.memberId);
+                  const hasContext = event.context && Object.keys(event.context).length > 0;
+
+                  return (
+                    <React.Fragment key={event.id}>
+                      <TableRow
+                        className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                        onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                      >
+                        <TableCell>
+                          <button className="app-text-muted hover:app-text-strong">
+                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </button>
+                        </TableCell>
+
+                        <TableCell className="font-mono text-xs app-text-faint">
+                          <span title={formatLocalTime(event.timestamp)}>
+                            {relativeTime(event.timestamp)}
+                          </span>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center text-white text-xs font-bold">
+                              {(member?.displayName ?? event.memberId).charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium app-text-strong truncate">
+                                {member?.displayName ?? event.memberId}
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <StatusDot status={member?.status === 'running' ? 'working' : member?.status === 'idle' ? 'online' : 'offline'} />
+                                <span className="text-xs app-text-faint capitalize">
+                                  {member?.roleType ?? 'unknown'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>{getEventBadge(event.eventType)}</TableCell>
+
+                        <TableCell>
+                          <div className="font-mono text-sm app-text-strong">{event.summary}</div>
+                          {event.sessionId && (
+                            <div className="text-xs app-text-faint font-mono mt-0.5">
+                              Session: {event.sessionId}
+                            </div>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="text-right">
+                          <Badge
+                            variant="outline"
+                            className="text-green-600 border-green-600 text-xs"
+                          >
+                            Success
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+
                       {isExpanded && (
-                        <div className={styles['ledger-detail']}>
-                          {row.sessionId && (
-                            <div className={styles['ledger-detail__kv']}>
-                              <span className={styles['ledger-detail__label']}>{t('ledger.colSession')}</span>
-                              <code>{row.sessionId}</code>
-                            </div>
-                          )}
-                          {row.correlationId && (
-                            <div className={styles['ledger-detail__kv']}>
-                              <span className={styles['ledger-detail__label']}>{t('ledger.colCorrelation')}</span>
-                              <code>{row.correlationId}</code>
-                            </div>
-                          )}
-                          {row.nodeId && (
-                            <div className={styles['ledger-detail__kv']}>
-                              <span className={styles['ledger-detail__label']}>{t('ledger.colNode')}</span>
-                              <code>{row.nodeId}</code>
-                            </div>
-                          )}
-                          {hasContext && (
-                            <div className={styles['ledger-detail__kv']}>
-                              <span className={styles['ledger-detail__label']}>{t('ledger.colContext')}</span>
-                              <pre className={styles['ledger-context']}>{formatContext(row.context)}</pre>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td><code>{row.nodeId || '—'}</code></td>
-                    <td className={styles['ledger-col--id']}>
-                      <code>{row.correlationId ? row.correlationId.slice(0, 8) : '—'}</code>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                        <TableRow>
+                          <TableCell colSpan={6} className="bg-gray-50 dark:bg-gray-900/50 p-0">
+                            <div className="p-6 space-y-4">
+                              {/* Execution Details */}
+                              <div className="grid grid-cols-2 gap-4">
+                                <Card className="p-4">
+                                  <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-3">
+                                    Execution Context
+                                  </div>
+                                  <div className="space-y-2">
+                                    {event.sessionId && (
+                                      <div className="flex items-start gap-2">
+                                        <Terminal size={14} className="app-text-muted mt-0.5" />
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs app-text-faint">Session ID</div>
+                                          <div className="font-mono text-sm app-text-strong truncate">
+                                            {event.sessionId}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {event.correlationId && (
+                                      <div className="flex items-start gap-2">
+                                        <GitBranch size={14} className="app-text-muted mt-0.5" />
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs app-text-faint">Correlation ID</div>
+                                          <div className="font-mono text-sm app-text-strong truncate">
+                                            {event.correlationId}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div className="flex items-start gap-2">
+                                      <User size={14} className="app-text-muted mt-0.5" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-xs app-text-faint">Executor</div>
+                                        <div className="text-sm app-text-strong">
+                                          {member?.displayName ?? event.memberId}
+                                        </div>
+                                        <div className="text-xs app-text-faint">
+                                          {member?.roleType ?? 'unknown'} · {member?.status ?? 'unknown'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-start gap-2">
+                                      <Clock size={14} className="app-text-muted mt-0.5" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-xs app-text-faint">Timestamp</div>
+                                        <div className="font-mono text-sm app-text-strong">
+                                          {formatLocalTime(event.timestamp)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {event.nodeId && (
+                                      <div className="flex items-start gap-2">
+                                        <Cpu size={14} className="app-text-muted mt-0.5" />
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs app-text-faint">Node</div>
+                                          <div className="font-mono text-sm app-text-strong">
+                                            {event.nodeId}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </Card>
 
-      {/* Footer: auto-refresh indicator */}
-      {autoRefresh && loadState === 'success' && (
-        <p className={styles['ledger-auto-hint']}>{t('ledger.autoRefreshHint')}</p>
-      )}
-    </section>
+                                {hasContext && (
+                                  <Card className="p-4">
+                                    <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-3">
+                                      Additional Context
+                                    </div>
+                                    <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded overflow-auto max-h-[200px] app-text-strong">
+                                      {formatContext(event.context)}
+                                    </pre>
+                                  </Card>
+                                )}
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="flex items-center gap-2 pt-2 border-t app-border-subtle">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (event.sessionId) navigate('terminal', { hash: event.sessionId });
+                                  }}
+                                >
+                                  <Terminal size={14} className="mr-1" />
+                                  View Session
+                                </Button>
+                                <Button variant="outline" size="sm">
+                                  <GitBranch size={14} className="mr-1" />
+                                  Related Events
+                                </Button>
+                                <Button variant="outline" size="sm">
+                                  <Download size={14} className="mr-1" />
+                                  Export
+                                </Button>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+      </div>
+    </div>
   );
 };

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -17,6 +18,8 @@ type BindingRepository interface {
 	Unbind(ctx context.Context, memberID, skillName string) error
 	// ListByMember returns all skill names assigned to a member.
 	ListByMember(ctx context.Context, memberID string) ([]string, error)
+	// SetSkills replaces the full skill-name list for a member (empty removes the member entry).
+	SetSkills(ctx context.Context, memberID string, skillNames []string) error
 }
 
 // jsonBindingStore is a JSON-file-backed BindingRepository.
@@ -92,6 +95,34 @@ func (s *jsonBindingStore) ListByMember(_ context.Context, memberID string) ([]s
 	out := make([]string, len(skills))
 	copy(out, skills)
 	return out, nil
+}
+
+func (s *jsonBindingStore) SetSkills(_ context.Context, memberID string, skillNames []string) error {
+	if memberID == "" {
+		return errors.New("skill: memberID is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	all, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool)
+	var unique []string
+	for _, n := range skillNames {
+		n = strings.TrimSpace(n)
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		unique = append(unique, n)
+	}
+	if len(unique) == 0 {
+		delete(all, memberID)
+	} else {
+		all[memberID] = unique
+	}
+	return s.saveLocked(all)
 }
 
 func (s *jsonBindingStore) filePath() string {

@@ -7,6 +7,7 @@
 import { useI18n } from '@/i18n/I18nProvider';
 import type { Node } from '@/types/node';
 import { NodeStatusBadge } from './NodeStatusBadge';
+import styles from './nodes-feature.module.css';
 
 export type NodeListProps = {
   nodes: Node[];
@@ -29,14 +30,14 @@ export const NodeList = ({ nodes, selectedNodeId, onSelect, onAssignClick }: Nod
 
   if (nodes.length === 0) {
     return (
-      <div className="node-list--empty" role="status">
+      <div className={styles['node-list--empty']} role="status">
         {t('nodeList.empty')}
       </div>
     );
   }
 
   return (
-    <div className="node-list">
+    <div className={styles['node-list']}>
       <table aria-label={t('nodeList.tableAria')}>
         <thead>
           <tr>
@@ -59,7 +60,7 @@ export const NodeList = ({ nodes, selectedNodeId, onSelect, onAssignClick }: Nod
                 aria-selected={isSelected}
               >
                 <td>{node.hostname}</td>
-                <td className="node-list__cell--muted">
+                <td className={styles['node-list__cell--muted']}>
                   {node.nodeType === 'k8s_pod' ? t('nodeList.k8sPod') : t('nodeList.bareMetal')}
                 </td>
                 <td>
@@ -67,7 +68,7 @@ export const NodeList = ({ nodes, selectedNodeId, onSelect, onAssignClick }: Nod
                 </td>
                 <td
                   className={
-                    node.assignedAgents.length === 0 ? 'node-list__cell--muted' : undefined
+                    node.assignedAgents.length === 0 ? styles['node-list__cell--muted'] : undefined
                   }
                 >
                   {node.assignedAgents.length === 0
@@ -76,13 +77,13 @@ export const NodeList = ({ nodes, selectedNodeId, onSelect, onAssignClick }: Nod
                       ? t('nodeList.agentCount', { count: node.assignedAgents.length })
                       : t('nodeList.agentCountPlural', { count: node.assignedAgents.length })}
                 </td>
-                <td className="node-list__cell--meta">
+                <td className={styles['node-list__cell--meta']}>
                   {new Date(node.lastHeartbeatAt).toLocaleString()}
                 </td>
                 <td>
                   <button
                     type="button"
-                    className="node-list__assign"
+                    className={styles['node-list__assign']}
                     onClick={(e) => {
                       e.stopPropagation();
                       onAssignClick(node.id);

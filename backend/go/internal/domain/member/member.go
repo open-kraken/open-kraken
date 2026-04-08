@@ -26,6 +26,16 @@ const (
 	StatusSuspended Status = "suspended"
 )
 
+// PresenceStatus represents the user-set availability status.
+type PresenceStatus string
+
+const (
+	PresenceOnline  PresenceStatus = "online"
+	PresenceWorking PresenceStatus = "working"
+	PresenceDND     PresenceStatus = "dnd"
+	PresenceOffline PresenceStatus = "offline"
+)
+
 type Member struct {
 	ID          string
 	WorkspaceID string
@@ -36,6 +46,21 @@ type Member struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Version     uint64
+
+	// Terminal-related fields (Phase 3 — provider integration).
+	TerminalType    string `json:"terminalType,omitempty"`    // claude/gemini/codex/opencode/qwen/shell
+	TerminalCommand string `json:"terminalCommand,omitempty"` // custom command override
+	TerminalPath    string `json:"terminalPath,omitempty"`    // working directory for terminal
+	Avatar          string `json:"avatar,omitempty"`          // display avatar identifier
+
+	// Presence fields (Phase 5 — presence service).
+	ManualStatus   PresenceStatus `json:"manualStatus,omitempty"` // user-set DND/online status
+	TerminalStatus string         `json:"terminalStatus,omitempty"`
+}
+
+// IsDND returns true if the member has set Do-Not-Disturb.
+func (m Member) IsDND() bool {
+	return m.ManualStatus == PresenceDND
 }
 
 func (m Member) Validate() error {

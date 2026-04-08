@@ -10,7 +10,13 @@ import (
 	"open-kraken/backend/go/internal/api/http/handlers"
 	"open-kraken/backend/go/internal/ledger"
 	"open-kraken/backend/go/internal/memory"
+	"open-kraken/backend/go/internal/message"
 	"open-kraken/backend/go/internal/node"
+	"open-kraken/backend/go/internal/plugin"
+	"open-kraken/backend/go/internal/presence"
+	"open-kraken/backend/go/internal/settings"
+	"open-kraken/backend/go/internal/taskqueue"
+	"open-kraken/backend/go/internal/terminal/provider"
 	"open-kraken/backend/go/internal/projectdata"
 	"open-kraken/backend/go/internal/realtime"
 	"open-kraken/backend/go/internal/skill"
@@ -27,8 +33,14 @@ type ExtendedServices struct {
 	SkillService  *skill.Service
 	TokenService  *tokentrack.Service
 	MemoryService *memory.Service
-	LedgerService *ledger.Service
-	AuthAccounts  []handlers.KnownAccount
+	LedgerService   *ledger.Service
+	MessageService  *message.Service
+	PresenceService *presence.Service
+	PluginService   *plugin.Service
+	SettingsService  *settings.Service
+	ProviderRegistry *provider.Registry
+	TaskQueueService *taskqueue.Service
+	AuthAccounts     []handlers.KnownAccount
 }
 
 // NewHandler creates the default handler using in-process defaults (no extended services).
@@ -51,6 +63,9 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	terminalHandler := handlers.NewTerminalHandler(service, sessionsPathPrefix)
 	realtimeHandler := handlers.NewRealtimeHandler(service, hub, wsUpgrader)
 	workspaceHandler := handlers.NewWorkspaceHandler(service, hub, projectRepo, workspaceRoot)
+	if ext.MessageService != nil {
+		workspaceHandler.SetMessageService(ext.MessageService)
+	}
 
 	terminalBase := JoinAPI(apiBasePath, "terminal")
 	mux.HandleFunc(path.Join(terminalBase, "sessions"), terminalHandler.HandleSessions)
@@ -99,6 +114,82 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	if ext.LedgerService != nil {
 		ledgerHandler := handlers.NewLedgerHandler(ext.LedgerService)
 		mux.HandleFunc(JoinAPI(apiBasePath, "ledger/events"), ledgerHandler.HandleEvents)
+	}
+
+	// Presence routes.
+	if ext.PresenceService != nil {
+		presenceHandler := handlers.NewPresenceHandler(ext.PresenceService)
+		mux.HandleFunc(JoinAPI(apiBasePath, "presence/status"), presenceHandler.HandleStatus)
+		mux.HandleFunc(JoinAPI(apiBasePath, "presence/heartbeat"), presenceHandler.HandleHeartbeat)
+		mux.HandleFunc(JoinAPI(apiBasePath, "presence/online"), presenceHandler.HandleListOnline)
+	}
+
+	// Message service routes.
+	if ext.MessageService != nil {
+		msgHandler := handlers.NewMessageHandler(ext.MessageService, JoinAPI(apiBasePath, "messages"))
+		msgBase := JoinAPI(apiBasePath, "messages")
+		mux.HandleFunc(msgBase, msgHandler.Handle)
+		mux.HandleFunc(msgBase+"/", msgHandler.Handle)
+	}
+
+	// Provider registry routes.
+	if ext.ProviderRegistry != nil {
+		providerHandler := handlers.NewProviderHandler(ext.ProviderRegistry)
+		mux.HandleFunc(JoinAPI(apiBasePath, "providers"), providerHandler.HandleList)
+	}
+
+	// Settings routes.
+	if ext.SettingsService != nil {
+		settingsHandler := handlers.NewSettingsHandler(ext.SettingsService)
+		mux.HandleFunc(JoinAPI(apiBasePath, "settings"), func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+			switch r.Method {
+			case stdhttp.MethodGet:
+				settingsHandler.HandleGet(w, r)
+			case stdhttp.MethodPut:
+				settingsHandler.HandleUpdate(w, r)
+			default:
+				w.WriteHeader(stdhttp.StatusMethodNotAllowed)
+			}
+		})
+	}
+
+	// Plugin marketplace routes.
+	if ext.PluginService != nil {
+		pluginHandler := handlers.NewPluginHandler(ext.PluginService, JoinAPI(apiBasePath, "plugins"))
+		pluginBase := JoinAPI(apiBasePath, "plugins")
+		mux.HandleFunc(pluginBase, pluginHandler.Handle)
+		mux.HandleFunc(pluginBase+"/", pluginHandler.Handle)
+	}
+
+	// Task queue routes (P0: cross-node scheduling).
+	if ext.TaskQueueService != nil {
+		queueHandler := handlers.NewTaskQueueHandler(ext.TaskQueueService, JoinAPI(apiBasePath, "queue"))
+		queueBase := JoinAPI(apiBasePath, "queue")
+		mux.HandleFunc(queueBase, queueHandler.Handle)
+		mux.HandleFunc(queueBase+"/", queueHandler.Handle)
+	}
+
+	// Skill import route.
+	if ext.SkillService != nil {
+		skillHandler := handlers.NewSkillHandler(ext.SkillService, JoinAPI(apiBasePath, "members")+"/")
+		mux.HandleFunc(JoinAPI(apiBasePath, "skills/import"), skillHandler.HandleSkillImport)
+	}
+
+	// Unified agent status route (P2).
+	if ext.PresenceService != nil {
+		agentHandler := handlers.NewAgentStatusHandler(
+			service, ext.NodeService, ext.PresenceService, ext.TokenService, ext.TaskQueueService,
+		)
+		mux.HandleFunc(JoinAPI(apiBasePath, "agents/status"), agentHandler.HandleList)
+		mux.HandleFunc(JoinAPI(apiBasePath, "agents/status")+"/", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+			agentID := strings.TrimPrefix(r.URL.Path, JoinAPI(apiBasePath, "agents/status")+"/")
+			agentID = strings.TrimSuffix(agentID, "/")
+			if agentID == "" {
+				agentHandler.HandleList(w, r)
+				return
+			}
+			agentHandler.HandleByID(w, r, agentID)
+		})
 	}
 
 	// Authentication endpoints (always registered).

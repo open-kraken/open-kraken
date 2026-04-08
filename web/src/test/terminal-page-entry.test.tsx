@@ -12,7 +12,20 @@ const terminalApiClient = {
   getConversations: async () => ({ workspace: { id: 'ws_open_kraken' }, conversations: [] }),
   getMessages: async () => ({ items: [], nextBeforeId: null }),
   sendMessage: async () => ({}),
+  createConversation: async (body: { type: 'direct' | 'team'; memberId?: string; teamId?: string }) => ({
+    conversation: {
+      id: body.type === 'direct' && body.memberId ? `conv_dm_${body.memberId}` : 'conv_new',
+      type: body.type,
+      teamId: body.teamId ?? null
+    }
+  }),
   getMembers: async () => ({ members: [] }),
+  createMember: async () => ({ members: [] }),
+  updateMember: async () => ({ members: [] }),
+  deleteMember: async () => ({ members: [] }),
+  createTeam: async () => ({ members: [] }),
+  updateTeam: async () => ({ members: [] }),
+  deleteTeam: async () => ({ members: [] }),
   getRoadmap: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   getRoadmapDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   updateRoadmapDocument: async (payload: { readOnly: boolean; roadmap: { objective?: string; tasks?: unknown[] } }) => ({ readOnly: payload.readOnly, storage: 'workspace', warning: '', roadmap: payload.roadmap }),
@@ -67,7 +80,10 @@ test('terminal page renders the real panel container inside the route entry', ()
     realtimeClient: terminalRealtimeClient,
     navigate: () => undefined,
     pushNotification: () => undefined,
-    dismissNotification: () => undefined
+    dismissNotification: () => undefined,
+    chatNotifications: { totalUnread: 0, items: [] },
+    markAllChatRead: () => undefined,
+    markChatConversationRead: () => undefined
   };
 
   const markup = renderToStaticMarkup(

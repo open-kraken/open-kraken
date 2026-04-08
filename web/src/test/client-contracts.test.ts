@@ -14,6 +14,24 @@ test('parseAppEnv normalizes defaults and invalid values', () => {
   assert.equal(env.apiBaseUrl, 'http://127.0.0.1:8080/api/v1');
   assert.equal(env.wsBaseUrl, 'ws://127.0.0.1:9001/ws');
   assert.equal(env.defaultWorkspaceId, 'ws_open_kraken');
+  assert.equal(env.loginPrefillMemberId, '');
+  assert.equal(env.loginPrefillPassword, '');
+  assert.equal(env.langfuseUiUrl, null);
+  assert.equal(env.browserTraceContext, true);
+});
+
+test('parseAppEnv accepts optional Langfuse UI URL', () => {
+  const env = parseAppEnv({
+    VITE_LANGFUSE_UI_URL: 'https://cloud.langfuse.com/'
+  });
+  assert.equal(env.langfuseUiUrl, 'https://cloud.langfuse.com');
+});
+
+test('parseAppEnv can disable browser traceparent', () => {
+  assert.equal(
+    parseAppEnv({ VITE_OPEN_KRAKEN_TRACE_CONTEXT: '0' }).browserTraceContext,
+    false
+  );
 });
 
 test('HttpClient wraps server errors with the required envelope', async () => {

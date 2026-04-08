@@ -60,7 +60,17 @@ func WithAuth(jwtSecret []byte, next http.Handler) http.Handler {
 	})
 }
 
+// isPublicAPIPath matches routes that must work without a prior bearer token
+// (e.g. POST /auth/login). API base path may vary; we match by suffix.
+func isPublicAPIPath(path string) bool {
+	p := strings.TrimSuffix(path, "/")
+	return strings.HasSuffix(p, "/auth/login")
+}
+
 func isProtectedPath(path string) bool {
+	if isPublicAPIPath(path) {
+		return false
+	}
 	return strings.HasPrefix(path, "/api") || strings.HasPrefix(path, "/ws") || strings.HasPrefix(path, "/realtime")
 }
 

@@ -21,6 +21,20 @@ func TestWithAuthSkipsHealthz(t *testing.T) {
 	}
 }
 
+func TestWithAuthSkipsLoginWithoutToken(t *testing.T) {
+	handler := WithAuth([]byte("secret"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for unauthenticated login POST, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestWithAuthRejectsNoToken(t *testing.T) {
 	handler := WithAuth([]byte("secret"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

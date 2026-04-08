@@ -36,11 +36,17 @@ type ProjectDataDocument struct {
 }
 
 type RoadmapTask struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Status string `json:"status"`
-	Pinned bool   `json:"pinned"`
-	Order  int    `json:"order"`
+	ID           string   `json:"id"`
+	Title        string   `json:"title"`
+	Status       string   `json:"status"`
+	Pinned       bool     `json:"pinned"`
+	Order        int      `json:"order"`
+	AssigneeID   string   `json:"assigneeId,omitempty"`
+	TeamID       string   `json:"teamId,omitempty"`
+	Dependencies []string `json:"dependencies,omitempty"`
+	StartedAt    string   `json:"startedAt,omitempty"`
+	DueAt        string   `json:"dueAt,omitempty"`
+	CompletedAt  string   `json:"completedAt,omitempty"`
 }
 
 type ConversationRoadmapDocument struct {

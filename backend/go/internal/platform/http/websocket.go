@@ -1,6 +1,7 @@
 package http
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,7 +14,7 @@ import (
 // WebSocketUpgrader builds a gorilla Upgrader using OPEN_KRAKEN_WS_* runtime policy.
 // When OPEN_KRAKEN_WS_ALLOW_ANY_ORIGIN is true, any browser Origin is accepted (dev only).
 // Otherwise the Origin header must be empty (non-browser clients), match OPEN_KRAKEN_WS_ALLOWED_ORIGINS,
-// or match the request Host (same-origin deployment).
+// match the request Host (same-origin deployment), or both Origin and Host use loopback (local dev proxy).
 func WebSocketUpgrader(cfg runtimecfg.Config) websocket.Upgrader {
 	return websocket.Upgrader{CheckOrigin: checkWebSocketOrigin(cfg)}
 }
@@ -41,6 +42,31 @@ func checkWebSocketOrigin(cfg runtimecfg.Config) func(*http.Request) bool {
 		if err != nil {
 			return false
 		}
-		return strings.EqualFold(u.Host, r.Host)
+		if strings.EqualFold(u.Host, r.Host) {
+			return true
+		}
+		// Dev: Vite (or another local proxy) serves the UI on e.g. :3100 while the WS upgrade hits :8080.
+		// Origin and Host differ by port but both are loopback — allow so the browser can use the proxy.
+		return isLoopbackHostname(u.Hostname()) && isLoopbackHostname(hostOnly(r.Host))
+	}
+}
+
+func hostOnly(hostport string) string {
+	hostport = strings.TrimSpace(hostport)
+	if hostport == "" {
+		return ""
+	}
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		return h
+	}
+	return hostport
+}
+
+func isLoopbackHostname(name string) bool {
+	switch strings.ToLower(name) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
 	}
 }

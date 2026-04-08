@@ -166,6 +166,54 @@ export const startMockServer = async ({ port = 0 } = {}) => {
     if (req.method === 'GET' && parts[3] === 'conversations' && parts.length === 4) {
       return sendJson(res, 200, { workspace: state.workspace, conversations: state.conversations });
     }
+    if (req.method === 'POST' && parts[3] === 'conversations' && parts.length === 4) {
+      const body = JSON.parse(await readBody(req));
+      const t = body.type;
+      let id;
+      let conv;
+      if (t === 'direct' && body.memberId) {
+        id = `conv_dm_${body.memberId}`;
+        const peer = state.members.members.find((m) => m.memberId === body.memberId);
+        conv = {
+          id,
+          type: 'direct',
+          memberIds: ['owner_1', body.memberId],
+          customName: peer?.displayName ?? body.memberId,
+          pinned: false,
+          muted: false,
+          lastMessageAt: Date.now(),
+          lastMessagePreview: '',
+          isDefault: false,
+          unreadCount: 0
+        };
+      } else if (t === 'team' && body.teamId) {
+        id = `conv_team_${body.teamId}`;
+        const team = state.teams.find((x) => x.teamId === body.teamId);
+        const memberIds = team ? team.members.map((m) => m.memberId) : [];
+        conv = {
+          id,
+          type: 'team',
+          teamId: body.teamId,
+          memberIds,
+          customName: team?.name ?? body.teamId,
+          pinned: false,
+          muted: false,
+          lastMessageAt: Date.now(),
+          lastMessagePreview: '',
+          isDefault: false,
+          unreadCount: 0
+        };
+      } else {
+        return sendJson(res, 400, { error: 'invalid_conversation_body' });
+      }
+      const existing = state.conversations.find((c) => c.id === id);
+      if (existing) {
+        return sendJson(res, 200, { conversation: existing });
+      }
+      state.conversations.push(conv);
+      state.messages[id] = state.messages[id] ?? [];
+      return sendJson(res, 201, { conversation: conv });
+    }
     if (req.method === 'GET' && parts[3] === 'conversations' && parts[5] === 'messages') {
       return sendJson(res, 200, {
         items: state.messages[parts[4]] ?? [],
@@ -207,7 +255,11 @@ export const startMockServer = async ({ port = 0 } = {}) => {
       return sendJson(res, 201, { messageId: message.id, message });
     }
     if (req.method === 'GET' && parts[3] === 'members') {
-      return sendJson(res, 200, { readOnly: state.workspace.readOnly, members: state.members });
+      return sendJson(res, 200, {
+        readOnly: state.workspace.readOnly,
+        members: state.members,
+        teams: state.teams
+      });
     }
     if (req.method === 'PATCH' && parts[3] === 'members' && parts[4] === 'status') {
       const body = JSON.parse(await readBody(req));

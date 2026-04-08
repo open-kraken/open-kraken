@@ -52,12 +52,20 @@ export type TerminalOutputState = {
   lastSnapshotSeq: number;
 };
 
+export type TerminalIntelligenceStatus = 'connecting' | 'online' | 'working' | 'offline';
+
 export type TerminalRuntimeState = {
   connection: TerminalConnectionState;
   process: TerminalProcessState;
   error: TerminalErrorState;
   statusLabel: string;
   lastStatusSeq: number;
+  /** Intelligence engine status (from backend polling). */
+  intelligenceStatus: TerminalIntelligenceStatus;
+  /** True when the terminal shell is ready for user input. */
+  shellReady: boolean;
+  /** Unacked bytes for flow control display. */
+  unackedBytes: number;
 };
 
 export type TerminalPanelState = {
@@ -146,4 +154,10 @@ export type TerminalPanelViewModel = {
   };
   followOutput: boolean;
   autoScrollHint: string;
+  /** Intelligence engine status — drives Working animation in UI. */
+  intelligenceStatus: TerminalIntelligenceStatus;
+  /** True when terminal is ready for user input. */
+  shellReady: boolean;
+  /** Flow control: bytes sent to frontend but not yet ACKed. */
+  unackedBytes: number;
 };

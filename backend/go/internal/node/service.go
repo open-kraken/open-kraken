@@ -28,14 +28,30 @@ func NewService(repo NodeRepository, hub *realtime.Hub) *Service {
 
 // Register persists a new node record and broadcasts a node.updated event.
 // The node status is forced to online, and timestamps are set to now.
+// Returns ErrHostnameConflict if another node with the same hostname exists.
 func (s *Service) Register(ctx context.Context, n Node) (Node, error) {
 	if err := n.Validate(); err != nil {
 		return Node{}, err
 	}
+
+	// Hostname uniqueness check: reject if another node ID holds this hostname.
+	existing, err := s.repo.List(ctx)
+	if err != nil {
+		return Node{}, fmt.Errorf("node register: %w", err)
+	}
+	for _, e := range existing {
+		if e.Hostname == n.Hostname && e.ID != n.ID {
+			return Node{}, ErrHostnameConflict
+		}
+	}
+
 	now := s.now()
 	n.Status = NodeStatusOnline
 	n.RegisteredAt = now
 	n.LastHeartbeatAt = now
+	if n.Agents == nil {
+		n.Agents = []string{}
+	}
 	if err := s.repo.Save(ctx, n); err != nil {
 		return Node{}, fmt.Errorf("node register: %w", err)
 	}
@@ -80,18 +96,32 @@ func (s *Service) List(ctx context.Context) ([]Node, error) {
 	return s.repo.List(ctx)
 }
 
-// AssignAgent labels a node with an agent ID and broadcasts node.updated.
-// In production this would update a dedicated assignment record; here the
-// agent ID is stored as a label for simplicity.
+// AssignAgent assigns an agent to a node and broadcasts node.updated.
+// Returns ErrMaxAgentsReached if the node is at capacity.
+// The assignment is idempotent: re-assigning the same agent is a no-op.
 func (s *Service) AssignAgent(ctx context.Context, nodeID, agentID string) (Node, error) {
 	n, err := s.repo.FindByID(ctx, nodeID)
 	if err != nil {
 		return Node{}, fmt.Errorf("node assign agent: %w", err)
 	}
+
+	// Idempotent: already assigned.
+	if n.HasAgent(agentID) {
+		return n, nil
+	}
+
+	// Enforce capacity.
+	if !n.CanAcceptAgent() {
+		return Node{}, ErrMaxAgentsReached
+	}
+
+	n.Agents = append(n.Agents, agentID)
+	// Also keep the legacy label for backwards compat.
 	if n.Labels == nil {
 		n.Labels = make(map[string]string)
 	}
 	n.Labels["agent_id"] = agentID
+
 	if err := s.repo.Save(ctx, n); err != nil {
 		return Node{}, fmt.Errorf("node assign agent: %w", err)
 	}
@@ -106,6 +136,14 @@ func (s *Service) RemoveAgent(ctx context.Context, nodeID, agentID string) (Node
 	if err != nil {
 		return Node{}, fmt.Errorf("node remove agent: %w", err)
 	}
+	// Remove from agents list.
+	filtered := make([]string, 0, len(n.Agents))
+	for _, id := range n.Agents {
+		if id != agentID {
+			filtered = append(filtered, id)
+		}
+	}
+	n.Agents = filtered
 	// Remove any label whose value matches agentID to keep the store consistent.
 	for k, v := range n.Labels {
 		if v == agentID {

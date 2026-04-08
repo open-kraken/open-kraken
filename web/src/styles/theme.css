@@ -1,46 +1,69 @@
 :root {
   color-scheme: light;
 
-  --app-font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  --app-font-display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
-  --app-font-mono: "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+  /* ── Fonts ── */
+  --app-font-sans: “Inter”, “IBM Plex Sans”, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --app-font-display: “Inter”, “Space Grotesk”, -apple-system, system-ui, sans-serif;
+  --app-font-mono: “JetBrains Mono”, “IBM Plex Mono”, “SFMono-Regular”, ui-monospace, monospace;
 
-  /* Neutrals: cool stone / slate (product-console) */
-  --app-bg-canvas: #f4f4f5;
-  --app-bg-elevated: #fafafa;
-  --app-bg-muted: #e4e4e7;
+  /* ── Neutrals: blue-tinted slate (not generic gray) ── */
+  --app-bg-canvas: hsl(220 16% 96%);
+  --app-bg-elevated: hsl(220 20% 98%);
+  --app-bg-muted: hsl(220 14% 90%);
   --app-surface-strong: #ffffff;
   --app-surface-soft: rgba(255, 255, 255, 0.72);
-  --app-surface-inset: rgba(15, 23, 42, 0.04);
-  --app-border-subtle: rgba(15, 23, 42, 0.08);
-  --app-border-strong: rgba(15, 23, 42, 0.14);
-  --app-text-strong: #0f172a;
-  --app-text-muted: #64748b;
-  --app-text-faint: #94a3b8;
+  --app-surface-inset: hsl(220 14% 95%);
+  --app-border-subtle: hsl(220 13% 91%);
+  --app-border-strong: hsl(220 13% 84%);
+  --app-text-strong: hsl(222 47% 11%);
+  --app-text-muted: hsl(218 15% 46%);
+  --app-text-faint: hsl(216 12% 61%);
 
-  --app-accent: #0d9488;
-  --app-accent-foreground: #f0fdfa;
-  --app-accent-soft: rgba(13, 148, 136, 0.1);
-  /* Text/icons on white or pale mint — darker than --app-accent for contrast (avoid teal-on-teal). */
-  --app-link: #115e59;
-  --app-link-hover: #0a3f3a;
-  --app-text-on-tint: #0f172a;
-  --app-icon-on-accent-row: #134e4a;
-  --app-sidebar-edge: rgba(45, 212, 191, 0.55);
+  /* ── Accent: teal-cyan ── */
+  --app-accent: hsl(170 60% 38%);
+  --app-accent-foreground: hsl(170 40% 98%);
+  --app-accent-soft: hsl(170 55% 38% / 0.08);
+  --app-link: hsl(170 65% 26%);
+  --app-link-hover: hsl(170 70% 18%);
+  --app-text-on-tint: hsl(222 47% 11%);
+  --app-icon-on-accent-row: hsl(170 55% 22%);
+  --app-sidebar-edge: hsl(170 60% 65% / 0.45);
 
-  /* Hairline shadows (single soft layer) */
-  --app-shadow-panel: 0 1px 0 rgba(15, 23, 42, 0.04), 0 12px 40px rgba(15, 23, 42, 0.06);
-  --app-shadow-card: 0 1px 0 rgba(15, 23, 42, 0.05), 0 6px 20px rgba(15, 23, 42, 0.05);
-  --app-shadow-nav: 1px 0 0 rgba(15, 23, 42, 0.06);
+  /* ── Shadows: border-first depth (less generic box-shadow) ── */
+  --app-shadow-panel:
+    0 0 0 1px hsl(220 13% 91%),
+    0 1px 2px hsl(220 20% 88% / 0.6),
+    0 4px 16px hsl(220 20% 88% / 0.25);
+  --app-shadow-card:
+    0 0 0 1px hsl(220 13% 91%),
+    0 1px 3px hsl(220 20% 88% / 0.4);
+  --app-shadow-nav: 1px 0 0 hsl(220 13% 91%);
+  --app-shadow-popover:
+    0 0 0 1px hsl(220 13% 88%),
+    0 4px 16px hsl(220 20% 80% / 0.2),
+    0 16px 40px hsl(220 20% 80% / 0.15);
 
-  /* Tighter radii: crisp UI, not “bubble” */
-  --app-radius-panel: 14px;
-  --app-radius-card: 12px;
-  --app-radius-control: 8px;
+  /* ── Glass surfaces ── */
+  --app-surface-glass: rgba(255, 255, 255, 0.82);
+  --app-surface-glass-border: hsl(220 13% 91%);
+  --app-surface-elevated: #ffffff;
+
+  /* ── Motion: expo easing for professional feel ── */
+  --app-transition-fast: 120ms ease;
+  --app-transition-medium: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --app-transition-slow: 300ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Radii: varied, not uniform (8 card, 6 button, 4 tag) ── */
+  --app-radius-panel: 10px;
+  --app-radius-card: 8px;
+  --app-radius-control: 6px;
   --app-radius-pill: 999px;
 
-  --app-sidebar-width: 264px;
+  /* ── Layout ── */
+  --app-sidebar-width: 208px;
+  --app-header-height: 2.5rem;
 
+  /* ── Spacing (4px base) ── */
   --app-space-1: 0.25rem;
   --app-space-2: 0.5rem;
   --app-space-3: 0.75rem;
@@ -50,122 +73,164 @@
   --app-space-8: 2rem;
   --app-space-10: 2.5rem;
 
-  --app-text-xs: 0.6875rem;
-  --app-text-sm: 0.8125rem;
-  --app-text-md: 0.875rem;
-  --app-control-y: 0.375rem;
-  --app-control-x: 0.625rem;
-  --app-control-height: 2rem;
+  /* ── Typography: compact scale for data-dense UI ── */
+  --app-text-xs: 0.65625rem;  /* 10.5px: labels, metadata */
+  --app-text-sm: 0.75rem;     /* 12px: secondary, nav */
+  --app-text-md: 0.8125rem;   /* 13px: body */
+  --app-control-y: 0.3rem;
+  --app-control-x: 0.5rem;
+  --app-control-height: 1.75rem;
 
   --app-z-base: 1;
   --app-z-overlay: 10;
 
   --app-motion-fast: 120ms ease;
-  --app-motion-medium: 200ms cubic-bezier(0.22, 1, 0.36, 1);
-  --app-focus-ring: 0 0 0 2px rgba(13, 148, 136, 0.35);
-  --app-selection-bg: rgba(13, 148, 136, 0.18);
+  --app-motion-medium: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* Focus ring: double-ring (gap + color) for clarity */
+  --app-focus-ring: 0 0 0 2px var(--app-surface-strong), 0 0 0 4px hsl(170 60% 38% / 0.4);
+  --app-selection-bg: hsl(170 55% 38% / 0.15);
   --app-selection-fg: var(--app-text-strong);
 
-  --app-health-ok: #14b8a6;
-  --app-health-warn: #f59e0b;
-  --app-health-bad: #f87171;
+  /* ── Status palette (desaturated, not Bootstrap defaults) ── */
+  --app-health-ok: hsl(166 64% 42%);
+  --app-health-warn: hsl(38 92% 55%);
+  --app-health-bad: hsl(0 68% 58%);
 
-  --role-owner: #1e293b;
-  --role-supervisor: #1e40af;
-  --role-assistant: #14532d;
-  --role-member: #b45309;
-  --status-idle: #b45309;
-  /* Dark green for labels on mint/teal tints (was same hue as --app-accent). */
-  --status-running: #0f5132;
-  --status-success: #2563eb;
-  --status-error: #dc2626;
-  --status-offline: #64748b;
+  --role-owner: hsl(222 47% 18%);
+  --role-supervisor: hsl(224 76% 48%);
+  --role-assistant: hsl(152 62% 20%);
+  --role-member: hsl(32 82% 38%);
+  --status-idle: hsl(32 82% 38%);
+  --status-running: hsl(160 65% 22%);
+  --status-success: hsl(221 83% 53%);
+  --status-error: hsl(0 72% 51%);
+  --status-offline: hsl(216 12% 54%);
 
-  /* Page chrome (theme-switchable; used in global.css) */
+  /* ── Page chrome ── */
   --app-body-bg-image:
-    radial-gradient(ellipse 90% 80% at 0% -10%, rgba(13, 148, 136, 0.06), transparent 50%),
-    radial-gradient(ellipse 70% 50% at 100% 0%, rgba(29, 78, 216, 0.04), transparent 45%),
-    linear-gradient(180deg, #fafafa 0%, #f4f4f5 100%);
-  --app-sidebar-bg: linear-gradient(165deg, #ffffff 0%, var(--app-bg-elevated) 52%, #f4f4f5 100%);
-  --app-sidebar-shadow-inset: inset -1px 0 0 rgba(15, 23, 42, 0.04);
+    radial-gradient(ellipse 80% 60% at 0% -8%, hsl(170 40% 50% / 0.04), transparent 50%),
+    radial-gradient(ellipse 60% 45% at 100% 0%, hsl(224 50% 50% / 0.03), transparent 45%),
+    linear-gradient(180deg, hsl(220 20% 98%) 0%, hsl(220 16% 96%) 100%);
+  --app-sidebar-bg: hsl(220 20% 98%);
+  --app-sidebar-shadow-inset: inset -1px 0 0 hsl(220 13% 91%);
   --app-sidebar-accent-stripe: linear-gradient(
     180deg,
     var(--app-accent) 0%,
-    rgba(13, 148, 136, 0.35) 55%,
-    rgba(29, 78, 216, 0.2) 100%
+    hsl(170 60% 38% / 0.3) 55%,
+    hsl(224 60% 55% / 0.15) 100%
   );
-  --app-logo-bg: linear-gradient(140deg, rgba(13, 148, 136, 0.22), rgba(29, 78, 216, 0.12));
-  --app-logo-border: rgba(13, 148, 136, 0.28);
-  --app-logo-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-  --app-nav-link-border: rgba(15, 23, 42, 0.06);
-  --app-nav-link-hover-bg: rgba(255, 255, 255, 0.72);
-  --app-nav-focus-ring: rgba(13, 148, 136, 0.55);
-  --app-nav-active-border: rgba(13, 148, 136, 0.28);
-  --app-nav-active-hover-bg: rgba(13, 148, 136, 0.14);
-  --app-nav-active-hover-border: rgba(13, 148, 136, 0.35);
-  --app-nav-active-focus-ring: rgba(13, 148, 136, 0.75);
-  --app-hero-bg: linear-gradient(
-    165deg,
-    rgba(13, 148, 136, 0.08) 0%,
-    rgba(248, 250, 252, 0.98) 42%,
-    rgba(255, 255, 255, 0.88) 100%
-  );
-  --app-hero-border: rgba(13, 148, 136, 0.14);
-  --app-hero-shadow: 0 14px 44px -28px rgba(15, 23, 42, 0.2);
-  --app-hero-metric-border: rgba(13, 148, 136, 0.12);
-  --app-hero-metric-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
-  --app-page-card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.85);
-  --app-scrollbar-thumb: rgba(15, 23, 42, 0.12);
-  --app-scrollbar-thumb-hover: rgba(15, 23, 42, 0.2);
-  --app-scrollbar-gutter: rgba(15, 23, 42, 0.2);
-  --app-toolbar-card-hover-border: rgba(15, 23, 42, 0.12);
-  --app-toolbar-card-hover-shadow: 0 1px 0 rgba(15, 23, 42, 0.05), 0 14px 36px rgba(15, 23, 42, 0.07);
-  --app-toast-info-bg: linear-gradient(180deg, rgba(240, 253, 250, 0.35), var(--app-surface-strong));
-  --app-tint-row-hover: rgba(240, 253, 250, 0.35);
-  --app-tint-row-active-border: rgba(13, 148, 136, 0.45);
-  --app-tint-row-active-glow: 0 0 0 1px rgba(13, 148, 136, 0.12);
-  --app-tint-soft-bg: rgba(240, 253, 250, 0.65);
-  --app-tint-conversation: rgba(240, 253, 250, 0.5);
-  --app-status-pill-live-bg: rgba(13, 148, 136, 0.1);
-  --app-mobile-sidebar-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
-  --app-statusbar-bg: rgba(250, 250, 250, 0.88);
+  --app-logo-bg: linear-gradient(135deg, hsl(170 45% 45% / 0.18), hsl(224 50% 55% / 0.1));
+  --app-logo-border: hsl(170 45% 45% / 0.22);
+  --app-logo-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  --app-nav-link-border: transparent;
+  --app-nav-link-hover-bg: hsl(220 14% 93%);
+  --app-nav-focus-ring: hsl(170 60% 38% / 0.5);
+  --app-nav-active-border: hsl(170 55% 38% / 0.12);
+  --app-nav-active-hover-bg: hsl(170 55% 38% / 0.1);
+  --app-nav-active-hover-border: hsl(170 55% 38% / 0.2);
+  --app-nav-active-focus-ring: hsl(170 60% 38% / 0.7);
+  --app-hero-bg: hsl(220 20% 98%);
+  --app-hero-border: hsl(220 13% 91%);
+  --app-hero-shadow: none;
+  --app-hero-metric-border: hsl(220 13% 93%);
+  --app-hero-metric-shadow: none;
+  --app-page-card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --app-scrollbar-thumb: hsl(220 14% 82%);
+  --app-scrollbar-thumb-hover: hsl(220 14% 72%);
+  --app-scrollbar-gutter: transparent;
+  --app-toolbar-card-hover-border: hsl(220 13% 86%);
+  --app-toolbar-card-hover-shadow: 0 2px 8px hsl(220 20% 88% / 0.4);
+  --app-toast-info-bg: hsl(170 30% 97%);
+  --app-tint-row-hover: hsl(170 30% 96%);
+  --app-tint-row-active-border: hsl(170 55% 38% / 0.4);
+  --app-tint-row-active-glow: 0 0 0 1px hsl(170 55% 38% / 0.1);
+  --app-tint-soft-bg: hsl(170 30% 96%);
+  --app-tint-conversation: hsl(170 25% 96%);
+  --app-status-pill-live-bg: hsl(170 55% 38% / 0.08);
+  --app-mobile-sidebar-shadow: 0 1px 0 hsl(220 13% 91%);
+  --app-statusbar-bg: hsl(220 20% 98% / 0.92);
+
+  /* Shell chrome */
+  --app-header-toolbar-bg: #ffffff;
+  --app-header-bg: #ffffff;
+  --app-header-brand-bg: hsl(220 20% 97%);
+  --app-header-brand-separator: hsl(220 13% 91%);
+  --app-header-brand-inset: rgba(255, 255, 255, 0.5);
+  --app-header-border: hsl(220 13% 91%);
+  --app-header-shadow: 0 1px 0 hsl(220 13% 91%);
+  --app-shell-main-bg: hsl(220 16% 96%);
+  --app-shell-route-pill-bg: hsl(220 16% 96%);
+  --app-shell-route-pill-border: hsl(220 13% 91%);
+  --app-shell-tools-bg: hsl(220 16% 96%);
+  --app-shell-tools-border: hsl(220 13% 91%);
+  --app-nav-surface-hover: hsl(220 14% 93%);
+  --app-nav-surface-active: hsl(170 30% 96%);
+  --app-shell-content-bg: transparent;
+  --app-shell-content-edge: hsl(220 13% 91%);
+
+  /* Embedded terminal / code wells (stay dark even in light theme) */
+  --app-terminal-embed-bg: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  --app-terminal-embed-solid: #020617;
+  --app-terminal-embed-fg: #f1f5f9;
+  --app-terminal-embed-border: rgba(255, 255, 255, 0.06);
 }
 
+/*
+ * Dark theme — midnight console
+ * - Layered blue-slate (not flat black) for depth
+ * - Must override glass/elevated from :root or cards inherit #fff
+ */
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  --app-bg-canvas: #020617;
-  --app-bg-elevated: #0f172a;
-  --app-bg-muted: #1e293b;
-  --app-surface-strong: #0f172a;
-  --app-surface-soft: rgba(15, 23, 42, 0.92);
-  --app-surface-inset: rgba(248, 250, 252, 0.06);
-  --app-border-subtle: rgba(248, 250, 252, 0.08);
-  --app-border-strong: rgba(248, 250, 252, 0.16);
+  --app-bg-canvas: #0a0f18;
+  --app-bg-elevated: #121a2a;
+  --app-bg-muted: #1c2739;
+  --app-surface-strong: #151e30;
+  --app-surface-soft: rgba(21, 30, 48, 0.94);
+  --app-surface-inset: rgba(148, 163, 184, 0.08);
+  --app-border-subtle: rgba(186, 198, 214, 0.12);
+  --app-border-strong: rgba(203, 213, 225, 0.2);
   --app-text-strong: #f1f5f9;
-  --app-text-muted: #94a3b8;
-  --app-text-faint: #64748b;
+  --app-text-muted: #a8b5c4;
+  --app-text-faint: #7b8a9c;
 
-  --app-accent: #2dd4bf;
-  --app-accent-foreground: #042f2e;
-  --app-accent-soft: rgba(45, 212, 191, 0.14);
-  --app-link: #5eead4;
-  --app-link-hover: #ccfbf1;
-  --app-text-on-tint: #ecfdf5;
-  --app-icon-on-accent-row: #99f6e4;
-  --app-sidebar-edge: rgba(45, 212, 191, 0.45);
+  /* Glass panels (login, overlays) — was missing; inherited light #fff */
+  --app-surface-glass: rgba(21, 30, 48, 0.82);
+  --app-surface-glass-border: rgba(148, 163, 184, 0.18);
+  --app-surface-elevated: #161f33;
 
-  --app-shadow-panel: 0 1px 0 rgba(0, 0, 0, 0.35), 0 12px 40px rgba(0, 0, 0, 0.45);
-  --app-shadow-card: 0 1px 0 rgba(0, 0, 0, 0.25), 0 6px 20px rgba(0, 0, 0, 0.35);
-  --app-shadow-nav: 1px 0 0 rgba(0, 0, 0, 0.35);
+  --app-accent: #3ecfae;
+  --app-accent-foreground: #042a24;
+  --app-accent-soft: rgba(62, 207, 174, 0.16);
+  --app-link: #5ee4c9;
+  --app-link-hover: #a7f3e3;
+  --app-text-on-tint: #ecfdf8;
+  --app-icon-on-accent-row: #7ee8d4;
+  --app-sidebar-edge: rgba(62, 207, 174, 0.42);
 
-  --app-focus-ring: 0 0 0 2px rgba(45, 212, 191, 0.45);
-  --app-selection-bg: rgba(45, 212, 191, 0.28);
+  /* Tinted shadows (slate/teal) instead of pure black “mud” */
+  --app-shadow-panel: 
+    0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 20px rgba(8, 12, 24, 0.45),
+    0 20px 50px rgba(4, 8, 20, 0.55);
+  --app-shadow-card: 
+    0 1px 0 rgba(255, 255, 255, 0.03),
+    0 2px 12px rgba(8, 12, 24, 0.35),
+    0 10px 32px rgba(4, 8, 20, 0.42);
+  --app-shadow-nav: 1px 0 0 rgba(148, 163, 184, 0.08);
+  --app-shadow-popover:
+    0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 28px rgba(8, 12, 24, 0.5),
+    0 24px 48px rgba(4, 8, 20, 0.55);
+
+  --app-focus-ring: 0 0 0 2px rgba(62, 207, 174, 0.42);
+  --app-selection-bg: rgba(62, 207, 174, 0.25);
   --app-selection-fg: var(--app-text-strong);
 
-  --app-health-ok: #2dd4bf;
+  --app-health-ok: #3ecfae;
   --app-health-warn: #fbbf24;
-  --app-health-bad: #f87171;
+  --app-health-bad: #fb7185;
 
   --role-owner: #e2e8f0;
   --role-supervisor: #93c5fd;
@@ -174,59 +239,97 @@ html[data-theme='dark'] {
   --status-idle: #fbbf24;
   --status-running: #6ee7b7;
   --status-success: #93c5fd;
-  --status-error: #f87171;
+  --status-error: #fb7185;
   --status-offline: #94a3b8;
 
   --app-body-bg-image:
-    radial-gradient(ellipse 85% 70% at 0% -12%, rgba(45, 212, 191, 0.14), transparent 52%),
-    radial-gradient(ellipse 65% 48% at 100% 0%, rgba(59, 130, 246, 0.12), transparent 48%),
-    linear-gradient(180deg, #0f172a 0%, #020617 100%);
-  --app-sidebar-bg: linear-gradient(165deg, #0f172a 0%, #0b1220 52%, #020617 100%);
-  --app-sidebar-shadow-inset: inset -1px 0 0 rgba(248, 250, 252, 0.06);
+    radial-gradient(ellipse 100% 80% at 0% -5%, rgba(62, 207, 174, 0.09), transparent 55%),
+    radial-gradient(ellipse 80% 55% at 100% 5%, rgba(99, 102, 241, 0.1), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(30, 58, 95, 0.35), transparent 55%),
+    linear-gradient(165deg, #0d1422 0%, #0a0f18 45%, #080c14 100%);
+  --app-sidebar-bg: linear-gradient(
+    168deg,
+    #10192b 0%,
+    #0d1422 48%,
+    #0a101c 100%
+  );
+  --app-sidebar-shadow-inset: inset -1px 0 0 rgba(148, 163, 184, 0.1);
   --app-sidebar-accent-stripe: linear-gradient(
     180deg,
     var(--app-accent) 0%,
-    rgba(45, 212, 191, 0.35) 55%,
-    rgba(59, 130, 246, 0.25) 100%
+    rgba(62, 207, 174, 0.32) 52%,
+    rgba(99, 102, 241, 0.22) 100%
   );
-  --app-logo-bg: linear-gradient(140deg, rgba(45, 212, 191, 0.22), rgba(59, 130, 246, 0.14));
-  --app-logo-border: rgba(45, 212, 191, 0.35);
-  --app-logo-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --app-nav-link-border: rgba(248, 250, 252, 0.07);
-  --app-nav-link-hover-bg: rgba(248, 250, 252, 0.06);
-  --app-nav-focus-ring: rgba(45, 212, 191, 0.55);
-  --app-nav-active-border: rgba(45, 212, 191, 0.35);
-  --app-nav-active-hover-bg: rgba(45, 212, 191, 0.16);
-  --app-nav-active-hover-border: rgba(45, 212, 191, 0.45);
-  --app-nav-active-focus-ring: rgba(45, 212, 191, 0.8);
+  --app-logo-bg: linear-gradient(135deg, rgba(62, 207, 174, 0.2), rgba(99, 102, 241, 0.12));
+  --app-logo-border: rgba(62, 207, 174, 0.32);
+  --app-logo-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --app-nav-link-border: rgba(148, 163, 184, 0.08);
+  --app-nav-link-hover-bg: rgba(148, 163, 184, 0.08);
+  --app-nav-focus-ring: rgba(62, 207, 174, 0.5);
+  --app-nav-active-border: rgba(62, 207, 174, 0.38);
+  --app-nav-active-hover-bg: rgba(62, 207, 174, 0.14);
+  --app-nav-active-hover-border: rgba(62, 207, 174, 0.48);
+  --app-nav-active-focus-ring: rgba(62, 207, 174, 0.75);
   --app-hero-bg: linear-gradient(
-    165deg,
-    rgba(45, 212, 191, 0.12) 0%,
-    rgba(15, 23, 42, 0.96) 45%,
-    rgba(2, 6, 23, 0.92) 100%
+    155deg,
+    rgba(62, 207, 174, 0.1) 0%,
+    rgba(21, 30, 48, 0.92) 42%,
+    rgba(10, 15, 24, 0.96) 100%
   );
-  --app-hero-border: rgba(45, 212, 191, 0.22);
-  --app-hero-shadow: 0 14px 44px -28px rgba(0, 0, 0, 0.55);
-  --app-hero-metric-border: rgba(45, 212, 191, 0.18);
-  --app-hero-metric-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
-  --app-page-card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --app-scrollbar-thumb: rgba(248, 250, 252, 0.14);
-  --app-scrollbar-thumb-hover: rgba(248, 250, 252, 0.22);
-  --app-scrollbar-gutter: rgba(248, 250, 252, 0.18);
-  --app-toolbar-card-hover-border: rgba(248, 250, 252, 0.12);
-  --app-toolbar-card-hover-shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 14px 36px rgba(0, 0, 0, 0.35);
-  --app-toast-info-bg: linear-gradient(180deg, rgba(6, 78, 59, 0.35), var(--app-surface-strong));
-  --app-tint-row-hover: rgba(6, 78, 59, 0.35);
-  --app-tint-row-active-border: rgba(45, 212, 191, 0.45);
-  --app-tint-row-active-glow: 0 0 0 1px rgba(45, 212, 191, 0.18);
-  --app-tint-soft-bg: rgba(6, 78, 59, 0.45);
-  --app-tint-conversation: rgba(6, 78, 59, 0.32);
-  --app-status-pill-live-bg: rgba(45, 212, 191, 0.15);
-  --app-mobile-sidebar-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-  --app-statusbar-bg: rgba(15, 23, 42, 0.88);
+  --app-hero-border: rgba(62, 207, 174, 0.2);
+  --app-hero-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 48px -20px rgba(4, 8, 18, 0.65);
+  --app-hero-metric-border: rgba(62, 207, 174, 0.16);
+  --app-hero-metric-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  --app-page-card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --app-scrollbar-thumb: rgba(148, 163, 184, 0.22);
+  --app-scrollbar-thumb-hover: rgba(203, 213, 225, 0.32);
+  --app-scrollbar-gutter: rgba(148, 163, 184, 0.2);
+  --app-toolbar-card-hover-border: rgba(148, 163, 184, 0.16);
+  --app-toolbar-card-hover-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04),
+    0 12px 36px rgba(4, 8, 18, 0.45);
+  --app-toast-info-bg: linear-gradient(180deg, rgba(15, 75, 58, 0.45), var(--app-surface-strong));
+  --app-tint-row-hover: rgba(62, 207, 174, 0.08);
+  --app-tint-row-active-border: rgba(62, 207, 174, 0.4);
+  --app-tint-row-active-glow: 0 0 0 1px rgba(62, 207, 174, 0.15);
+  --app-tint-soft-bg: rgba(62, 207, 174, 0.12);
+  --app-tint-conversation: rgba(62, 207, 174, 0.08);
+  --app-status-pill-live-bg: rgba(62, 207, 174, 0.14);
+  --app-mobile-sidebar-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  --app-statusbar-bg: rgba(16, 25, 43, 0.92);
+
+  --app-header-toolbar-bg: linear-gradient(180deg, #121a2c 0%, #0f1626 50%, #0c1220 100%);
+  --app-header-bg: var(--app-header-toolbar-bg);
+  --app-header-brand-bg: linear-gradient(165deg, #141d30 0%, #101827 42%, #0c1220 100%);
+  --app-header-brand-separator: rgba(148, 163, 184, 0.12);
+  --app-header-brand-inset: rgba(255, 255, 255, 0.06);
+  --app-header-border: rgba(148, 163, 184, 0.11);
+  --app-header-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 6px 28px -6px rgba(4, 8, 18, 0.55);
+  --app-shell-main-bg: linear-gradient(180deg, #0a0f18 0%, #0d1422 48%, #0a0f18 100%);
+  --app-shell-route-pill-bg: rgba(22, 32, 52, 0.88);
+  --app-shell-route-pill-border: rgba(148, 163, 184, 0.14);
+  --app-shell-tools-bg: rgba(18, 26, 42, 0.75);
+  --app-shell-tools-border: rgba(148, 163, 184, 0.12);
+  --app-nav-surface-hover: rgba(148, 163, 184, 0.07);
+  --app-nav-surface-active: linear-gradient(
+    105deg,
+    rgba(62, 207, 174, 0.18) 0%,
+    rgba(99, 102, 241, 0.08) 100%
+  );
+  --app-shell-content-bg: rgba(18, 26, 42, 0.5);
+  --app-shell-content-edge: rgba(148, 163, 184, 0.1);
+
+  --app-terminal-embed-bg: linear-gradient(180deg, #121a2a 0%, #0a0f18 100%);
+  --app-terminal-embed-solid: #121a2a;
+  --app-terminal-embed-fg: var(--app-text-strong);
+  --app-terminal-embed-border: rgba(148, 163, 184, 0.14);
 }
 
-/* Theme switcher (sidebar) */
+/* Theme switcher */
 .theme-toggle {
   display: grid;
   gap: var(--app-space-2);
@@ -278,3 +381,27 @@ html[data-theme='dark'] {
   border-color: var(--app-nav-active-hover-border);
   background: var(--app-nav-active-hover-bg);
 }
+
+/* Top app bar — minimal footprint */
+.theme-toggle--compact {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.theme-toggle--compact .theme-toggle__buttons {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  grid-template-columns: unset;
+}
+
+.theme-toggle--compact .theme-toggle__btn {
+  padding: 0.25rem 0.5rem;
+  min-height: 1.75rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+

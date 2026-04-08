@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "workspaceId": "ws_open_kraken",
+    "version": 1,
+    "updatedAt": "2026-04-06T09:12:58.2525522Z",
+    "storage": "workspace"
+  },
+  "members": [
+    {
+      "avatar": "CO",
+      "displayName": "Claire",
+      "manualStatus": "online",
+      "memberId": "owner_1",
+      "roleType": "owner",
+      "terminalStatus": "working",
+      "workspaceId": "ws_open_kraken"
+    },
+    {
+      "avatar": "PL",
+      "displayName": "Planner",
+      "manualStatus": "online",
+      "memberId": "assistant_1",
+      "roleType": "assistant",
+      "terminalStatus": "online",
+      "workspaceId": "ws_open_kraken"
+    },
+    {
+      "avatar": "RN",
+      "displayName": "Runner",
+      "manualStatus": "dnd",
+      "memberId": "member_1",
+      "roleType": "member",
+      "terminalStatus": "offline",
+      "workspaceId": "ws_open_kraken"
+    }
+  ],
+  "teams": [
+    {
+      "teamId": "team_platform",
+      "name": "Platform",
+      "memberIds": [
+        "owner_1",
+        "assistant_1"
+      ]
+    },
+    {
+      "teamId": "team_delivery",
+      "name": "Delivery",
+      "memberIds": [
+        "member_1"
+      ]
+    }
+  ]
+}

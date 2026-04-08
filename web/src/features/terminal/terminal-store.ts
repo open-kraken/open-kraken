@@ -34,7 +34,10 @@ export const createTerminalPanelState = (overrides = {}) =>
       process: 'idle',
       error: noError,
       statusLabel: 'Idle',
-      lastStatusSeq: 0
+      lastStatusSeq: 0,
+      intelligenceStatus: 'connecting' as const,
+      shellReady: false,
+      unackedBytes: 0
     },
     ...overrides
   }) as TerminalPanelState;
@@ -289,7 +292,15 @@ export const applyStatus = (
             }
           : noError,
       statusLabel: statusLabel(event.status),
-      lastStatusSeq: event.seq ?? state.runtime.lastStatusSeq
+      lastStatusSeq: event.seq ?? state.runtime.lastStatusSeq,
+      // Intelligence status: map process state to intelligence state.
+      intelligenceStatus:
+        event.status === 'working' ? 'working' :
+        nextProcess === 'running' || event.status === 'online' ? 'online' :
+        nextProcess === 'exited' || nextProcess === 'failed' ? 'offline' :
+        state.runtime.intelligenceStatus,
+      shellReady: nextProcess === 'running' || event.status === 'online' || event.status === 'working'
+        ? true : state.runtime.shellReady
     }
   };
 };
@@ -366,10 +377,13 @@ export const selectTerminalPanelViewModel = (
     body = 'Live output is attached. New chunks append in seq order.';
   }
 
+  const intel = state.runtime.intelligenceStatus;
+  const intelLabel = intel === 'working' ? 'Working' : intel === 'online' ? 'Online' : intel === 'offline' ? 'Offline' : 'Connecting';
+
   return {
     uiState,
     title: state.session?.command ?? 'Terminal Session',
-    statusBadge: `${state.runtime.statusLabel} / ${state.runtime.connection}`,
+    statusBadge: `${intelLabel} / ${state.runtime.connection}`,
     body,
     outputText: state.output.text,
     showOutput: hasOutput,
@@ -379,7 +393,13 @@ export const selectTerminalPanelViewModel = (
         ? { kind: 'retry', label: 'Retry Attach' }
         : { kind: 'attach', label: 'Attach Session' },
     followOutput: state.output.followOutput,
-    autoScrollHint: state.output.followOutput ? 'Following output' : 'Follow paused'
+    autoScrollHint: state.output.followOutput ? 'Following output' : 'Follow paused',
+    /** Intelligence engine status for UI indicators (Working animation, etc). */
+    intelligenceStatus: intel,
+    /** True when the terminal is ready for user input. */
+    shellReady: state.runtime.shellReady,
+    /** Flow control: unacked bytes pending frontend ACK. */
+    unackedBytes: state.runtime.unackedBytes
   };
 };
 
@@ -445,6 +465,27 @@ export const createTerminalStore = ({
     },
     acknowledgeAutoScroll() {
       return update(acknowledgeAutoScroll(state));
+    },
+    /** ACK received bytes for flow control (call after rendering output). */
+    ackBytes(n: number) {
+      const prev = state.runtime.unackedBytes;
+      return update({
+        ...state,
+        runtime: {
+          ...state.runtime,
+          unackedBytes: Math.max(0, prev - n)
+        }
+      });
+    },
+    /** Track bytes sent to frontend (called on delta/snapshot). */
+    addUnackedBytes(n: number) {
+      return update({
+        ...state,
+        runtime: {
+          ...state.runtime,
+          unackedBytes: state.runtime.unackedBytes + n
+        }
+      });
     }
   };
 };

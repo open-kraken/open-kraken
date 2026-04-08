@@ -74,11 +74,20 @@ export const createLiveClient = ({
       });
     },
     async attachTerminal(terminalId: string) {
-      return http.request(route(`/terminal/sessions/${terminalId}/attach`));
+      return http.request(`/api/v1/terminal/sessions/${terminalId}/attach`, {
+        method: 'POST',
+        body: JSON.stringify({ subscriberId: `web_${workspaceId}_${Date.now()}` })
+      });
     },
     subscribe(listener: (event: unknown) => void) {
       const ws = new WebSocketImpl(wsBaseUrl);
-      ws.addEventListener('message', (event) => listener(JSON.parse(event.data)));
+      ws.addEventListener('message', (event) => {
+        try {
+          listener(JSON.parse(event.data));
+        } catch {
+          // Malformed message — skip rather than crash the handler.
+        }
+      });
       return () => ws.close();
     }
   };

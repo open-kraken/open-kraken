@@ -632,7 +632,61 @@ export const en = {
   'nodeToken.node': 'Node',
   'nodeToken.members': 'Members',
   'nodeToken.totalTokens': 'Total tokens',
-  'nodeToken.cost': 'Cost (USD)'
+  'nodeToken.cost': 'Cost (USD)',
+
+  // Phase 5: Presence & Friends
+  'presence.online': 'Online',
+  'presence.working': 'Working',
+  'presence.dnd': 'Do Not Disturb',
+  'presence.offline': 'Offline',
+  'friends.projectMembers': 'Project Members',
+  'friends.globalContacts': 'Global Contacts',
+
+  // Phase 6: Notifications
+  'notifications.title': 'Notifications',
+  'notifications.markAllRead': 'Mark all read',
+  'notifications.empty': 'No unread messages',
+  'notifications.newMessage': 'New message',
+
+  // Phase 7: Settings extensions
+  'settings.accountSaved': 'Account settings saved',
+  'settings.notificationsSaved': 'Notification preferences saved',
+  'settings.accountEyebrow': 'Account',
+  'settings.accountTitle': 'Profile Settings',
+  'settings.notificationsEyebrow': 'Notifications',
+  'settings.notificationsTitle': 'Notification Preferences',
+  'settings.keybindsEyebrow': 'Keybinds',
+  'settings.keybindsTitle': 'Keyboard Shortcuts',
+  'settings.noKeybinds': 'No keyboard shortcuts registered.',
+
+  // Phase 8: Plugins
+  'plugins.title': 'Plugins',
+  'plugins.browseStore': 'Browse Store',
+  'plugins.myPlugins': 'My Plugins',
+  'plugins.searchPlaceholder': 'Search plugins...',
+  'plugins.install': 'Install',
+  'plugins.remove': 'Remove',
+  'plugins.installed': 'Plugin installed',
+  'plugins.removed': 'Plugin removed',
+  'plugins.noResults': 'No plugins match your search.',
+  'plugins.noInstalled': 'No plugins installed.',
+
+  // Phase 5: Invite modals
+  'invite.assistant': 'Invite AI Assistant',
+  'invite.friend': 'Invite Member',
+  'invite.manage': 'Manage Member',
+  'invite.selectProvider': 'AI Provider',
+  'invite.customCommand': 'Custom Command (optional)',
+  'invite.displayName': 'Display Name',
+  'invite.role': 'Role',
+  'invite.cancel': 'Cancel',
+  'invite.confirm': 'Invite',
+  'invite.save': 'Save',
+  'invite.removeMember': 'Remove Member',
+
+  // Routes: plugins
+  'routes.plugins.label': 'Plugins',
+  'routes.plugins.description': 'Browse, install, and manage workspace plugins.'
 } as const;
 
 export type MessageKey = keyof typeof en;

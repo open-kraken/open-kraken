@@ -5,6 +5,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	apihttp "open-kraken/backend/go/internal/api/http"
@@ -97,6 +99,32 @@ func mustToken(t *testing.T, principal authz.Principal) string {
 		t.Fatalf("NewDevelopmentBearerToken: %v", err)
 	}
 	return token
+}
+
+func TestWorkspaceMembersPersistRosterToDisk(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	appRoot := t.TempDir()
+	repo := projectdata.NewRepository(appRoot)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), realtime.NewHub(64))
+	handler := apihttp.NewHandlerWithDependencies(service, realtime.NewHub(64), repo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{}, plathttp.PermissiveWebSocketUpgrader())
+
+	ownerToken := mustToken(t, authz.Principal{
+		MemberID:    "owner-1",
+		WorkspaceID: "ws_open_kraken",
+		Role:        authz.RoleOwner,
+	})
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/ws_open_kraken/members", bytes.NewBufferString(`{"memberId":"roster_test_1","displayName":"RT","roleType":"member"}`))
+	create.Header.Set("Authorization", ownerToken)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, create)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	path := filepath.Join(workspaceRoot, ".open-kraken", "roster.json")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("roster.json missing: %v", err)
+	}
 }
 
 func TestWorkspaceHandlerStillAcceptsLegacyHeadersAsAdapterFallback(t *testing.T) {

@@ -28,18 +28,19 @@ type Publisher interface {
 //	starting/attached/running -> error by process failure
 //	exited/error are terminal and never transition again
 type Actor struct {
-	mu          sync.RWMutex
-	info        SessionInfo
-	process     pty.Process
-	publisher   Publisher
-	buffer      string
-	rows        uint16
-	cols        uint16
-	cursor      Cursor
-	cancel      context.CancelFunc
-	subscribers map[string]uint64
-	deltas      []DeltaPayload
-	processExit *ProcessExit
+	mu           sync.RWMutex
+	info         SessionInfo
+	process      pty.Process
+	publisher    Publisher
+	buffer       string
+	rows         uint16
+	cols         uint16
+	cursor       Cursor
+	cancel       context.CancelFunc
+	subscribers  map[string]uint64
+	deltas       []DeltaPayload
+	processExit  *ProcessExit
+	intelligence *Intelligence // nil when intelligence is not enabled
 }
 
 func NewActor(ctx context.Context, req CreateRequest, process pty.Process, publisher Publisher) *Actor {
@@ -167,6 +168,7 @@ func (a *Actor) Resize(cols, rows uint16) error {
 }
 
 func (a *Actor) Close() error {
+	a.CloseIntelligence()
 	a.cancel()
 	a.mu.Lock()
 	if !a.isFrozenLocked() {
@@ -244,6 +246,9 @@ func (a *Actor) handleOutput(data string) {
 		},
 	})
 	a.publishStatus("")
+
+	// Feed intelligence modules if enabled.
+	a.OnOutputIntelligence(data)
 }
 
 func (a *Actor) handleExit(exit pty.Exit) {

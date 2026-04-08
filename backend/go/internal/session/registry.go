@@ -61,6 +61,19 @@ func (r *Registry) ResolveMemberSession(workspaceID, memberID string) (string, b
 	return id, ok
 }
 
+// IntelligentActors returns all actors that have intelligence enabled.
+func (r *Registry) IntelligentActors() []*Actor {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]*Actor, 0, len(r.sessions))
+	for _, actor := range r.sessions {
+		if actor.HasIntelligence() {
+			out = append(out, actor)
+		}
+	}
+	return out
+}
+
 func memberKey(workspaceID, memberID string) string {
 	return workspaceID + ":" + memberID
 }

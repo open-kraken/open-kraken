@@ -10,6 +10,7 @@ import (
 	"open-kraken/backend/go/internal/pty"
 	"open-kraken/backend/go/internal/realtime"
 	"open-kraken/backend/go/internal/session"
+	"open-kraken/backend/go/internal/terminal/polling"
 )
 
 // Service exposes stable session semantics:
@@ -22,6 +23,7 @@ type Service struct {
 	launcher pty.Launcher
 	hub      *realtime.Hub
 	counter  atomic.Uint64
+	poller   *polling.Poller
 }
 
 func NewService(registry *session.Registry, launcher pty.Launcher, hub *realtime.Hub) *Service {
@@ -52,6 +54,13 @@ func (s *Service) CreateSession(ctx context.Context, req session.CreateRequest) 
 		_ = actor.Close()
 		return session.SessionInfo{}, err
 	}
+
+	// Auto-enable intelligence for all sessions.
+	actor.EnableIntelligence(ctx, session.IntelligenceConfig{
+		TerminalType: req.TerminalType,
+	})
+	s.TriggerPoll(req.SessionID)
+
 	return actor.Info(), nil
 }
 
@@ -156,4 +165,9 @@ func (s *Service) ListSessions(workspaceID string) []session.SessionInfo {
 
 func (s *Service) ResolveMemberSession(workspaceID, memberID string) (string, bool) {
 	return s.registry.ResolveMemberSession(strings.TrimSpace(workspaceID), strings.TrimSpace(memberID))
+}
+
+// GetActor returns the session actor for direct intelligence access.
+func (s *Service) GetActor(sessionID string) (*session.Actor, bool) {
+	return s.registry.Get(strings.TrimSpace(sessionID))
 }

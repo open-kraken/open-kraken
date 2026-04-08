@@ -48,40 +48,11 @@ export const MemberCollabPanel = ({
       data-route-page="members"
       data-realtime-status={model.realtimeStatus}
     >
-      <div className="route-page__hero">
-        <div>
-          <p className="page-eyebrow">{t('members.teamEyebrow')}</p>
-          <h1>{t('members.workbenchTitle')}</h1>
-          <p className="route-page__intro">{t('members.workbenchIntro')}</p>
-        </div>
-        <div className="route-page__metric-strip members-page__metrics" aria-label={t('members.metricsAria')}>
-          <div className="route-page__metric members-page__metric">
-            <span className="route-page__metric-label members-page__metric-label">{t('members.metric.teams')}</span>
-            <strong>{teams.length}</strong>
-            <small>{t('members.metric.teamsHint')}</small>
-          </div>
-          <div className="route-page__metric members-page__metric">
-            <span className="route-page__metric-label members-page__metric-label">{t('members.metric.agents')}</span>
-            <strong>{rosterMetrics.total}</strong>
-            <small>
-              {activeTeam
-                ? t('members.workbenchRosterTitle', {
-                    name: activeTeam.name === 'Workspace team' ? t('members.defaultTeamName') : activeTeam.name
-                  })
-                : t('members.metric.agentsHintAll')}
-            </small>
-          </div>
-          <div className="route-page__metric members-page__metric">
-            <span className="route-page__metric-label members-page__metric-label">{t('members.metric.running')}</span>
-            <strong>{rosterMetrics.running}</strong>
-            <small>{t('members.metric.runningHint')}</small>
-          </div>
-          <div className="route-page__metric members-page__metric">
-            <span className="route-page__metric-label members-page__metric-label">{t('members.metric.offline')}</span>
-            <strong>{rosterMetrics.offline}</strong>
-            <small>{t('members.offlineHintReconnect')}</small>
-          </div>
-        </div>
+      <div className="page-toolbar" aria-label={t('members.metricsAria')}>
+        <span>{t('members.metric.teams')}: <strong>{teams.length}</strong></span>
+        <span>{t('members.metric.agents')}: <strong>{rosterMetrics.total}</strong></span>
+        <span>{t('members.metric.running')}: <strong>{rosterMetrics.running}</strong></span>
+        <span>{t('members.metric.offline')}: <strong>{rosterMetrics.offline}</strong></span>
       </div>
 
       {teams.length > 1 ? (

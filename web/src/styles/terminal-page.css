@@ -1,0 +1,260 @@
+/* ═══════════════════════════════════════════════════════════════
+   Terminal Page — IDE-style integrated terminal
+
+   Layout: Left session tabs + right terminal output (full height)
+   Reference: VS Code integrated terminal / Cursor terminal panel
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Page Shell ──────────────────────────────────────────────── */
+
+.page-card--terminal {
+  padding: 0;
+  border-radius: var(--app-radius-panel);
+  border: 1px solid var(--app-border-subtle);
+  overflow: hidden;
+  background: var(--app-bg-elevated);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 7rem);
+}
+
+.page-card--terminal .terminal-route-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--app-space-4);
+  padding: var(--app-space-4) var(--app-space-5);
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: var(--app-surface-strong);
+}
+
+.page-card--terminal .terminal-route-hero__subtitle {
+  max-width: 64ch;
+  margin: var(--app-space-2) 0 0;
+  color: var(--app-text-muted);
+}
+
+.page-card--terminal .terminal-route-hero__metrics {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-4);
+  flex-wrap: wrap;
+  font-size: var(--app-text-xs);
+  color: var(--app-text-muted);
+}
+
+.page-card--terminal .terminal-route-hero__metrics strong {
+  color: var(--app-text-strong);
+}
+
+/* Override: remove grid, use sidebar + main */
+.page-card--terminal .route-page__grid--terminal {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+/* ─── Session Sidebar (left) ──────────────────────────────────── */
+
+.page-card--terminal .terminal-session-picker {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--app-border-subtle);
+  background: var(--app-bg-canvas);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page-card--terminal .terminal-session-picker__header {
+  padding: var(--app-space-3) var(--app-space-4);
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.page-card--terminal .terminal-session-picker__title {
+  margin: 0;
+  font-size: var(--app-text-md);
+  color: var(--app-text-strong);
+}
+
+.page-card--terminal .terminal-session-picker__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--app-space-2) 0;
+}
+
+.page-card--terminal .terminal-session-picker__row {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-3);
+  padding: var(--app-space-2) var(--app-space-4);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: var(--app-text-muted);
+  font-size: var(--app-text-sm);
+  transition: all 80ms ease;
+  position: relative;
+}
+
+.page-card--terminal .terminal-session-picker__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 0.625rem;
+  color: var(--app-text-faint);
+}
+
+.page-card--terminal .terminal-session-picker__row:hover {
+  background: var(--app-bg-hover);
+  color: var(--app-text-strong);
+}
+
+.page-card--terminal .terminal-session-picker__row.is-active {
+  background: var(--app-accent-soft);
+  color: var(--app-text-strong);
+  font-weight: 600;
+}
+
+.page-card--terminal .terminal-session-picker__row.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--app-accent);
+  border-radius: 0 2px 2px 0;
+}
+
+.page-card--terminal .terminal-session-picker__row-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.page-card--terminal .terminal-session-picker__row-dot[data-status="online"] {
+  background: var(--app-health-ok);
+}
+
+.page-card--terminal .terminal-session-picker__row-dot[data-status="working"] {
+  background: var(--app-health-warn);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.page-card--terminal .terminal-session-picker__row-dot[data-status="offline"] {
+  background: var(--app-text-faint);
+}
+
+.page-card--terminal .terminal-session-picker__row-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-card--terminal .terminal-session-picker__row-role {
+  font-size: var(--app-text-xs);
+  color: var(--app-text-faint);
+}
+
+/* ─── Terminal Main Area (right) ──────────────────────────────── */
+
+.page-card--terminal .terminal-main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Terminal toolbar */
+.page-card--terminal .page-toolbar {
+  padding: var(--app-space-2) var(--app-space-4);
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: var(--app-surface-strong);
+  font-size: var(--app-text-xs);
+  flex-shrink: 0;
+}
+
+/* Terminal output fills remaining space */
+.page-card--terminal .terminal-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-card--terminal .terminal-panel__header {
+  padding: var(--app-space-2) var(--app-space-4);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.page-card--terminal .xterm-renderer {
+  flex: 1;
+  border-radius: 0;
+  border: none;
+}
+
+.page-card--terminal .terminal-panel__empty {
+  background: var(--app-terminal-embed-bg, linear-gradient(180deg, #0f172a, #020617));
+  color: var(--app-terminal-embed-fg, #64748b);
+}
+
+/* ─── Session Controls ────────────────────────────────────────── */
+
+.page-card--terminal .terminal-session-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  padding: var(--app-space-2) var(--app-space-4);
+  border-top: 1px solid var(--app-border-subtle);
+  background: var(--app-surface-strong);
+  flex-shrink: 0;
+}
+
+/* ─── Info Panels (rules, events, etc.) ───────────────────────── */
+
+.page-card--terminal .route-page__panel {
+  border: none;
+  border-top: 1px solid var(--app-border-subtle);
+  border-radius: 0;
+  padding: var(--app-space-3) var(--app-space-4);
+  background: var(--app-bg-canvas);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .page-card--terminal .terminal-route-hero {
+    flex-direction: column;
+  }
+
+  .page-card--terminal .route-page__grid--terminal {
+    flex-direction: column;
+  }
+
+  .page-card--terminal .terminal-session-picker {
+    width: 100%;
+    max-height: 8rem;
+    border-right: none;
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+
+  .page-card--terminal .terminal-session-picker__list {
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    padding: 0;
+  }
+
+  .page-card--terminal .terminal-session-picker__row {
+    flex-shrink: 0;
+    padding: var(--app-space-2) var(--app-space-3);
+  }
+}

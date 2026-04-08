@@ -1,6 +1,18 @@
 # open-kraken
 
-open-kraken is the new migration root for the Go + React rewrite of the legacy Golutra workspace. All new artifacts must be created under `/Users/claire/IdeaProjects/open-kraken`; `/Users/claire/IdeaProjects/golutra` is reference input only and must not receive new code, docs, or generated output.
+## Product vision
+
+**open-kraken** aims to be the **unified delivery home** for the **claw-code × Golutra × OpenClaw** lineages: a **cross-server, multi-agent coordination framework** with a **built-in management UI**.
+
+- **Core**: cross-process / cross-node **scheduling and orchestration**, a **centralized ledger**, and **centralized memory**.  
+- **Org model**: continuously formed **AI teams** → multiple **agents** per team → **skills** per agent; **dynamic node join** and **dynamic agent capability** expansion.  
+- **Frontend role**: **observability plane** — surface node and team state, team task maps, in-team agent status, skill management and import/export; **authorization and capabilities are server-authoritative**.
+
+Full narrative plus alignment and gaps vs current code: **[docs/product-vision-and-architecture.md](docs/product-vision-and-architecture.md)**.
+
+---
+
+open-kraken is also the migration root for the Go + React rewrite of the legacy Golutra workspace. All new artifacts should live under this repository; legacy Golutra remains reference input only and must not receive new migration code.
 
 ## Migration Goal
 
@@ -104,7 +116,7 @@ Browser handoff note:
 Repository-structure checks for this bootstrap stage:
 
 - `test -d backend/go && test -d web && test -d docs && test -d scripts && test -d e2e`
-- `rg -n "职责边界|启动入口|依赖方向" backend/go/README.md web/README.md docs/README.md scripts/README.md e2e/README.md`
+- `rg -n "^## Scope" backend/go/README.md web/README.md docs/README.md scripts/README.md e2e/README.md`
 
 ## Change Audit
 

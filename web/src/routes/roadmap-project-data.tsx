@@ -1,6 +1,13 @@
+/**
+ * Roadmap + project data — first-class AppShell route (do not remove / 勿删).
+ * RoadmapPanel and ProjectDataPanel share the same load, save, read-only lock,
+ * reload-conflict handling, and error feedback semantics (aligned with backend contract).
+ */
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
+import { useAppShell } from '@/state/app-shell-store';
 import { createApiClient } from '../api/create-client';
+import { appEnv, resolveBrowserApiBaseUrl, resolveBrowserWsBaseUrl } from '@/config/env';
 import { ProjectDataPanel } from '../features/roadmap-project-data/components/ProjectDataPanel';
 import { RoadmapPanel } from '../features/roadmap-project-data/components/RoadmapPanel';
 import type {
@@ -48,8 +55,9 @@ export type RoadmapProjectDataRouteProps = {
 const createDefaultClient = (): RoadmapProjectDataClient =>
   createApiClient({
     env: {
-      OPEN_KRAKEN_API_MODE: 'mock',
-      OPEN_KRAKEN_WORKSPACE_ID: 'ws_open_kraken'
+      OPEN_KRAKEN_API_BASE_URL: resolveBrowserApiBaseUrl(),
+      OPEN_KRAKEN_WS_BASE_URL: resolveBrowserWsBaseUrl(),
+      OPEN_KRAKEN_WORKSPACE_ID: appEnv.defaultWorkspaceId
     }
   }) as RoadmapProjectDataClient;
 
@@ -58,10 +66,18 @@ const updateTaskList = (tasks: RoadmapTaskItem[], taskId: string, patch: Partial
 
 export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectDataRouteProps) => {
   const { t } = useI18n();
+  const { apiClient } = useAppShell();
   const resolvedClient = useMemo(() => client ?? createDefaultClient(), [client]);
   const [roadmapState, setRoadmapState] = useState(() => createRoadmapEditorState());
   const [projectDataState, setProjectDataState] = useState(() => createProjectDataEditorState());
   const [pageError, setPageError] = useState<string | null>(null);
+  const [members, setMembers] = useState<Array<{ memberId: string; displayName?: string }>>([]);
+
+  useEffect(() => {
+    void apiClient.getMembers().then((res) => {
+      setMembers((res.members ?? []).map((m) => ({ memberId: m.memberId, displayName: m.displayName })));
+    }).catch(() => {});
+  }, [apiClient]);
 
   const loadAll = async () => {
     setRoadmapState((current) => markRoadmapLoading(current));
@@ -153,22 +169,18 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
   });
 
   return (
-    <section className="roadmap-project-route" aria-label="roadmap-project-data-route">
-      <header className="roadmap-project-route__header">
-        <div>
-          <p className="collaboration-overview-page__eyebrow">{t('roadmap.routeHeaderEyebrow')}</p>
-          <h2 className="roadmap-project-route__headline">{t('roadmap.routeHeaderTitle')}</h2>
-          <p className="collaboration-overview-page__intro">{t('roadmap.routeHeaderIntro')}</p>
-        </div>
-        {pageError ? (
-          <p className="roadmap-project-route__page-error">{t('roadmap.pageLoadError', { message: pageError })}</p>
-        ) : null}
-      </header>
+    <div className="roadmap-workspace" role="region" aria-label={t('routes.roadmap.label')}>
+      {pageError ? (
+        <p className="roadmap-workspace__page-error" role="alert">
+          {t('roadmap.pageLoadError', { message: pageError })}
+        </p>
+      ) : null}
 
-      <div className="roadmap-project-route__grid">
+      <div className="roadmap-workspace__grid">
         <RoadmapPanel
           value={roadmapState.draft}
           feedback={roadmapFeedback}
+          members={members}
           onObjectiveChange={(value) => setRoadmapState((current) => updateRoadmapObjective(current, value))}
           onTaskChange={(taskId, patch) =>
             setRoadmapState((current) => replaceRoadmapTasks(current, updateTaskList(current.draft.tasks, taskId, patch)))
@@ -217,6 +229,6 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
           }}
         />
       </div>
-    </section>
+    </div>
   );
 };

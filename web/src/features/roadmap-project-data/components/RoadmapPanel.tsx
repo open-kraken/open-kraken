@@ -12,6 +12,7 @@ import styles from '../roadmap-feature.module.css';
 export type RoadmapPanelProps = {
   value: RoadmapDocument;
   feedback: PanelFeedback;
+  members: Array<{ memberId: string; displayName?: string }>;
   onObjectiveChange: (value: string) => void;
   onTaskChange: (taskId: string, patch: Partial<RoadmapTaskItem>) => void;
   onSave: () => void;
@@ -26,6 +27,7 @@ export type RoadmapPanelProps = {
 export const RoadmapPanel = ({
   value,
   feedback,
+  members,
   onObjectiveChange,
   onTaskChange,
   onSave,
@@ -48,18 +50,23 @@ export const RoadmapPanel = ({
   );
 
   return (
-    <section className="roadmap-project-panel" data-tone={feedback.tone} aria-label="roadmap-panel">
+    <section
+      className="roadmap-project-panel roadmap-project-panel--roadmap"
+      data-tone={feedback.tone}
+      aria-label="roadmap-panel"
+    >
       {/* Header */}
       <header className="roadmap-project-panel__header">
-        <div>
+        <div className="roadmap-project-panel__title-block">
           <p className="roadmap-project-panel__eyebrow">{t('roadmapPanel.eyebrow')}</p>
           <h2 className="roadmap-project-panel__title">{t('roadmapPanel.title')}</h2>
+          <p className="roadmap-project-panel__subtitle">{t('roadmapPanel.subtitle')}</p>
         </div>
         <div className="roadmap-project-panel__actions">
-          <button type="button" onClick={onReload} disabled={feedback.disableReload}>
+          <button type="button" data-action="reload" onClick={onReload} disabled={feedback.disableReload}>
             {t('roadmapPanel.reload')}
           </button>
-          <button type="button" onClick={onSave} disabled={feedback.disableSave}>
+          <button type="button" data-action="save" onClick={onSave} disabled={feedback.disableSave}>
             {t('roadmapPanel.save')}
           </button>
         </div>
@@ -134,6 +141,8 @@ export const RoadmapPanel = ({
             <RoadmapTaskCard
               key={task.id}
               task={task}
+              allTasks={value.tasks}
+              members={members}
               disableInputs={feedback.disableInputs}
               isFirst={index === 0}
               isLast={index === filteredTasks.length - 1}

@@ -1,30 +1,15 @@
 .role-card {
-  position: relative;
   display: grid;
-  gap: var(--app-space-4);
+  gap: var(--app-space-3);
   padding: var(--app-space-4);
   border: 1px solid var(--app-border-subtle);
   border-radius: var(--app-radius-card);
-  background: var(--app-surface-strong);
-  box-shadow: var(--app-shadow-card);
-  overflow: hidden;
-  transition: border-color var(--app-motion-medium), box-shadow var(--app-motion-medium);
+  background: var(--app-surface-elevated);
+  transition: border-color 120ms ease;
 }
 
 .role-card:hover {
-  border-color: rgba(15, 23, 42, 0.12);
-  box-shadow: var(--app-shadow-panel);
-}
-
-.role-card::after {
-  content: "";
-  position: absolute;
-  inset: auto -18% -42% auto;
-  width: 180px;
-  height: 180px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
-  pointer-events: none;
+  border-color: var(--app-border-strong);
 }
 
 .role-card__header {
@@ -34,18 +19,16 @@
 }
 
 .role-card__avatar {
-  position: relative;
-  z-index: var(--app-z-base);
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border: 1px solid transparent;
   border-radius: var(--app-radius-control);
   font-family: var(--app-font-display);
-  font-size: 0.9375rem;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.9);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: var(--app-bg-muted);
 }
 
 .role-card__body {
