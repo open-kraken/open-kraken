@@ -4,7 +4,7 @@ import { TerminalPanel } from '@/features/terminal/TerminalPanel';
 import { normalizeMembersEnvelope, type MemberFixture } from '@/features/members/member-page-model';
 import { useAppShell } from '@/state/app-shell-store';
 import { useAuth } from '@/auth/AuthProvider';
-import { sendTerminalInput, closeTerminalSession } from '@/api/terminal';
+import { sendTerminalInput, closeTerminalSession, resolveOrCreateMemberSession } from '@/api/terminal';
 import { useTerminalPanelRuntime } from './terminal-runtime';
 import { StatusDot } from '@/components/ui/status-dot';
 import { Button } from '@/components/ui/button';
@@ -115,19 +115,23 @@ export const TerminalPage = () => {
   const activeTerminalId =
     terminalRuntime.state.activeTerminalId ?? terminalRuntime.state.session?.terminalId ?? bootTerminalId;
 
-  // Group sessions by member
+  // Group sessions by member — show all roster members so any can be attached
   const sessionsByMember = useMemo(() => {
-    return roster
-      .filter((m) => m.terminalStatus)
-      .map((m) => ({
-        member: m,
-        terminalId: terminalIdForMember(m.memberId),
-      }));
+    return roster.map((m) => ({
+      member: m,
+      terminalId: terminalIdForMember(m.memberId),
+    }));
   }, [roster]);
 
-  const totalSessions = roster.filter((member) => member.terminalStatus).length;
-  const activeSessions = roster.filter((member) => ['online', 'working', 'running'].includes((member.terminalStatus ?? '').toLowerCase())).length;
-  const workingSessions = roster.filter((member) => ['working', 'running'].includes((member.terminalStatus ?? '').toLowerCase())).length;
+  const totalSessions = roster.length;
+  const activeSessions = roster.filter((member) => {
+    const ts = (member.terminalStatus ?? member.manualStatus ?? member.status ?? '').toLowerCase();
+    return ['online', 'working', 'running'].includes(ts);
+  }).length;
+  const workingSessions = roster.filter((member) => {
+    const ts = (member.terminalStatus ?? member.manualStatus ?? member.status ?? '').toLowerCase();
+    return ['working', 'running'].includes(ts);
+  }).length;
 
   const activeMember = useMemo(() => {
     const sessionMemberId = terminalRuntime.state.session?.memberId;
@@ -178,16 +182,43 @@ export const TerminalPage = () => {
     terminalRuntime.toggleFollow();
   }, [terminalRuntime]);
 
-  const handleCreateSession = () => {
-    // In a real app, this would call the backend API
-    console.log('Creating new session:', newSessionData);
-    setNewSessionModalOpen(false);
-    setNewSessionData({
-      member: '',
-      provider: 'claude-code',
-      workingDir: '~/workspace',
-    });
-  };
+  const handleCreateSession = useCallback(async () => {
+    if (!newSessionData.member) return;
+    try {
+      // Map frontend provider id → backend terminalType key.
+      const providerToTerminalType: Record<string, string> = {
+        'claude-code': 'claude',
+        'gemini-cli': 'gemini',
+        'codex-cli': 'codex',
+        'qwen-code': 'qwen',
+        'opencode': 'opencode',
+        'shell': 'shell',
+      };
+      const terminalType = providerToTerminalType[newSessionData.provider] ?? 'shell';
+      const sessionId = await resolveOrCreateMemberSession(
+        workspace.workspaceId,
+        newSessionData.member,
+        { terminalType, cwd: newSessionData.workingDir }
+      );
+      setNewSessionModalOpen(false);
+      setNewSessionData({ member: '', provider: 'claude-code', workingDir: '~/workspace' });
+      // Attach to the new session
+      const termId = terminalIdForMember(newSessionData.member);
+      setHashForTerminal(termId);
+      void terminalRuntime.attachTo(termId);
+      pushNotification({
+        tone: 'info',
+        title: t('terminal.sessionCreated'),
+        detail: `Session ${sessionId} created and attached.`
+      });
+    } catch (err) {
+      pushNotification({
+        tone: 'error',
+        title: 'Failed to create session',
+        detail: err instanceof Error ? err.message : 'Unknown error'
+      });
+    }
+  }, [newSessionData, workspace.workspaceId, pushNotification, t, setHashForTerminal, terminalRuntime]);
 
   const getStatusBadge = (status: string) => {
     switch (status.toLowerCase()) {

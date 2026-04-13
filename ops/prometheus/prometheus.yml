@@ -1,0 +1,25 @@
+# Prometheus scrape configuration for open-kraken (paper §6.1 Observability stack).
+# Metrics defined in backend/go/internal/observability/prometheus/:
+#   - agent_steps_total{provider,workload_class,regime,state}
+#   - ucb_arm_selection_total{agent_type,provider,workload_class}
+#   - provider_cost_usd_total{provider,tenant_id}
+#   - etcd_lease_expiry_total{reason}
+#   - wal_write_latency_seconds (histogram)
+#   - scheduling_score_histogram{workload_class}
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: kraken-dev
+
+scrape_configs:
+  - job_name: kraken-backend
+    static_configs:
+      - targets: ["kraken-backend:9100"]
+        labels:
+          service: backend
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

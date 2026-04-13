@@ -16,6 +16,7 @@ import {
   Settings,
   Puzzle,
   User,
+  Play,
 } from 'lucide-react';
 
 type NavRouteIconProps = {
@@ -27,6 +28,7 @@ type NavRouteIconProps = {
 const iconMap: Record<AppRouteId, React.ComponentType<{ size?: number; className?: string }>> = {
   dashboard: LayoutDashboard,
   ledger: FileText,
+  runs: Play,
   chat: MessageSquare,
   members: Users,
   skills: Briefcase,

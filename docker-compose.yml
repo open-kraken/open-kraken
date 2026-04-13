@@ -1,6 +1,136 @@
 version: "3.9"
 
+# --- Storage & coordination infrastructure (paper §3.2, §6.1) ---
+# PostgreSQL: AEL operational state (runs/flows/steps/side_effects, scheduling_arm_stats, sem_records metadata)
+# etcd: coordination state (step leases, node heartbeats, leader election, hot policy config)
+# Qdrant: SEM vector index (filtered HNSW for pre-step enrichment)
+# Vault: JIT dynamic secrets for provider API keys (Phase 2)
+# Prometheus + Grafana: observability plane metrics (agent_steps_total, ucb_arm_selection_total, ...)
+
 services:
+  kraken-postgres:
+    image: postgres:16-alpine
+    container_name: kraken-postgres
+    environment:
+      POSTGRES_USER: kraken
+      POSTGRES_PASSWORD: "${KRAKEN_POSTGRES_PASSWORD:-kraken_dev}"
+      POSTGRES_DB: kraken
+    ports:
+      - "5432:5432"
+    volumes:
+      - kraken-postgres-data:/var/lib/postgresql/data
+    # wal_level=logical enables pgx logical replication for the CWS WAL consumer (Phase 3).
+    command: >
+      postgres
+      -c wal_level=logical
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kraken -d kraken"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - kraken-net
+
+  kraken-etcd:
+    image: quay.io/coreos/etcd:v3.5.15
+    container_name: kraken-etcd
+    environment:
+      ETCD_NAME: kraken-etcd
+      ETCD_DATA_DIR: /etcd-data
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://kraken-etcd:2379
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://kraken-etcd:2380
+      ETCD_INITIAL_CLUSTER: kraken-etcd=http://kraken-etcd:2380
+      ETCD_INITIAL_CLUSTER_TOKEN: kraken-etcd-cluster
+      ETCD_INITIAL_CLUSTER_STATE: new
+      # Dev: disable auth. Production must enable client cert or RBAC.
+      ALLOW_NONE_AUTHENTICATION: "yes"
+    ports:
+      - "2379:2379"
+    volumes:
+      - kraken-etcd-data:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://localhost:2379", "endpoint", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - kraken-net
+
+  kraken-qdrant:
+    image: qdrant/qdrant:v1.11.3
+    container_name: kraken-qdrant
+    ports:
+      - "6333:6333"  # REST
+      - "6334:6334"  # gRPC
+    volumes:
+      - kraken-qdrant-data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - kraken-net
+
+  # Vault in dev mode is ONLY for local development.
+  # Phase 2 JIT dynamic secrets integration will add KV and dynamic secret engines.
+  kraken-vault:
+    image: hashicorp/vault:1.17
+    container_name: kraken-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "${KRAKEN_VAULT_DEV_TOKEN:-kraken-dev-root}"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+      VAULT_ADDR: "http://0.0.0.0:8200"
+    ports:
+      - "8200:8200"
+    command: ["server", "-dev"]
+    restart: unless-stopped
+    networks:
+      - kraken-net
+
+  kraken-prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: kraken-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - kraken-prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    restart: unless-stopped
+    networks:
+      - kraken-net
+
+  kraken-grafana:
+    image: grafana/grafana:11.2.2
+    container_name: kraken-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${KRAKEN_GRAFANA_PASSWORD:-kraken_dev}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - kraken-grafana-data:/var/lib/grafana
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      kraken-prometheus:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - kraken-net
+
+  # --- Application services ---
+
   kraken-backend:
     build:
       context: .
@@ -9,6 +139,7 @@ services:
     container_name: kraken-backend
     ports:
       - "8080:8080"
+      - "9100:9100"  # Prometheus scrape port
     environment:
       OPEN_KRAKEN_HTTP_ADDR: "0.0.0.0:8080"
       OPEN_KRAKEN_APP_DATA_ROOT: /data
@@ -19,9 +150,18 @@ services:
       # Browser on host:3000 calling API on host:8080 sends Origin http://localhost:3000
       OPEN_KRAKEN_WS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
       OPEN_KRAKEN_SKILL_ROOT: /skills
+      # Paper §3.2 storage stack (Phase 0+). Zero value = disabled (backwards compatible).
+      OPEN_KRAKEN_POSTGRES_DSN: "postgres://kraken:${KRAKEN_POSTGRES_PASSWORD:-kraken_dev}@kraken-postgres:5432/kraken?sslmode=disable"
+      OPEN_KRAKEN_ETCD_ENDPOINTS: "kraken-etcd:2379"
+      OPEN_KRAKEN_PROMETHEUS_ADDR: "0.0.0.0:9100"
     volumes:
       - kraken-data:/data
       - kraken-skills:/skills
+    depends_on:
+      kraken-postgres:
+        condition: service_healthy
+      kraken-etcd:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
       interval: 10s
@@ -105,6 +245,16 @@ volumes:
       o: bind
       device: ./data
   kraken-skills:
+    driver: local
+  kraken-postgres-data:
+    driver: local
+  kraken-etcd-data:
+    driver: local
+  kraken-qdrant-data:
+    driver: local
+  kraken-prometheus-data:
+    driver: local
+  kraken-grafana-data:
     driver: local
 
 networks:

@@ -41,17 +41,21 @@ func NewLocalLauncher() *LocalLauncher {
 	return &LocalLauncher{}
 }
 
-func (l *LocalLauncher) Launch(ctx context.Context, req LaunchRequest) (Process, error) {
+func (l *LocalLauncher) Launch(_ context.Context, req LaunchRequest) (Process, error) {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/sh"
 	}
 
+	// Detach from the caller's context: the HTTP request context is cancelled
+	// the moment the response is written, which would cause exec.CommandContext
+	// to kill the freshly spawned PTY process. The Actor owns the process lifetime
+	// and explicitly calls process.Close() on session shutdown.
 	var cmd *exec.Cmd
 	if strings.TrimSpace(req.Command) == "" {
-		cmd = exec.CommandContext(ctx, shell, "-l")
+		cmd = exec.Command(shell, "-l")
 	} else {
-		cmd = exec.CommandContext(ctx, shell, "-lc", req.Command)
+		cmd = exec.Command(shell, "-lc", req.Command)
 	}
 	if req.CWD != "" {
 		cmd.Dir = req.CWD

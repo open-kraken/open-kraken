@@ -1,8 +1,11 @@
 package http
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -65,4 +68,24 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
+}
+
+// Hijack delegates to the underlying ResponseWriter when it supports hijacking.
+// Required for WebSocket upgrades — gorilla/websocket needs to hijack the
+// underlying TCP connection out of the HTTP server.
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("response writer does not support hijacking")
+	}
+	// Treat hijacked connections as 101 Switching Protocols for access logging.
+	r.status = http.StatusSwitchingProtocols
+	return hijacker.Hijack()
+}
+
+// Flush delegates to the underlying ResponseWriter when it supports flushing.
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }

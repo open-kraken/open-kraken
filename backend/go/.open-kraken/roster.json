@@ -1,20 +1,16 @@
 {
   "meta": {
     "workspaceId": "ws_open_kraken",
-    "version": 7,
-    "updatedAt": "2026-04-07T09:12:07.2542568Z",
+    "version": 14,
+    "updatedAt": "2026-04-10T10:07:09.7335688Z",
     "storage": "workspace"
   },
-  "members": [
+  "members": null,
+  "teams": [
     {
-      "avatar": "4",
-      "displayName": "4",
-      "manualStatus": "offline",
-      "memberId": "4",
-      "roleType": "member",
-      "terminalStatus": "offline",
-      "workspaceId": "ws_open_kraken"
+      "teamId": "team_default",
+      "name": "Workspace team",
+      "memberIds": []
     }
-  ],
-  "teams": null
+  ]
 }

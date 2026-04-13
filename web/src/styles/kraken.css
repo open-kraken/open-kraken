@@ -126,26 +126,25 @@
 
 /* Message Bubbles */
 .message-bubble {
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  padding: 0.625rem 0.875rem;
+  border-radius: 12px;
   max-width: 100%;
   word-wrap: break-word;
-  transition: transform 120ms ease;
-}
-
-.message-bubble:hover {
-  transform: translateY(-1px);
+  line-height: 1.5;
+  font-size: 0.875rem;
 }
 
 .message-bubble-mine {
-  background: linear-gradient(135deg, rgba(62, 207, 174, 0.1), rgba(20, 184, 166, 0.1));
+  background: linear-gradient(135deg, rgba(62, 207, 174, 0.12), rgba(20, 184, 166, 0.12));
   border: 1px solid rgba(62, 207, 174, 0.2);
+  border-radius: 12px 12px 4px 12px;
   position: relative;
 }
 
 .message-bubble-theirs {
   background-color: var(--ok-surface-strong);
   border: 1px solid var(--ok-border-subtle);
+  border-radius: 12px 12px 12px 4px;
   position: relative;
 }
 
@@ -189,6 +188,8 @@
   background-color: var(--ok-surface-strong);
   border-right: 1px solid var(--ok-border-subtle);
   flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .nav-section {

@@ -52,8 +52,26 @@ export const listTerminalSessions = async (workspaceId: string): Promise<Termina
   return { items: items.map(mapSession) };
 };
 
-/** GET /terminal/member-session — resolve memberId to sessionId; create if needed. */
-export const resolveOrCreateMemberSession = async (workspaceId: string, memberId: string): Promise<string> => {
+export type CreateSessionOptions = {
+  /** Terminal type — used by backend provider registry (claude, gemini, codex, qwen, shell, pty). */
+  terminalType?: string;
+  /** Override the launched command. If empty, the provider default applies. */
+  command?: string;
+  /** Working directory. */
+  cwd?: string;
+};
+
+/**
+ * GET /terminal/member-session — resolve memberId to sessionId; create if needed.
+ *
+ * If a session already exists for the member, returns it as-is regardless of options.
+ * Otherwise creates a new session using the provided terminalType/command.
+ */
+export const resolveOrCreateMemberSession = async (
+  workspaceId: string,
+  memberId: string,
+  options: CreateSessionOptions = {}
+): Promise<string> => {
   const http = getHttpClient();
   const result = await http.get<{ sessionId: string; found: boolean }>(
     `terminal/member-session?workspaceId=${encodeURIComponent(workspaceId)}&memberId=${encodeURIComponent(memberId)}`
@@ -61,12 +79,13 @@ export const resolveOrCreateMemberSession = async (workspaceId: string, memberId
   if (result.found && result.sessionId) {
     return result.sessionId;
   }
-  // No session exists — create one
+  // No session exists — create one with the requested provider/command
   const created = await http.post<{ sessionId: string }>('terminal/sessions', {
     workspaceId,
     memberId,
-    terminalType: 'pty',
-    command: 'bash'
+    terminalType: options.terminalType ?? 'shell',
+    command: options.command ?? '',
+    cwd: options.cwd ?? ''
   });
   return created.sessionId;
 };

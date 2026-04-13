@@ -1,7 +1,10 @@
 package http
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"runtime"
 	"sync"
@@ -142,4 +145,19 @@ type statusRecorderMetrics struct {
 func (r *statusRecorderMetrics) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorderMetrics) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("response writer does not support hijacking")
+	}
+	r.status = http.StatusSwitchingProtocols
+	return hijacker.Hijack()
+}
+
+func (r *statusRecorderMetrics) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }

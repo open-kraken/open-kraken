@@ -43,8 +43,11 @@ type Actor struct {
 	intelligence *Intelligence // nil when intelligence is not enabled
 }
 
-func NewActor(ctx context.Context, req CreateRequest, process pty.Process, publisher Publisher) *Actor {
-	childCtx, cancel := context.WithCancel(ctx)
+func NewActor(_ context.Context, req CreateRequest, process pty.Process, publisher Publisher) *Actor {
+	// Detach from the caller's context (typically the HTTP request) so the actor's
+	// run loop and PTY ownership outlive the request that created the session.
+	// Cancellation now happens explicitly via Actor.Close().
+	childCtx, cancel := context.WithCancel(context.Background())
 	now := time.Now().UTC()
 	actor := &Actor{
 		info: SessionInfo{

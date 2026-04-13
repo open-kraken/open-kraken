@@ -21,6 +21,7 @@ type CreateLiveClientOptions = {
   workspaceId: string;
   fetchImpl?: typeof fetch;
   WebSocketImpl?: typeof WebSocket;
+  authToken?: string;
 };
 
 export const createLiveClient = ({
@@ -28,9 +29,10 @@ export const createLiveClient = ({
   wsBaseUrl,
   workspaceId,
   fetchImpl = fetch,
-  WebSocketImpl = WebSocket
+  WebSocketImpl = WebSocket,
+  authToken
 }: CreateLiveClientOptions): LegacyApiClient => {
-  const http = createHttpClient({ apiBaseUrl, fetchImpl });
+  const http = createHttpClient({ apiBaseUrl, fetchImpl, authToken });
   const route = (suffix: string) => `/api/v1/workspaces/${workspaceId}${suffix}`;
   return {
     workspaceId,

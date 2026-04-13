@@ -68,25 +68,88 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
         OPEN_KRAKEN_API_BASE_URL: resolveBrowserApiBaseUrl(),
         OPEN_KRAKEN_WS_BASE_URL: resolveBrowserWsBaseUrl(),
         OPEN_KRAKEN_WORKSPACE_ID: appEnv.defaultWorkspaceId
-      }
+      },
+      authToken: authToken ?? undefined
     }) as Record<string, unknown>;
 
     return {
       ...legacyClient,
       ...createApiClient(httpClient)
     };
-  }, [httpClient]);
+  }, [httpClient, authToken]);
+
+  const wsRef = useRef<WebSocket | null>(null);
 
   const realtimeClient = useMemo(() => {
-    return new RealtimeClient({
+    const client = new RealtimeClient({
       open: (cursor) => {
+        // Close any previous connection
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+
+        const wsBase = resolveBrowserWsBaseUrl();
+        const memberId = account?.memberId ?? 'owner_1';
+        const wsId = appEnv.defaultWorkspaceId;
+        const params = new URLSearchParams({
+          workspaceId: wsId,
+          memberId,
+          subscriptions: 'chat,members,terminal',
+        });
+        // Browser WebSocket cannot set Authorization header — pass token via query param
+        if (authToken) params.set('token', authToken);
+        if (cursor) params.set('cursor', cursor);
+        const wsUrl = `${wsBase}?${params.toString()}`;
+
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.addEventListener('open', () => {
+          client.markConnected();
+          setRealtime({
+            status: 'connected',
+            detail: 'Connected to workspace stream',
+            lastCursor: cursor
+          });
+        });
+
+        ws.addEventListener('message', (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            client.dispatch(data);
+          } catch {
+            // skip malformed messages
+          }
+        });
+
+        ws.addEventListener('close', () => {
+          setRealtime({
+            status: 'disconnected',
+            detail: 'Realtime disconnected',
+            lastCursor: null
+          });
+        });
+
+        ws.addEventListener('error', () => {
+          setRealtime({
+            status: 'disconnected',
+            detail: 'WebSocket error',
+            lastCursor: null
+          });
+        });
+
         setRealtime({
           status: cursor ? 'reconnecting' : 'connecting',
-          detail: cursor ? `Reconnected from ${cursor}` : 'Connected to workspace stream',
+          detail: cursor ? `Reconnecting from ${cursor}` : 'Connecting to workspace stream',
           lastCursor: cursor
         });
       },
       close: () => {
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
         setRealtime({
           status: 'disconnected',
           detail: 'Realtime disconnected',
@@ -94,7 +157,8 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
         });
       }
     });
-  }, []);
+    return client;
+  }, [account?.memberId]);
 
   useEffect(() => {
     const onPopState = () => {

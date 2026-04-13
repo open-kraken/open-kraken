@@ -6,13 +6,14 @@ type CreateApiClientOptions = {
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
   WebSocketImpl?: typeof WebSocket;
+  authToken?: string;
 };
 
 /**
  * Legacy HTTP + WebSocket client. Default is **live** backend only (no silent mock fallback).
  * Set `OPEN_KRAKEN_API_MODE=mock` explicitly for offline fixture demos or tests.
  */
-export const createApiClient = ({ env = process.env as Record<string, string | undefined>, fetchImpl, WebSocketImpl }: CreateApiClientOptions = {}): LegacyApiClient => {
+export const createApiClient = ({ env = process.env as Record<string, string | undefined>, fetchImpl, WebSocketImpl, authToken }: CreateApiClientOptions = {}): LegacyApiClient => {
   const config = getApiConfig(env);
   if (config.mode === 'mock') {
     return createMockClient({ workspaceId: config.workspaceId });
@@ -22,6 +23,7 @@ export const createApiClient = ({ env = process.env as Record<string, string | u
     wsBaseUrl: config.wsBaseUrl,
     workspaceId: config.workspaceId,
     fetchImpl,
-    WebSocketImpl
+    WebSocketImpl,
+    authToken
   });
 };

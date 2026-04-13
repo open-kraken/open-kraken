@@ -909,16 +909,17 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
   };
 
   return (
-    <div className="h-full flex" data-route-page="chat">
+    <div className="h-full flex flex-col" data-route-page="chat">
       {/* Page-level notice banner */}
       {model.pageNotice.code !== 'live' && (
-        <div className={`absolute top-0 left-0 right-0 z-10 px-4 py-1.5 text-xs text-center ${noticeToneBg[model.pageNotice.tone] ?? ''}`}>
+        <div className={`shrink-0 px-4 py-1.5 text-xs text-center ${noticeToneBg[model.pageNotice.tone] ?? ''}`}>
           {noticeMessage}
         </div>
       )}
 
+      <div className="flex-1 flex min-h-0">
       {/* Left Sidebar: Conversations */}
-      <div className="w-72 border-r app-border-subtle flex flex-col app-bg-canvas">
+      <div className="w-72 border-r app-border-subtle flex flex-col app-bg-canvas min-h-0">
         {/* Team Switcher */}
         <div className="p-3 border-b app-border-subtle app-surface-strong">
           <Select value={teamFilter} onValueChange={setTeamFilter}>
@@ -1054,7 +1055,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {/* Chat Header */}
         <div className="h-14 border-b app-border-subtle px-5 flex items-center justify-between app-surface-strong">
           <div className="flex items-center gap-3">
@@ -1193,7 +1194,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
 
                         {message.content.trim() && (
                           <div
-                            className={`message-bubble ${
+                            className={`message-bubble max-w-[75%] ${
                               mine ? 'message-bubble-mine' : 'message-bubble-theirs'
                             }`}
                           >
@@ -1272,27 +1273,27 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
               </div>
             )}
 
-            <div className="flex gap-2">
-              <input
-                ref={imageInputRef}
-                type="file"
-                className="hidden"
-                accept="image/*"
-                multiple
-                tabIndex={-1}
-                onChange={(e) => void addPendingFiles(e.target.files)}
-              />
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                multiple
-                tabIndex={-1}
-                onChange={(e) => void addPendingFiles(e.target.files)}
-              />
+            <input
+              ref={imageInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*"
+              multiple
+              tabIndex={-1}
+              onChange={(e) => void addPendingFiles(e.target.files)}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              multiple
+              tabIndex={-1}
+              onChange={(e) => void addPendingFiles(e.target.files)}
+            />
+            <div className="flex items-end gap-2 rounded-xl border app-border-subtle app-bg-canvas p-1.5 shadow-sm">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-lg app-text-muted">
                     <Paperclip size={16} />
                   </Button>
                 </DropdownMenuTrigger>
@@ -1307,27 +1308,26 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <div className="flex-1 relative">
-                <textarea
-                  ref={textareaRef}
-                  value={composerText}
-                  onChange={(e) => {
-                    setComposerText(e.target.value);
-                    setCaretPos(e.target.selectionStart);
-                  }}
-                  onSelect={(e) => setCaretPos(e.currentTarget.selectionStart)}
-                  onClick={(e) => setCaretPos(e.currentTarget.selectionStart)}
-                  onKeyUp={(e) => setCaretPos(e.currentTarget.selectionStart)}
-                  onKeyDown={handleComposerKeyDown}
-                  placeholder={t('chat.placeholder')}
-                  disabled={model.composer.disabled}
-                  rows={1}
-                  className="w-full rounded-md border app-border-subtle px-3 py-2 text-sm app-bg-canvas app-text-strong placeholder:app-text-faint focus:outline-none focus:ring-2 focus:ring-cyan-500/40 resize-none"
-                  aria-label={t('chat.composerAria')}
-                />
-              </div>
+              <textarea
+                ref={textareaRef}
+                value={composerText}
+                onChange={(e) => {
+                  setComposerText(e.target.value);
+                  setCaretPos(e.target.selectionStart);
+                }}
+                onSelect={(e) => setCaretPos(e.currentTarget.selectionStart)}
+                onClick={(e) => setCaretPos(e.currentTarget.selectionStart)}
+                onKeyUp={(e) => setCaretPos(e.currentTarget.selectionStart)}
+                onKeyDown={handleComposerKeyDown}
+                placeholder={t('chat.placeholder')}
+                disabled={model.composer.disabled}
+                rows={1}
+                className="flex-1 min-w-0 px-2 py-1.5 text-sm bg-transparent app-text-strong placeholder:app-text-faint focus:outline-none resize-none max-h-32 leading-relaxed"
+                aria-label={t('chat.composerAria')}
+              />
               <Button
-                className="app-accent-bg hover:opacity-90 text-white flex-shrink-0 h-9 px-4"
+                size="icon"
+                className="app-accent-bg hover:opacity-90 text-white flex-shrink-0 h-8 w-8 rounded-lg"
                 onClick={() => void sendMessage()}
                 disabled={
                   model.composer.disabled ||
@@ -1442,6 +1442,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
           </ScrollArea>
         </div>
       )}
+      </div>
     </div>
   );
 };

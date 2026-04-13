@@ -58,7 +58,18 @@ func (r *Registry) ResolveMemberSession(workspaceID, memberID string) (string, b
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	id, ok := r.memberSessions[memberKey(workspaceID, memberID)]
-	return id, ok
+	if !ok {
+		return "", false
+	}
+	// Skip dead sessions so the caller creates a fresh one with the right
+	// command/provider instead of being stuck on an exited bash shell.
+	if actor, exists := r.sessions[id]; exists {
+		status := actor.Info().Status
+		if status == StatusExited || status == StatusError {
+			return "", false
+		}
+	}
+	return id, true
 }
 
 // IntelligentActors returns all actors that have intelligence enabled.

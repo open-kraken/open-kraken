@@ -81,29 +81,40 @@ export class RealtimeClient {
     return this.cursor;
   }
 
-  dispatch<TPayload>(event: RealtimeEnvelope<TPayload>) {
+  /**
+   * Dispatch a raw message from the WebSocket.
+   * Accepts both strict `RealtimeEnvelope` format and loose backend messages.
+   * For loose messages the `type` field is used as both `type` and `channel`.
+   */
+  dispatch<TPayload>(raw: RealtimeEnvelope<TPayload> | Record<string, unknown>) {
     // Receiving an event confirms the connection is live.
     if (this.status === 'connecting' || this.status === 'reconnecting') {
       this.status = 'connected';
     }
 
-    const previousSequence = this.lastSequenceByChannel.get(event.channel);
-
-    if (previousSequence === undefined && this.cursor === null && event.sequence !== 1) {
-      this.status = 'stale';
-      throw new Error(`realtime_sequence_gap:${event.channel}:unknown:${event.sequence}`);
-    }
-
-    if (previousSequence !== undefined && event.sequence !== previousSequence + 1) {
-      this.status = 'stale';
-      throw new Error(`realtime_sequence_gap:${event.channel}:${previousSequence}:${event.sequence}`);
-    }
+    // Normalize: backend may send { type, payload, ... } without channel/sequence/cursor
+    const event: RealtimeEnvelope<unknown> = {
+      type: String((raw as Record<string, unknown>).type ?? ''),
+      channel: String((raw as Record<string, unknown>).channel ?? (raw as Record<string, unknown>).type ?? 'workspace'),
+      payload: (raw as Record<string, unknown>).payload ?? raw,
+      sequence: typeof (raw as Record<string, unknown>).sequence === 'number'
+        ? (raw as Record<string, unknown>).sequence as number
+        : (this.lastSequenceByChannel.get(
+            String((raw as Record<string, unknown>).channel ?? (raw as Record<string, unknown>).type ?? 'workspace')
+          ) ?? 0) + 1,
+      cursor: ((raw as Record<string, unknown>).cursor as string | null) ?? null,
+    };
 
     this.lastSequenceByChannel.set(event.channel, event.sequence);
     this.cursor = event.cursor ?? this.cursor;
 
+    // Deliver to all matching listeners (match on channel prefix or 'workspace' catch-all)
     for (const listener of this.listeners.values()) {
-      if (listener.channel === event.channel) {
+      if (
+        listener.channel === event.channel ||
+        event.channel.startsWith(listener.channel + '.') ||
+        listener.channel === 'workspace'
+      ) {
         listener.handler(event);
       }
     }

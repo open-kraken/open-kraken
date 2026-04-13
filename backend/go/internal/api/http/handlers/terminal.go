@@ -10,10 +10,12 @@ import (
 	"open-kraken/backend/go/internal/authz"
 	"open-kraken/backend/go/internal/session"
 	"open-kraken/backend/go/internal/terminal"
+	"open-kraken/backend/go/internal/terminal/provider"
 )
 
 type TerminalHandler struct {
 	service            *terminal.Service
+	providerRegistry   *provider.Registry
 	authorizer         authz.Service
 	sessionsPathPrefix string // e.g. /api/v1/terminal/sessions/
 }
@@ -26,6 +28,12 @@ func NewTerminalHandler(service *terminal.Service, sessionsPathPrefix string) *T
 	}
 }
 
+// SetProviderRegistry wires the provider registry so POST /terminal/sessions
+// can resolve a member's TerminalType (claude, gemini, …) to the actual CLI command.
+func (h *TerminalHandler) SetProviderRegistry(reg *provider.Registry) {
+	h.providerRegistry = reg
+}
+
 func (h *TerminalHandler) HandleSessions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -35,7 +43,17 @@ func (h *TerminalHandler) HandleSessions(w http.ResponseWriter, r *http.Request)
 		if !decodeJSON(r, &req, w) {
 			return
 		}
-		info, err := h.service.CreateSession(r.Context(), req)
+		// Route through the provider registry so a TerminalType like "claude"
+		// resolves to the real `claude` command instead of falling back to bash.
+		var (
+			info session.SessionInfo
+			err  error
+		)
+		if h.providerRegistry != nil {
+			info, err = h.service.CreateSessionWithProvider(r.Context(), req, h.providerRegistry, nil, false)
+		} else {
+			info, err = h.service.CreateSession(r.Context(), req)
+		}
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return

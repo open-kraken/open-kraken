@@ -1,60 +1,65 @@
-/**
- * ConfirmDialog — confirmation before destructive actions.
- * Reference: GitHub's "type repo name to confirm" pattern.
- */
-
-import { createPortal } from 'react-dom';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./dialog";
+import { Button } from "./button";
 
 type ConfirmDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
+  variant?: "default" | "destructive";
   confirmLabel?: string;
   cancelLabel?: string;
-  tone?: 'danger' | 'warning' | 'default';
   onConfirm: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 };
 
 export const ConfirmDialog = ({
+  open,
+  onOpenChange,
   title,
   description,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
-  tone = 'danger',
+  variant = "default",
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) => {
-  const dialog = (
-    <div
-      className="modal-overlay"
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="confirm-dialog-title"
-      aria-describedby="confirm-dialog-desc"
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
-    >
-      <div className="modal-card confirm-dialog" data-tone={tone}>
-        <header className="modal-card__header">
-          <h2 id="confirm-dialog-title">{title}</h2>
-        </header>
-        <div className="modal-card__body">
-          <p id="confirm-dialog-desc" className="confirm-dialog__desc">{description}</p>
-        </div>
-        <footer className="modal-card__footer">
-          <button type="button" className="modal-card__btn modal-card__btn--secondary" onClick={onCancel}>
+  const handleConfirm = () => {
+    onConfirm();
+    onOpenChange(false);
+  };
+
+  const handleCancel = () => {
+    onCancel?.();
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>
             {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={`modal-card__btn ${tone === 'danger' ? 'modal-card__btn--danger' : 'modal-card__btn--primary'}`}
-            onClick={onConfirm}
-            autoFocus
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            variant={variant === "destructive" ? "destructive" : "default"}
           >
             {confirmLabel}
-          </button>
-        </footer>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
-  return createPortal(dialog, document.body);
 };

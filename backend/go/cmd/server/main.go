@@ -12,12 +12,14 @@ import (
 
 	apihttp "open-kraken/backend/go/internal/api/http"
 	"open-kraken/backend/go/internal/api/http/handlers"
+	"open-kraken/backend/go/internal/ael"
 	"open-kraken/backend/go/internal/authz"
 	"open-kraken/backend/go/internal/ledger"
 	"open-kraken/backend/go/internal/memory"
 	"open-kraken/backend/go/internal/message"
 	"open-kraken/backend/go/internal/node"
 	"open-kraken/backend/go/internal/observability"
+	okprometheus "open-kraken/backend/go/internal/observability/prometheus"
 	"open-kraken/backend/go/internal/orchestration"
 	"open-kraken/backend/go/internal/plugin"
 	"open-kraken/backend/go/internal/presence"
@@ -27,9 +29,11 @@ import (
 	"open-kraken/backend/go/internal/projectdata"
 	"open-kraken/backend/go/internal/pty"
 	"open-kraken/backend/go/internal/realtime"
+	"open-kraken/backend/go/internal/runtime/instance"
 	"open-kraken/backend/go/internal/session"
 	"open-kraken/backend/go/internal/settings"
 	"open-kraken/backend/go/internal/skill"
+	"open-kraken/backend/go/internal/stepLease"
 	"open-kraken/backend/go/internal/taskqueue"
 	"open-kraken/backend/go/internal/terminal"
 	"open-kraken/backend/go/internal/terminal/provider"
@@ -151,6 +155,56 @@ func main() {
 		}
 	}()
 
+	// Paper §3.2: Authoritative Execution Ledger (PostgreSQL-backed, optional).
+	var aelSvc *ael.Service
+	if cfg.PostgresDSN != "" {
+		aelRepo, aelErr := ael.NewRepository(ctx, cfg.PostgresDSN)
+		if aelErr != nil {
+			log.Error("ael repository init failed", logger.WithFields("error", aelErr.Error()))
+		} else {
+			aelSvc = ael.NewService(aelRepo)
+			defer aelSvc.Close()
+			log.Info("ael repository connected", logger.WithFields("dsn_set", true))
+		}
+	}
+
+	// Paper §3.3: Step Lease coordination (etcd in production, in-memory in dev).
+	var stepLeaseSvc stepLease.Lease
+	if len(cfg.EtcdEndpoints) > 0 {
+		etcdLease, etcdErr := stepLease.NewEtcdLease(ctx, stepLease.EtcdConfig{
+			Endpoints: cfg.EtcdEndpoints,
+		})
+		if etcdErr != nil {
+			log.Error("etcd step lease init failed", logger.WithFields("error", etcdErr.Error()))
+			stepLeaseSvc = stepLease.NewMemoryLease()
+		} else {
+			stepLeaseSvc = etcdLease
+			log.Info("step lease using etcd", logger.WithFields("endpoints", cfg.EtcdEndpoints))
+		}
+	} else {
+		stepLeaseSvc = stepLease.NewMemoryLease()
+	}
+	defer stepLeaseSvc.Close()
+
+	// Paper §4: AgentInstance pool manager (always in-process).
+	instanceMgr := instance.NewManager()
+	defer instanceMgr.Close()
+
+	// Paper §6.1: Prometheus metrics (always registered; listener conditional on addr).
+	metrics := okprometheus.New()
+	metricsListener := okprometheus.NewListener(cfg.PrometheusAddr, metrics)
+	metricsListener.Start()
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := metricsListener.Stop(sctx); err != nil {
+			log.Error("prometheus listener shutdown failed", logger.WithFields("error", err.Error()))
+		}
+	}()
+	if cfg.PrometheusAddr != "" {
+		log.Info("prometheus metrics listener started", logger.WithFields("addr", cfg.PrometheusAddr))
+	}
+
 	// Core services.
 	hub := realtime.NewHub(256)
 	termSvc := terminal.NewService(session.NewRegistry(), pty.NewLocalLauncher(), hub)
@@ -213,6 +267,13 @@ func main() {
 	}
 
 	// Wire HTTP handler.
+	// stepLeaseSvc, instanceMgr, and metrics are used by the runtime scheduler
+	// (Phase 2+). Assign them here to prevent "declared and not used" errors
+	// while keeping the build clean for callers that don't yet consume them.
+	_ = stepLeaseSvc
+	_ = instanceMgr
+	_ = metrics
+
 	apiHandler := apihttp.NewHandlerWithDependencies(termSvc, hub, projectRepo, cfg.WorkspaceRoot, cfg.APIBasePath, cfg.WSPath, apihttp.ExtendedServices{
 		NodeService:      nodeSvc,
 		SkillService:     skillSvc,
@@ -225,6 +286,7 @@ func main() {
 		SettingsService:  settingsSvc,
 		ProviderRegistry:  providerRegistry,
 		TaskQueueService: taskSvc,
+		AELService:       aelSvc,
 		AuthAccounts:     seedAccounts,
 	}, platformhttp.WebSocketUpgrader(cfg))
 

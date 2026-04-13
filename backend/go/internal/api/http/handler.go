@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"open-kraken/backend/go/internal/ael"
 	"open-kraken/backend/go/internal/api/http/handlers"
 	"open-kraken/backend/go/internal/ledger"
 	"open-kraken/backend/go/internal/memory"
@@ -27,7 +28,8 @@ import (
 )
 
 // ExtendedServices groups the optional new service dependencies introduced
-// in T04–T07. Fields may be nil; when nil the corresponding routes are omitted.
+// in T04–T07 and the Phase 1 paper implementation. Fields may be nil; when
+// nil the corresponding routes are omitted.
 type ExtendedServices struct {
 	NodeService   *node.Service
 	SkillService  *skill.Service
@@ -41,6 +43,9 @@ type ExtendedServices struct {
 	ProviderRegistry *provider.Registry
 	TaskQueueService *taskqueue.Service
 	AuthAccounts     []handlers.KnownAccount
+	// AELService is the Authoritative Execution Ledger (paper §3.2). Nil when
+	// OPEN_KRAKEN_POSTGRES_DSN is not configured.
+	AELService *ael.Service
 }
 
 // NewHandler creates the default handler using in-process defaults (no extended services).
@@ -61,6 +66,9 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 
 	sessionsPathPrefix := JoinAPI(apiBasePath, "terminal/sessions") + "/"
 	terminalHandler := handlers.NewTerminalHandler(service, sessionsPathPrefix)
+	if ext.ProviderRegistry != nil {
+		terminalHandler.SetProviderRegistry(ext.ProviderRegistry)
+	}
 	realtimeHandler := handlers.NewRealtimeHandler(service, hub, wsUpgrader)
 	workspaceHandler := handlers.NewWorkspaceHandler(service, hub, projectRepo, workspaceRoot)
 	if ext.MessageService != nil {
@@ -196,6 +204,59 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	authHandler := handlers.NewAuthHandler(ext.AuthAccounts)
 	mux.HandleFunc(JoinAPI(apiBasePath, "auth/login"), authHandler.HandleLogin)
 	mux.HandleFunc(JoinAPI(apiBasePath, "auth/me"), authHandler.HandleMe)
+
+	// AEL v2 routes: Runs, Flows, Steps.
+	// These are always registered; handlers return 503 when AELService is nil.
+	{
+		v2Runs := "/api/v2/runs"
+		v2Flows := "/api/v2/flows"
+		v2Steps := "/api/v2/steps"
+
+		// AEL v2 cognition routes: Skill Library, Process Templates, SEM.
+		v2Skills := "/api/v2/skills"
+		skillLibHandler := handlers.NewSkillLibraryHandler(ext.AELService, v2Skills)
+		mux.HandleFunc(v2Skills, skillLibHandler.Handle)
+		mux.HandleFunc(v2Skills+"/", skillLibHandler.Handle)
+
+		v2ProcTemplates := "/api/v2/process-templates"
+		procTplHandler := handlers.NewProcessTemplateHandler(ext.AELService, v2ProcTemplates)
+		mux.HandleFunc(v2ProcTemplates, procTplHandler.Handle)
+		mux.HandleFunc(v2ProcTemplates+"/", procTplHandler.Handle)
+
+		v2SEM := "/api/v2/sem"
+		semHandler := handlers.NewSEMHandler(ext.AELService, v2SEM)
+		mux.HandleFunc(v2SEM, semHandler.Handle)
+		mux.HandleFunc(v2SEM+"/", semHandler.Handle)
+
+		runHandler := handlers.NewRunHandler(ext.AELService, v2Runs)
+		mux.HandleFunc(v2Runs, runHandler.Handle)
+		// /api/v2/runs/{id}, /api/v2/runs/{id}/state, /api/v2/runs/{id}/flows
+		mux.HandleFunc(v2Runs+"/", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+			// Delegate /api/v2/runs/{id}/flows to the flow handler.
+			if strings.Contains(strings.TrimPrefix(r.URL.Path, v2Runs+"/"), "/flows") {
+				flowHandler := handlers.NewFlowHandler(ext.AELService, v2Flows, v2Runs)
+				flowHandler.HandleRunFlows(w, r)
+				return
+			}
+			runHandler.Handle(w, r)
+		})
+
+		flowHandler := handlers.NewFlowHandler(ext.AELService, v2Flows, v2Runs)
+		mux.HandleFunc(v2Flows, flowHandler.HandleFlows)
+
+		stepHandler := handlers.NewStepHandler(ext.AELService, v2Steps, v2Flows)
+		mux.HandleFunc(v2Steps, stepHandler.HandleSteps)
+		mux.HandleFunc(v2Steps+"/", stepHandler.HandleSteps)
+		// /api/v2/flows/{id}/steps — handled under the flows/ prefix.
+		mux.HandleFunc(v2Flows+"/", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+			if strings.HasSuffix(strings.TrimRight(r.URL.Path, "/"), "/steps") ||
+				strings.Contains(strings.TrimPrefix(r.URL.Path, v2Flows+"/"), "/steps") {
+				stepHandler.HandleFlowSteps(w, r)
+				return
+			}
+			w.WriteHeader(stdhttp.StatusNotFound)
+		})
+	}
 
 	return mux
 }

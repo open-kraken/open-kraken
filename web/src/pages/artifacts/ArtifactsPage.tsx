@@ -4,6 +4,13 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   FileText,
   FileCode,
   Download,
@@ -13,6 +20,8 @@ import {
   CheckCircle,
   Clock,
   Filter,
+  Copy,
+  Archive,
 } from 'lucide-react';
 
 type ArtifactType = 'report' | 'patch' | 'plan' | 'test_result' | 'export' | 'doc';
@@ -161,9 +170,73 @@ const getTypeBadgeColor = (type: ArtifactType) => {
   }
 };
 
+const contentPreviews: Record<string, string> = {
+  report: `# Code Review Summary - auth.ts
+
+## Security Analysis
+
+### Critical Findings
+1. \u2713 Password hashing using bcrypt with appropriate salt rounds
+2. \u2713 JWT tokens properly signed and validated
+3. \u26a0 Session timeout could be reduced from 24h to 8h
+
+### Recommendations
+- Implement rate limiting on login endpoint
+- Add 2FA support for admin accounts
+- Consider implementing refresh tokens
+
+### Code Quality: 9/10`,
+  patch: `diff --git a/src/dashboard/metrics.tsx b/src/dashboard/metrics.tsx
+--- a/src/dashboard/metrics.tsx
++++ b/src/dashboard/metrics.tsx
+@@ -45,7 +45,12 @@
+-  return <div className="metrics">
++  return <div className="metrics-v2">
++    <MetricCard
++      title="Active Users"
++      value={stats.activeUsers}
++      trend={+12.3}
++    />
+   </div>`,
+  test_result: `Test Results Summary
+====================
+Total Tests: 127
+Passed: 124 \u2713
+Failed: 2 \u2717
+Skipped: 1 \u25cb
+
+Coverage: 89.4%
+Duration: 2m 14s
+
+Failed Tests:
+1. auth.test.ts - Token expiry edge case
+2. api.test.ts - Rate limit boundary check`,
+  plan: `# Microservices Migration Plan
+
+## Phase 1: Analysis (2 weeks)
+- Identify service boundaries
+- Map dependencies
+- Document APIs
+
+## Phase 2: Setup (1 week)
+- Configure infrastructure
+- Set up monitoring
+- Prepare CI/CD pipelines
+
+## Phase 3: Migration (6 weeks)
+- Extract user service
+- Extract auth service
+- Extract payment service
+
+## Risks & Mitigation
+- Data consistency \u2192 Event sourcing
+- Service communication \u2192 Circuit breakers`,
+};
+
 export const ArtifactsPage = () => {
   const [filter, setFilter] = useState<ArtifactType | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<ArtifactStatus | 'all'>('all');
+  const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
 
   let filteredArtifacts =
     filter === 'all' ? mockArtifacts : mockArtifacts.filter((a) => a.type === filter);
@@ -349,7 +422,12 @@ export const ArtifactsPage = () => {
 
                   {/* Actions */}
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setSelectedArtifact(artifact)}
+                    >
                       <Eye size={14} className="mr-1" />
                       View
                     </Button>
@@ -364,6 +442,154 @@ export const ArtifactsPage = () => {
           )}
         </div>
       </div>
+
+      {/* Artifact Detail Dialog */}
+      <Dialog open={!!selectedArtifact} onOpenChange={(open) => !open && setSelectedArtifact(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          {selectedArtifact && (
+            <>
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center app-text-muted">
+                    {getTypeIcon(selectedArtifact.type)}
+                  </div>
+                  <div className="flex-1">
+                    <DialogTitle className="text-xl">{selectedArtifact.name}</DialogTitle>
+                    <DialogDescription className="mt-1">
+                      {selectedArtifact.description}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-6 py-4">
+                {/* Metadata */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="p-4">
+                    <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-2">
+                      Type &amp; Status
+                    </div>
+                    <div className="flex gap-2">
+                      <Badge variant="outline" className={getTypeBadgeColor(selectedArtifact.type)}>
+                        {selectedArtifact.type.replace('_', ' ')}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        v{selectedArtifact.version}
+                      </Badge>
+                      {selectedArtifact.isFinal && (
+                        <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                          <Star size={10} className="mr-1 fill-yellow-600" />
+                          Final
+                        </Badge>
+                      )}
+                    </div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-2">
+                      Created By
+                    </div>
+                    <div className="text-sm app-text-strong">{selectedArtifact.agent}</div>
+                    <div className="text-xs app-text-muted">{selectedArtifact.team}</div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-2">
+                      Created
+                    </div>
+                    <div className="text-sm app-text-strong">{selectedArtifact.createdAt}</div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-2">
+                      Size
+                    </div>
+                    <div className="text-sm app-text-strong">{selectedArtifact.size}</div>
+                  </Card>
+                </div>
+
+                {/* Linked Resources */}
+                {(selectedArtifact.linkedTo || selectedArtifact.task) && (
+                  <Card className="p-4">
+                    <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-3">
+                      Linked Resources
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedArtifact.linkedTo?.pr && (
+                        <Badge variant="outline" className="text-xs">
+                          Pull Request {selectedArtifact.linkedTo.pr}
+                        </Badge>
+                      )}
+                      {selectedArtifact.linkedTo?.commit && (
+                        <Badge variant="outline" className="text-xs">
+                          <GitCommit size={10} className="mr-1" />
+                          Commit {selectedArtifact.linkedTo.commit}
+                        </Badge>
+                      )}
+                      {selectedArtifact.linkedTo?.trace && (
+                        <Badge variant="outline" className="text-xs">
+                          Trace {selectedArtifact.linkedTo.trace}
+                        </Badge>
+                      )}
+                      {selectedArtifact.task && (
+                        <Badge variant="outline" className="text-xs">
+                          Task {selectedArtifact.task}
+                        </Badge>
+                      )}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Content Preview */}
+                <Card className="p-4">
+                  <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-3">
+                    Content Preview
+                  </div>
+                  <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-xs app-text-strong">
+                    {contentPreviews[selectedArtifact.type] ? (
+                      <pre className="whitespace-pre-wrap">
+                        {contentPreviews[selectedArtifact.type]}
+                      </pre>
+                    ) : (
+                      <div className="text-center py-8 app-text-muted">
+                        <FileText size={32} className="mx-auto mb-2" />
+                        <div>Full content available after download</div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 justify-end pt-4 border-t app-border-subtle">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(`https://kraken.io/artifacts/${selectedArtifact.id}`);
+                  }}
+                >
+                  <Copy size={14} className="mr-2" />
+                  Copy Link
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setSelectedArtifact(null)}
+                >
+                  <Archive size={14} className="mr-2" />
+                  Archive
+                </Button>
+                <Button
+                  className="app-accent-bg hover:opacity-90 text-white"
+                  onClick={() => setSelectedArtifact(null)}
+                >
+                  <Download size={14} className="mr-2" />
+                  Download
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

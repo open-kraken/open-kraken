@@ -4,7 +4,7 @@
  * and export/import snapshot functionality.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -60,6 +60,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PixelAvatar } from '@/components/ui/pixel-avatar';
 import { StatusDot } from '@/components/ui/status-dot';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { listSkillDefinitions, createSkillDefinition } from '@/api/v2/skills';
+import type { SkillDefinitionDTO, CreateSkillInput } from '@/api/v2/types';
 
 /* ── Skill Tree types ── */
 
@@ -290,12 +294,232 @@ function TreeNode({
   );
 }
 
+/* ── Skill Library Tab (v2) ── */
+
+const NEW_SKILL_DEFAULT: CreateSkillInput = {
+  name: '',
+  version: '1.0.0',
+  description: '',
+  prompt_template: '',
+};
+
+function SkillLibraryTab() {
+  const [defs, setDefs] = useState<SkillDefinitionDTO[]>([]);
+  const [libState, setLibState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<CreateSkillInput>(NEW_SKILL_DEFAULT);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<SkillDefinitionDTO | null>(null);
+
+  const loadDefs = useCallback(async () => {
+    setLibState('loading');
+    try {
+      const data = await listSkillDefinitions({ limit: 100 });
+      setDefs(Array.isArray(data) ? data : []);
+      setLibState('idle');
+    } catch {
+      setLibState('error');
+    }
+  }, []);
+
+  useEffect(() => { void loadDefs(); }, [loadDefs]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.prompt_template.trim()) {
+      setFormError('Name and Prompt Template are required.');
+      return;
+    }
+    setSaving(true);
+    setFormError(null);
+    try {
+      await createSkillDefinition(form);
+      setForm(NEW_SKILL_DEFAULT);
+      setShowForm(false);
+      await loadDefs();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to create skill.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (key: keyof CreateSkillInput, value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  return (
+    <div className="flex-1 flex overflow-hidden">
+      {/* Left: skill list */}
+      <div className="w-[320px] app-surface-strong border-r app-border-subtle flex flex-col">
+        <div className="p-3 border-b app-border-subtle flex items-center justify-between">
+          <span className="text-xs font-semibold app-text-faint uppercase tracking-wider">
+            {defs.length} skill{defs.length !== 1 ? 's' : ''}
+          </span>
+          <Button size="sm" className="h-7" onClick={() => { setShowForm(true); setSelected(null); }}>
+            <Plus size={12} className="mr-1" /> New Skill
+          </Button>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-2 space-y-1">
+            {libState === 'loading' && defs.length === 0 && (
+              <div className="text-center py-8 app-text-faint text-sm">Loading…</div>
+            )}
+            {libState === 'error' && (
+              <div className="text-center py-8 text-red-500 text-sm">
+                Failed to load skill library.
+                <Button variant="ghost" size="sm" className="block mx-auto mt-2" onClick={() => void loadDefs()}>
+                  Retry
+                </Button>
+              </div>
+            )}
+            {defs.length === 0 && libState === 'idle' && (
+              <div className="text-center py-8 app-text-faint text-sm">No skills in library yet.</div>
+            )}
+            {defs.map((def) => (
+              <button
+                key={def.id}
+                type="button"
+                className={`w-full flex items-start gap-2 px-3 py-2.5 rounded text-left hover:app-surface-strong transition-colors ${
+                  selected?.id === def.id ? 'app-surface-strong' : ''
+                }`}
+                onClick={() => { setSelected(def); setShowForm(false); }}
+              >
+                <div className="w-6 h-6 rounded bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 mt-0.5">
+                  <Zap size={10} className="text-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium app-text-strong truncate">{def.name}</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5">v{def.version}</Badge>
+                    <span className="text-[10px] app-text-faint truncate">{def.description || 'No description'}</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* Right: detail or form */}
+      <div className="flex-1 overflow-auto p-6">
+        {showForm && (
+          <div className="max-w-xl">
+            <h2 className="text-base font-bold app-text-strong mb-4">New Skill Definition</h2>
+            <form onSubmit={(e) => void handleCreate(e)} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="lib-name">Name</Label>
+                <Input id="lib-name" placeholder="my-skill" value={form.name} onChange={(e) => field('name', e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lib-version">Version</Label>
+                <Input id="lib-version" placeholder="1.0.0" value={form.version} onChange={(e) => field('version', e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lib-desc">Description</Label>
+                <Input id="lib-desc" placeholder="Short description" value={form.description} onChange={(e) => field('description', e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lib-prompt">Prompt Template</Label>
+                <Textarea
+                  id="lib-prompt"
+                  rows={8}
+                  placeholder="You are a helpful agent that..."
+                  value={form.prompt_template}
+                  onChange={(e) => field('prompt_template', e.target.value)}
+                  className="font-mono text-xs"
+                />
+              </div>
+              {formError && <p className="text-xs text-red-500">{formError}</p>}
+              <div className="flex items-center gap-2 pt-1">
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Saving…' : 'Create Skill'}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)} disabled={saving}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {!showForm && selected && (
+          <div className="max-w-xl space-y-5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
+                <Zap size={18} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-bold app-text-strong">{selected.name}</h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="outline" className="text-xs">v{selected.version}</Badge>
+                  {selected.tenant_id && (
+                    <span className="text-xs app-text-faint font-mono">{selected.tenant_id}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {selected.description && (
+              <Card className="p-4">
+                <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-2">Description</div>
+                <p className="text-sm app-text-strong">{selected.description}</p>
+              </Card>
+            )}
+
+            {selected.tags && selected.tags.length > 0 && (
+              <Card className="p-4">
+                <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-2">Tags</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {selected.tags.map((tag) => (
+                    <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            <Card className="overflow-hidden">
+              <div className="app-surface-strong border-b app-border-subtle px-4 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs app-text-faint">
+                  <FileCode size={14} />
+                  <span className="font-mono">prompt_template</span>
+                </div>
+              </div>
+              <pre className="p-4 text-xs font-mono app-text-strong overflow-x-auto bg-gray-50 dark:bg-gray-900/50 whitespace-pre-wrap">
+                {selected.prompt_template || '— no template —'}
+              </pre>
+            </Card>
+
+            <div className="text-xs app-text-faint">
+              Created {new Date(selected.created_at).toLocaleString()}
+            </div>
+          </div>
+        )}
+
+        {!showForm && !selected && (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center">
+              <FileCode size={48} className="app-text-faint mx-auto mb-4" />
+              <h3 className="text-lg font-semibold app-text-strong mb-2">Select a skill definition</h3>
+              <p className="text-sm app-text-muted">Choose a skill from the list or create a new one.</p>
+              <Button size="sm" className="mt-4" onClick={() => setShowForm(true)}>
+                <Plus size={14} className="mr-1" /> New Skill
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Page component ── */
 
 export const SkillsPage = () => {
   const { t } = useI18n();
   const { apiClient } = useAppShell();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<'catalog' | 'library'>('catalog');
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [exporting, setExporting] = useState(false);
@@ -507,8 +731,21 @@ export const SkillsPage = () => {
         </div>
       </div>
 
+      {/* Top-level tab switcher */}
+      <div className="border-b app-border-subtle px-6 pt-2 app-surface-strong">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'catalog' | 'library')}>
+          <TabsList className="h-9">
+            <TabsTrigger value="catalog" className="text-xs">Skill Catalog</TabsTrigger>
+            <TabsTrigger value="library" className="text-xs">Skill Library</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
+        {activeTab === 'library' && <SkillLibraryTab />}
+        {activeTab === 'catalog' && (
+        <>
         {/* Left Sidebar - Tree */}
         <div className="w-[320px] app-surface-strong border-r app-border-subtle flex flex-col">
           {/* Search */}
@@ -774,6 +1011,8 @@ export const SkillsPage = () => {
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

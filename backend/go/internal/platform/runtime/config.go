@@ -43,6 +43,23 @@ type Config struct {
 	LangfuseSecretKey string
 	// TracingEnabled is true when endpoint and both Langfuse keys are non-empty (export to Langfuse via OTLP).
 	TracingEnabled bool
+
+	// --- Paper §3.2 storage stack (Phase 0+).
+	// All of these are empty-means-disabled: a dev deployment without PostgreSQL/etcd
+	// continues to work on the legacy SQLite/JSON path until Phase 1 makes the new
+	// path the default. Production deployments must set these to the real endpoints.
+
+	// PostgresDSN is the connection string for the Authoritative Execution Ledger (AEL)
+	// and all other relational state. When empty, AEL features are disabled and the
+	// legacy ledger/memory/tokentrack SQLite files are used.
+	PostgresDSN string
+	// EtcdEndpoints is a comma-separated list of etcd client URLs used for Step Lease
+	// coordination, node heartbeats, and leader election. When empty, distributed
+	// step leasing is disabled (single-node mode using the in-memory fallback).
+	EtcdEndpoints []string
+	// PrometheusAddr is the host:port for the Prometheus metrics scrape endpoint.
+	// When empty, metrics registration still happens but no HTTP listener is started.
+	PrometheusAddr string
 }
 
 func Load() (Config, error) {
@@ -68,6 +85,10 @@ func Load() (Config, error) {
 	cfg.LangfusePublicKey = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_LANGFUSE_PUBLIC_KEY"))
 	cfg.LangfuseSecretKey = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_LANGFUSE_SECRET_KEY"))
 	cfg.TracingEnabled = cfg.OTELTracesEndpoint != "" && cfg.LangfusePublicKey != "" && cfg.LangfuseSecretKey != ""
+
+	cfg.PostgresDSN = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_POSTGRES_DSN"))
+	cfg.EtcdEndpoints = splitComma(os.Getenv("OPEN_KRAKEN_ETCD_ENDPOINTS"))
+	cfg.PrometheusAddr = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_PROMETHEUS_ADDR"))
 
 	if cfg.APIBasePath == cfg.WSPath {
 		return Config{}, fmt.Errorf("OPEN_KRAKEN_API_BASE_PATH and OPEN_KRAKEN_WS_PATH must be distinct")

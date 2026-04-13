@@ -24,8 +24,8 @@ export const en = {
   'nav.route.chat.description': 'Workspace conversations across humans and connected agents.',
   'nav.route.members.label': 'Team',
   'nav.route.members.description': 'Roster, roles, presence, and per-member terminal posture.',
-  'nav.route.roadmap.label': 'Roadmap',
-  'nav.route.roadmap.description': 'Roadmap + project data with persistence outcomes and conflicts.',
+  'nav.route.roadmap.label': 'Observability',
+  'nav.route.roadmap.description': 'Execution observability across squads and milestones.',
   'nav.route.terminal.label': 'Sessions',
   'nav.route.terminal.description': 'Attach to agent PTY streams (snapshot / delta / status).',
   'nav.route.system.label': 'System',
@@ -686,7 +686,11 @@ export const en = {
 
   // Routes: plugins
   'routes.plugins.label': 'Plugins',
-  'routes.plugins.description': 'Browse, install, and manage workspace plugins.'
+  'routes.plugins.description': 'Browse, install, and manage workspace plugins.',
+
+  // Routes: runs
+  'routes.runs.label': 'Runs',
+  'routes.runs.description': 'AEL execution runs — monitor flows, steps, and token usage in real time.'
 } as const;
 
 export type MessageKey = keyof typeof en;

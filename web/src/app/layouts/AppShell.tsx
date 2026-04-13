@@ -52,10 +52,12 @@ const DashboardPage = lazy(() => import('@/pages/dashboard/DashboardPage').then(
 const LedgerPage = lazy(() => import('@/pages/ledger/LedgerPage').then((m) => ({ default: m.LedgerPage })));
 const PluginsPage = lazy(() => import('@/pages/plugins/PluginsPage').then((m) => ({ default: m.PluginsPage })));
 const AccountPage = lazy(() => import('@/pages/account/AccountPage').then((m) => ({ default: m.AccountPage })));
+const RunsPage = lazy(() => import('@/pages/runs/RunsPage').then((m) => ({ default: m.RunsPage })));
 
 const pageByRoute = {
   dashboard: DashboardPage,
   ledger: LedgerPage,
+  runs: RunsPage,
   chat: ChatPage,
   members: MembersPage,
   skills: SkillsPage,

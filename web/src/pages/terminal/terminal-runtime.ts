@@ -220,6 +220,43 @@ const shouldResyncForDeltaGap = (state: TerminalPanelState, event: TerminalCanon
   return state.output.lastSeq > 0 && event.seq > state.output.lastSeq + 1;
 };
 
+/**
+ * Adapt the raw backend attach response into the shape expected by
+ * the terminal store (`TerminalAttachResult`).
+ *
+ * Backend returns:  `{ snapshot: { sessionId, buffer, rows, cols, seq, ... }, deltas, status }`
+ * Frontend expects: `{ session: { terminalId, memberId, ... }, snapshot?: { ... } }`
+ */
+const adaptAttachResponse = (
+  raw: Record<string, unknown>,
+  terminalId: string,
+  memberId: string
+): TerminalAttachResult => {
+  const snap = (raw.snapshot ?? {}) as Record<string, unknown>;
+  const sessionId = String(snap.sessionId ?? raw.sessionId ?? terminalId);
+  return {
+    session: {
+      terminalId: sessionId,
+      memberId,
+      workspaceId: String(snap.workspaceId ?? ''),
+      terminalType: 'pty',
+      command: String(raw.command ?? 'bash'),
+      status: String(snap.terminalStatus ?? 'attached'),
+    },
+    snapshot: snap.buffer !== undefined
+      ? {
+          terminalId: sessionId,
+          seq: Number(snap.seq ?? 0),
+          buffer: {
+            data: String(snap.buffer ?? ''),
+            rows: Number(snap.rows ?? 24),
+            cols: Number(snap.cols ?? 80),
+          },
+        }
+      : undefined,
+  };
+};
+
 export const createTerminalPanelController = ({
   apiClient,
   realtimeClient,
@@ -229,17 +266,18 @@ export const createTerminalPanelController = ({
   const runtimeApi = getTerminalRuntimeApi(apiClient);
   const store = createTerminalStore({
     attachSession: async (terminalId) => {
-      // term_owner_1 → resolve memberId "owner_1" to a real backend session ID
       const memberId = terminalId.startsWith('term_') ? terminalId.slice(5) : terminalId;
       const sessionId = await resolveOrCreateMemberSession('ws_open_kraken', memberId);
-      return runtimeApi.attachTerminal(sessionId);
+      const raw = await runtimeApi.attachTerminal(sessionId);
+      return adaptAttachResponse(raw as Record<string, unknown>, sessionId, memberId);
     }
   });
 
   const requestResync = async (terminalId: string, reason: string) => {
     const memberId = terminalId.startsWith('term_') ? terminalId.slice(5) : terminalId;
     const sessionId = await resolveOrCreateMemberSession('ws_open_kraken', memberId);
-    const result = await runtimeApi.attachTerminal(sessionId);
+    const raw = await runtimeApi.attachTerminal(sessionId);
+    const result = adaptAttachResponse(raw as Record<string, unknown>, sessionId, memberId);
     const current = store.getState();
     pushNotification({
       tone: 'warning',

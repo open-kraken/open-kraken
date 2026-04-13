@@ -1,6 +1,7 @@
 export type AppRouteId =
   | 'dashboard'
   | 'ledger'
+  | 'runs'
   | 'chat'
   | 'members'
   | 'skills'
@@ -37,6 +38,12 @@ export const appRoutes: AppRouteDefinition[] = [
     path: '/ledger',
     label: 'Ledger',
     description: 'Central audit trail: teams, members, commands, and context for retrospectives.'
+  },
+  {
+    id: 'runs',
+    path: '/runs',
+    label: 'Runs',
+    description: 'AEL execution runs — monitor flows, steps, and token usage in real time.'
   },
   {
     id: 'chat',
@@ -143,7 +150,7 @@ export type AppNavGroup = {
 };
 
 export const appNavGroups: AppNavGroup[] = [
-  { id: 'observability', label: 'Observability', routeIds: ['dashboard', 'ledger'] },
+  { id: 'observability', label: 'Observability', routeIds: ['dashboard', 'ledger', 'runs'] },
   { id: 'collaboration', label: 'Collaboration', routeIds: ['chat', 'members', 'skills'] },
   { id: 'delivery', label: 'Delivery', routeIds: ['taskmap', 'roadmap'] },
   { id: 'runtime', label: 'Runtime & nodes', routeIds: ['terminal', 'nodes', 'approvals'] },

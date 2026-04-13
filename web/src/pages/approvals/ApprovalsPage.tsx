@@ -3,14 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   AlertTriangle,
   CheckCircle,
@@ -392,47 +385,25 @@ export function ApprovalsPage() {
       </div>
 
       {/* Approve Dialog */}
-      <Dialog open={!!approveDialog} onOpenChange={(open) => !open && setApproveDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Approve Request</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to approve this request? The action will be executed immediately.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setApproveDialog(null)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-green-600 hover:bg-green-700 text-white"
-              onClick={() => approveDialog && handleApprove(approveDialog)}
-            >
-              Approve
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={!!approveDialog}
+        onOpenChange={(open) => !open && setApproveDialog(null)}
+        title="Approve Request"
+        description="Are you sure you want to approve this request? The action will be executed immediately."
+        confirmLabel="Approve"
+        onConfirm={() => approveDialog && handleApprove(approveDialog)}
+      />
 
       {/* Reject Dialog */}
-      <Dialog open={!!rejectDialog} onOpenChange={(open) => !open && setRejectDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reject Request</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to reject this request? The requester will be notified.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectDialog(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={() => rejectDialog && handleReject(rejectDialog)}>
-              Reject
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={!!rejectDialog}
+        onOpenChange={(open) => !open && setRejectDialog(null)}
+        title="Reject Request"
+        description="Are you sure you want to reject this request? The requester will be notified."
+        confirmLabel="Reject"
+        variant="destructive"
+        onConfirm={() => rejectDialog && handleReject(rejectDialog)}
+      />
     </div>
   );
 }

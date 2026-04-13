@@ -257,6 +257,74 @@ type TokenStatsDTO struct {
 	EventCount   int64   `json:"eventCount"`
 }
 
+// RunDTO is the API representation of an AEL Run.
+type RunDTO struct {
+	ID          string  `json:"id"`
+	TenantID    string  `json:"tenantId"`
+	HiveID      string  `json:"hiveId"`
+	State       string  `json:"state"`
+	PolicySetID string  `json:"policySetId,omitempty"`
+	TokenBudget int     `json:"tokenBudget"`
+	TokensUsed  int     `json:"tokensUsed"`
+	CostUSD     float64 `json:"costUsd"`
+	Objective   string  `json:"objective,omitempty"`
+	Version     int     `json:"version"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+	Flows       []FlowDTO `json:"flows,omitempty"`
+}
+
+// FlowDTO is the API representation of an AEL Flow.
+type FlowDTO struct {
+	ID           string `json:"id"`
+	RunID        string `json:"runId"`
+	TenantID     string `json:"tenantId"`
+	AgentRole    string `json:"agentRole"`
+	AssignedNode string `json:"assignedNode,omitempty"`
+	State        string `json:"state"`
+	Version      int    `json:"version"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
+// StepDTO is the API representation of an AEL Step.
+type StepDTO struct {
+	ID            string       `json:"id"`
+	FlowID        string       `json:"flowId"`
+	RunID         string       `json:"runId"`
+	TenantID      string       `json:"tenantId"`
+	State         string       `json:"state"`
+	Regime        string       `json:"regime"`
+	WorkloadClass string       `json:"workloadClass"`
+	AgentType     string       `json:"agentType,omitempty"`
+	Provider      string       `json:"provider,omitempty"`
+	TokensUsed    int          `json:"tokensUsed"`
+	CostUSD       float64      `json:"costUsd"`
+	DurationMS    int          `json:"durationMs"`
+	FailureReason string       `json:"failureReason,omitempty"`
+	Version       int          `json:"version"`
+	CreatedAt     string       `json:"createdAt"`
+	UpdatedAt     string       `json:"updatedAt"`
+	SideEffects   []SideEffectDTO `json:"sideEffects,omitempty"`
+}
+
+// SideEffectDTO is the API representation of an AEL SideEffect.
+type SideEffectDTO struct {
+	ID               string `json:"id"`
+	StepID           string `json:"stepId"`
+	RunID            string `json:"runId"`
+	TenantID         string `json:"tenantId"`
+	Seq              int    `json:"seq"`
+	TargetSystem     string `json:"targetSystem"`
+	OperationType    string `json:"operationType"`
+	IdempotencyClass string `json:"idempotencyClass"`
+	IdempotencyKey   string `json:"idempotencyKey,omitempty"`
+	State            string `json:"state"`
+	PolicyOutcome    string `json:"policyOutcome,omitempty"`
+	ExecutedAt       string `json:"executedAt,omitempty"`
+	CreatedAt        string `json:"createdAt"`
+}
+
 // MemoryEntryDTO is the API representation of a distributed memory entry.
 type MemoryEntryDTO struct {
 	ID        string `json:"id,omitempty"`
@@ -269,4 +337,54 @@ type MemoryEntryDTO struct {
 	UpdatedAt string `json:"updatedAt,omitempty"`
 	// TTLSeconds is 0 when the entry does not expire.
 	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
+}
+
+// SkillDefinitionDTO is the API representation of a Skill Library entry (paper §5.4.5).
+type SkillDefinitionDTO struct {
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	Version           int      `json:"version"`
+	Description       string   `json:"description,omitempty"`
+	PromptTemplate    string   `json:"promptTemplate,omitempty"`
+	ToolRequirements  []string `json:"toolRequirements,omitempty"`
+	AgentTypeAffinity []string `json:"agentTypeAffinity,omitempty"`
+	WorkloadClassTags []string `json:"workloadClassTags,omitempty"`
+	TenantID          string   `json:"tenantId,omitempty"`
+	AuthoredBy        string   `json:"authoredBy,omitempty"`
+	PublishedAt       string   `json:"publishedAt"`
+	EmbeddingStatus   string   `json:"embeddingStatus"`
+}
+
+// ProcessTemplateDTO is the API representation of a Process Template Library entry (paper §5.6.0).
+type ProcessTemplateDTO struct {
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Version            int      `json:"version"`
+	TriggerDescription string   `json:"triggerDescription,omitempty"`
+	DAGTemplate        string   `json:"dagTemplate,omitempty"` // raw JSON string
+	ApplicableDomains  []string `json:"applicableDomains,omitempty"`
+	EstimatedStepsMin  int      `json:"estimatedStepsMin"`
+	EstimatedStepsMax  int      `json:"estimatedStepsMax"`
+	AuthoredBy         string   `json:"authoredBy,omitempty"`
+	PublishedAt        string   `json:"publishedAt"`
+	EmbeddingStatus    string   `json:"embeddingStatus"`
+}
+
+// SEMRecordDTO is the API representation of a Shared Execution Memory record (paper §5.7).
+type SEMRecordDTO struct {
+	ID              string  `json:"id"`
+	Type            string  `json:"type"`
+	Scope           string  `json:"scope"`
+	HiveID          string  `json:"hiveId"`
+	RunID           string  `json:"runId,omitempty"`
+	Key             string  `json:"key,omitempty"`
+	Content         string  `json:"content,omitempty"` // raw JSON string
+	CreatedBy       string  `json:"createdBy,omitempty"`
+	SourceStep      string  `json:"sourceStep,omitempty"`
+	Confidence      float64 `json:"confidence"`
+	Version         int     `json:"version"`
+	SupersededBy    string  `json:"supersededBy,omitempty"`
+	ResolvedAt      string  `json:"resolvedAt,omitempty"`
+	EmbeddingStatus string  `json:"embeddingStatus"`
+	CreatedAt       string  `json:"createdAt"`
 }

@@ -13,6 +13,7 @@ import { getNodes } from '@/api/nodes';
 import { buildNodeBindingByMemberId } from '@/features/members/member-runtime-map';
 import type { Skill } from '@/types/skill';
 import type { MemberNodeBinding } from '@/features/members/member-runtime-map';
+import { resolveOrCreateMemberSession } from '@/api/terminal';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +58,8 @@ import {
 
 interface Provider {
   id: string;
+  /** Backend `terminalType` key — must match `provider.Registry` (claude, gemini, codex, opencode, qwen, shell). */
+  terminalType: string;
   name: string;
   command: string;
   unlimitedFlag?: string;
@@ -66,6 +69,7 @@ interface Provider {
 const providers: Provider[] = [
   {
     id: 'claude-code',
+    terminalType: 'claude',
     name: 'Claude Code',
     command: 'claude',
     unlimitedFlag: '--dangerously-skip-permissions',
@@ -73,30 +77,35 @@ const providers: Provider[] = [
   },
   {
     id: 'gemini-cli',
+    terminalType: 'gemini',
     name: 'Gemini CLI',
     command: 'gemini',
     description: "Google's AI assistant for coding and analysis",
   },
   {
     id: 'codex-cli',
+    terminalType: 'codex',
     name: 'Codex CLI',
     command: 'codex',
     description: "OpenAI's code generation model",
   },
   {
     id: 'opencode',
+    terminalType: 'opencode',
     name: 'OpenCode',
     command: 'opencode',
     description: 'Open source coding assistant',
   },
   {
     id: 'qwen-code',
+    terminalType: 'qwen',
     name: 'Qwen Code',
     command: 'qwen',
     description: "Alibaba's coding model",
   },
   {
     id: 'shell',
+    terminalType: 'shell',
     name: 'Shell',
     command: '$SHELL',
     description: 'Standard shell terminal session',
@@ -108,11 +117,23 @@ function InviteAIAssistantModal({
   onOpenChange,
   teams = [],
   selectedTeam = '',
+  onCreate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teams?: string[];
   selectedTeam?: string;
+  onCreate: (config: {
+    memberId: string;
+    displayName: string;
+    /** Frontend provider id (e.g. "claude-code"). */
+    providerId: string;
+    /** Backend terminalType key (e.g. "claude"). */
+    terminalType: string;
+    command: string;
+    workingDir: string;
+    team: string;
+  }) => Promise<void>;
 }) {
   const [step, setStep] = useState(1);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
@@ -121,6 +142,7 @@ function InviteAIAssistantModal({
   const [workingDir, setWorkingDir] = useState('/home/user/project');
   const [team, setTeam] = useState(selectedTeam);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleProviderSelect = (provider: Provider) => {
     setSelectedProvider(provider);
@@ -137,10 +159,28 @@ function InviteAIAssistantModal({
   };
 
   const handleCreate = async () => {
+    if (!selectedProvider || !displayName.trim()) return;
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setLoading(false);
-    handleClose();
+    setError(null);
+    try {
+      const memberId = displayName.trim().toLowerCase().replace(/\s+/g, '_');
+      await onCreate({
+        memberId,
+        displayName: displayName.trim(),
+        providerId: selectedProvider.id,
+        terminalType: selectedProvider.terminalType,
+        // Empty command lets the backend apply the provider's default — only override
+        // if the user changed it to something other than the default.
+        command: command && command !== selectedProvider.command ? command : '',
+        workingDir,
+        team,
+      });
+      handleClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create agent');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClose = () => {
@@ -150,6 +190,7 @@ function InviteAIAssistantModal({
     setCommand('');
     setWorkingDir('/home/user/project');
     setTeam(selectedTeam);
+    setError(null);
     onOpenChange(false);
   };
 
@@ -308,6 +349,11 @@ function InviteAIAssistantModal({
                     This provider includes unlimited permission flags. Ensure proper
                     security policies are in place.
                   </p>
+                </div>
+              )}
+              {error && (
+                <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
+                  <p className="text-xs text-red-600">{error}</p>
                 </div>
               )}
             </div>
@@ -740,6 +786,29 @@ export const MembersPage = () => {
         onOpenChange={setInviteAIModalOpen}
         teams={teamNames}
         selectedTeam={activeTeam?.name ?? ''}
+        onCreate={async (config) => {
+          // 1. Create member via backend API
+          await apiClient.createMember({
+            memberId: config.memberId,
+            displayName: config.displayName,
+            roleType: 'assistant',
+          });
+
+          // 2. Create the terminal session with the chosen provider so the
+          //    backend launches the real CLI (claude / gemini / ...) instead of bash.
+          try {
+            await resolveOrCreateMemberSession(workspace.workspaceId, config.memberId, {
+              terminalType: config.terminalType,
+              command: config.command,
+              cwd: config.workingDir,
+            });
+          } catch {
+            // Terminal session creation is best-effort; agent record still exists.
+          }
+
+          // 3. Reload the roster to show the new agent
+          await load();
+        }}
       />
     </div>
   );

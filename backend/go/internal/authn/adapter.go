@@ -28,6 +28,16 @@ func ResolvePrincipal(r *http.Request) (authz.Principal, error) {
 		return principal, nil
 	}
 
+	// Browsers cannot set custom headers on WebSocket connections.
+	// Support token via query parameter as fallback (e.g. ?token=Bearer+...).
+	if qToken := strings.TrimSpace(r.URL.Query().Get("token")); qToken != "" {
+		if principal, ok, err := principalFromAuthorization(qToken); err != nil {
+			return authz.Principal{}, err
+		} else if ok {
+			return principal, nil
+		}
+	}
+
 	return principalFromLegacyHeaders(r)
 }
 
