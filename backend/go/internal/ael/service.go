@@ -64,6 +64,26 @@ func (s *Service) CompleteRun(ctx context.Context, runID string, finalState RunS
 	return s.repo.UpdateRunState(ctx, runID, run.Version, finalState)
 }
 
+// EnsureRunRunning transitions a Run from pending → running if needed. It
+// is idempotent: a Run already in running (or any terminal state) produces
+// no change. This is the hook the FlowScheduler calls when the first Step
+// of a Run enters execution.
+func (s *Service) EnsureRunRunning(ctx context.Context, runID string) error {
+	run, err := s.repo.GetRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run.State != RunPending {
+		return nil
+	}
+	err = s.repo.UpdateRunState(ctx, runID, run.Version, RunRunning)
+	if errors.Is(err, ErrVersionConflict) {
+		// Another scheduler beat us to it; treat as success.
+		return nil
+	}
+	return err
+}
+
 // --- Flow ---
 
 // AddFlow creates a Flow under an existing Run.
@@ -109,10 +129,45 @@ func (s *Service) LeaseMirror(ctx context.Context, in T1LeaseMirrorInput) error 
 	return s.repo.T1LeaseMirror(ctx, in)
 }
 
+// MarkStepRunning transitions a Step from leased → running after the
+// FlowScheduler has handed it to an AgentInstance for execution.
+func (s *Service) MarkStepRunning(ctx context.Context, stepID string) error {
+	return s.repo.MarkStepRunning(ctx, stepID)
+}
+
+// UpdateStepArm records the CWS-selected (agent_type, provider) on a
+// pending Step. After the Step leaves pending the arm is immutable.
+func (s *Service) UpdateStepArm(ctx context.Context, stepID, agentType, provider string) error {
+	return s.repo.UpdateStepArm(ctx, stepID, agentType, provider)
+}
+
+// CreateRetryStep creates a new Step row chained to parent via
+// retry_of (paper §5.3). Returns the new Step. The parent's state is
+// NOT mutated — monotonicity is preserved.
+func (s *Service) CreateRetryStep(ctx context.Context, parent *Step) (*Step, error) {
+	return s.repo.InsertRetryStep(ctx, parent)
+}
+
+// CancelStep transitions a Step from pending → cancelled. Used by the
+// FlowScheduler when T1 reports the Run's budget is exhausted.
+func (s *Service) CancelStep(ctx context.Context, stepID string) error {
+	step, err := s.repo.GetStep(ctx, stepID)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpdateStepStateFromScheduler(ctx, stepID, step.Version, StepCancelled)
+}
+
 // CompleteStep wraps Repository.T2StepComplete. Callers should pass all
 // SideEffects that must commit atomically with the step transition.
 func (s *Service) CompleteStep(ctx context.Context, in StepCompletionInput) error {
 	return s.repo.T2StepComplete(ctx, in)
+}
+
+// RenewLease wraps Repository.T3LeaseRenewal: reflect a successful
+// etcd keepalive into the PG mirror. Never changes Step state.
+func (s *Service) RenewLease(ctx context.Context, in T3LeaseRenewalInput) error {
+	return s.repo.T3LeaseRenewal(ctx, in)
 }
 
 // GetRun loads a Run by ID.
@@ -132,6 +187,120 @@ func (s *Service) TransitionRun(ctx context.Context, runID string, to RunState) 
 		return err
 	}
 	return s.repo.UpdateRunState(ctx, runID, run.Version, to)
+}
+
+// EnsureFlowRunning drives a Flow toward the running state when a Step
+// under it is about to execute. Idempotent: a Flow already in running or
+// terminal is left alone. A Flow in pending is first transitioned to
+// assigned (with assigned_node filled in if empty), then to running.
+func (s *Service) EnsureFlowRunning(ctx context.Context, flowID, assignedNode string) error {
+	flow, err := s.repo.GetFlow(ctx, flowID)
+	if err != nil {
+		return err
+	}
+	// pending → assigned.
+	if flow.State == FlowPending {
+		if err := s.repo.UpdateFlowState(ctx, flowID, flow.Version, FlowAssigned, assignedNode); err != nil {
+			if errors.Is(err, ErrVersionConflict) {
+				// Re-read and continue; another scheduler probably raced us.
+				flow, err = s.repo.GetFlow(ctx, flowID)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			// Re-read to get the bumped version for the next transition.
+			flow, err = s.repo.GetFlow(ctx, flowID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	// assigned → running.
+	if flow.State == FlowAssigned {
+		err := s.repo.UpdateFlowState(ctx, flowID, flow.Version, FlowRunning, "")
+		if errors.Is(err, ErrVersionConflict) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// TryFinalizeFlow transitions a Flow to its aggregate terminal state when
+// every Step under it is terminal. Returns true iff a transition was made.
+// Aggregation rule (matches paper §5.3):
+//   - any Step failed        → Flow failed
+//   - any Step cancelled     → Flow cancelled
+//   - any Step expired       → Flow failed (a backup path; expired Steps
+//     are re-enqueued as new rows, so an expired Step row that never
+//     produced a fresh retry is effectively a failure)
+//   - otherwise (all succeeded) → Flow succeeded
+func (s *Service) TryFinalizeFlow(ctx context.Context, flowID string) (bool, error) {
+	counts, err := s.repo.CountStepsByFlow(ctx, flowID)
+	if err != nil {
+		return false, err
+	}
+	if !counts.AllTerminal() {
+		return false, nil
+	}
+	flow, err := s.repo.GetFlow(ctx, flowID)
+	if err != nil {
+		return false, err
+	}
+	if IsFlowTerminal(flow.State) {
+		return false, nil
+	}
+	target := FlowSucceeded
+	switch {
+	case counts.Failed > 0, counts.Expired > 0:
+		target = FlowFailed
+	case counts.Cancelled > 0:
+		target = FlowCancelled
+	}
+	if err := s.repo.UpdateFlowState(ctx, flowID, flow.Version, target, ""); err != nil {
+		if errors.Is(err, ErrVersionConflict) {
+			// Someone raced; consider the finalization handled.
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// TryFinalizeRun transitions a Run to its aggregate terminal state when
+// every Flow under it is terminal. Returns true iff a transition was made.
+func (s *Service) TryFinalizeRun(ctx context.Context, runID string) (bool, error) {
+	counts, err := s.repo.CountFlowsByRun(ctx, runID)
+	if err != nil {
+		return false, err
+	}
+	if !counts.AllTerminal() {
+		return false, nil
+	}
+	run, err := s.repo.GetRun(ctx, runID)
+	if err != nil {
+		return false, err
+	}
+	if IsRunTerminal(run.State) {
+		return false, nil
+	}
+	target := RunSucceeded
+	switch {
+	case counts.Failed > 0:
+		target = RunFailed
+	case counts.Cancelled > 0:
+		target = RunCancelled
+	}
+	if err := s.repo.UpdateRunState(ctx, runID, run.Version, target); err != nil {
+		if errors.Is(err, ErrVersionConflict) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // GetFlow loads a Flow by ID.
@@ -171,6 +340,14 @@ func (s *Service) GetSkill(ctx context.Context, id string) (*SkillDefinition, er
 	return s.repo.GetSkill(ctx, id)
 }
 
+// FindSkillForAgent returns the best-matching skill for a runtime
+// (agent_type, workload_class, tenant_id) triple (paper §5.4.5). Returns
+// ErrNotFound when no skill applies — callers fall back to the raw
+// Step input in that case.
+func (s *Service) FindSkillForAgent(ctx context.Context, agentType, workloadClass, tenantID string) (*SkillDefinition, error) {
+	return s.repo.FindSkillForAgent(ctx, agentType, workloadClass, tenantID)
+}
+
 // --- Process Template Library ---
 
 // CreateProcessTemplate inserts a new ProcessTemplate.
@@ -203,4 +380,21 @@ func (s *Service) ListSEMRecords(ctx context.Context, hiveID, semType, scope str
 // GetSEMRecord loads a SEMRecord by ID.
 func (s *Service) GetSEMRecord(ctx context.Context, id string) (*SEMRecord, error) {
 	return s.repo.GetSEMRecord(ctx, id)
+}
+
+// MarkSEMEmbedded records a successful vector-store write (outbox pattern).
+func (s *Service) MarkSEMEmbedded(ctx context.Context, id string, qdrantID int64) error {
+	return s.repo.MarkSEMEmbedded(ctx, id, qdrantID)
+}
+
+// MarkSEMEmbeddingFailed records a failed vector-store write so the
+// outbox worker can retry it.
+func (s *Service) MarkSEMEmbeddingFailed(ctx context.Context, id string) error {
+	return s.repo.MarkSEMEmbeddingFailed(ctx, id)
+}
+
+// ListPendingSEMEmbeddings returns SEM rows whose embedding has not
+// been persisted to the vector store yet.
+func (s *Service) ListPendingSEMEmbeddings(ctx context.Context, limit int) ([]SEMRecord, error) {
+	return s.repo.ListPendingSEMEmbeddings(ctx, limit)
 }

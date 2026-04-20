@@ -1,6 +1,7 @@
 package instance
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -19,23 +20,54 @@ type poolKey struct {
 	TenantID  string
 }
 
-// Manager is an in-process registry of AgentInstances. It is the Agent
-// Runtime's lightweight instance pool; persistence of the `agent_instances`
-// table happens in a separate sync loop (not implemented in this Phase 1
-// slice — Phase 2+ will add durable recovery).
+// Manager is an in-process registry of AgentInstances. When a Repository
+// is supplied, every transition is mirrored durably and a Restore call
+// re-materializes the pool after restart (see recovery.go).
 type Manager struct {
-	mu      sync.Mutex
-	closed  bool
-	byID    map[string]*AgentInstance
-	byPool  map[poolKey]map[string]*AgentInstance // key → set of instance IDs
+	mu     sync.Mutex
+	closed bool
+	byID   map[string]*AgentInstance
+	byPool map[poolKey]map[string]*AgentInstance // key → set of instance IDs
+
+	// repo is the optional persistence backend. Nil means "pool is
+	// in-memory only; pre-persistence behaviour". When non-nil every
+	// Spawn / state transition writes a Snapshot.
+	repo Repository
+
+	// onPersistError fires when a Repository.Upsert fails. Defaults
+	// to a no-op; the server main wires in a logger. Kept as a
+	// callback to keep Manager independent of any logger package.
+	onPersistError func(err error, snapshot Snapshot)
 }
 
-// NewManager constructs an empty Manager.
+// NewManager constructs an empty Manager with no persistence.
 func NewManager() *Manager {
 	return &Manager{
 		byID:   make(map[string]*AgentInstance),
 		byPool: make(map[poolKey]map[string]*AgentInstance),
 	}
+}
+
+// NewManagerWithRepository constructs a Manager that mirrors every
+// instance transition into repo. Pass a non-nil error handler to log
+// persistence failures (they are never fatal to the in-memory pool).
+//
+// When repo is nil this behaves like NewManager().
+func NewManagerWithRepository(repo Repository, onPersistError func(err error, s Snapshot)) *Manager {
+	if onPersistError == nil {
+		onPersistError = func(error, Snapshot) {}
+	}
+	return &Manager{
+		byID:           make(map[string]*AgentInstance),
+		byPool:         make(map[poolKey]map[string]*AgentInstance),
+		repo:           repo,
+		onPersistError: onPersistError,
+	}
+}
+
+// Repository returns the configured Repository or nil.
+func (m *Manager) Repository() Repository {
+	return m.repo
 }
 
 // Spawn creates a new instance in the scheduled state and registers it.
@@ -49,6 +81,10 @@ func (m *Manager) Spawn(agentType, provider, tenantID, hiveID string) (*AgentIns
 
 	id := uuid.NewString()
 	inst := New(id, agentType, provider, tenantID, hiveID)
+	m.wirePersistence(inst)
+
+	// Schedule must run AFTER the callback is wired so the initial
+	// "scheduled" transition mirrors into the Repository.
 	if err := inst.Schedule(); err != nil {
 		return nil, err
 	}
@@ -62,6 +98,23 @@ func (m *Manager) Spawn(agentType, provider, tenantID, hiveID string) (*AgentIns
 	}
 	bucket[id] = inst
 	return inst, nil
+}
+
+// wirePersistence installs the change callback on inst so every
+// subsequent FSM transition mirrors into the Repository. No-op when
+// the Manager has no Repository configured.
+func (m *Manager) wirePersistence(inst *AgentInstance) {
+	if m.repo == nil {
+		return
+	}
+	repo := m.repo
+	onErr := m.onPersistError
+	ctx := context.Background()
+	inst.onChange = func(s Snapshot) {
+		if err := repo.Upsert(ctx, s); err != nil {
+			onErr(err, s)
+		}
+	}
 }
 
 // Get looks up an instance by ID.

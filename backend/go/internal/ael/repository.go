@@ -181,6 +181,155 @@ func (r *Repository) UpdateRunState(ctx context.Context, id string, expectedVers
 	return nil
 }
 
+// UpdateFlowState transitions a Flow to `to` using the FSM validator and
+// optimistic concurrency. Also updates assigned_node when non-empty.
+// Callers must supply the expected current version.
+func (r *Repository) UpdateFlowState(ctx context.Context, id string, expectedVersion int, to FlowState, assignedNode string) error {
+	current, err := r.GetFlow(ctx, id)
+	if err != nil {
+		return err
+	}
+	if current.Version != expectedVersion {
+		return ErrVersionConflict
+	}
+	if err := ValidateFlowTransition(current.State, to); err != nil {
+		return err
+	}
+	const q = `
+		UPDATE flows
+		SET state = $1,
+		    assigned_node = COALESCE(NULLIF($2, ''), assigned_node),
+		    version = version + 1,
+		    updated_at = NOW()
+		WHERE id = $3 AND version = $4`
+	tag, err := r.pool.Exec(ctx, q, string(to), assignedNode, id, expectedVersion)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrVersionConflict
+	}
+	return nil
+}
+
+// StepStateCounts returns the number of Steps under a Flow (or a Run when
+// runID is non-empty and flowID is empty) grouped by state. Used by
+// finalization logic to decide whether a parent can transition.
+type StepStateCounts struct {
+	Total     int
+	Pending   int
+	Leased    int
+	Running   int
+	Succeeded int
+	Failed    int
+	Cancelled int
+	Expired   int
+}
+
+// AllTerminal reports whether every Step counted is in a terminal state.
+func (c StepStateCounts) AllTerminal() bool {
+	return c.Total > 0 && (c.Pending+c.Leased+c.Running) == 0
+}
+
+// CountStepsByFlow aggregates Step state counts for a single Flow.
+func (r *Repository) CountStepsByFlow(ctx context.Context, flowID string) (StepStateCounts, error) {
+	return r.countSteps(ctx, "flow_id", flowID)
+}
+
+func (r *Repository) countSteps(ctx context.Context, col, val string) (StepStateCounts, error) {
+	// Only count leaves of the retry chain: rows that have no other
+	// Step pointing at them via retry_of. Earlier retries are
+	// audit-only — they've been superseded and must not skew
+	// Flow/Run finalization (paper §5.3).
+	q := fmt.Sprintf(`
+		SELECT state, COUNT(*)
+		FROM steps s
+		WHERE %s = $1
+		  AND NOT EXISTS (SELECT 1 FROM steps r WHERE r.retry_of = s.id)
+		GROUP BY state`, col)
+	rows, err := r.pool.Query(ctx, q, val)
+	if err != nil {
+		return StepStateCounts{}, err
+	}
+	defer rows.Close()
+	var out StepStateCounts
+	for rows.Next() {
+		var state string
+		var n int
+		if err := rows.Scan(&state, &n); err != nil {
+			return StepStateCounts{}, err
+		}
+		out.Total += n
+		switch StepState(state) {
+		case StepPending:
+			out.Pending = n
+		case StepLeased:
+			out.Leased = n
+		case StepRunning:
+			out.Running = n
+		case StepSucceeded:
+			out.Succeeded = n
+		case StepFailed:
+			out.Failed = n
+		case StepCancelled:
+			out.Cancelled = n
+		case StepExpired:
+			out.Expired = n
+		}
+	}
+	return out, rows.Err()
+}
+
+// FlowStateCounts aggregates Flow state counts under a Run.
+type FlowStateCounts struct {
+	Total     int
+	Pending   int
+	Assigned  int
+	Running   int
+	Succeeded int
+	Failed    int
+	Cancelled int
+}
+
+// AllTerminal reports whether every Flow counted is in a terminal state.
+func (c FlowStateCounts) AllTerminal() bool {
+	return c.Total > 0 && (c.Pending+c.Assigned+c.Running) == 0
+}
+
+// CountFlowsByRun aggregates Flow state counts for a single Run.
+func (r *Repository) CountFlowsByRun(ctx context.Context, runID string) (FlowStateCounts, error) {
+	const q = `SELECT state, COUNT(*) FROM flows WHERE run_id = $1 GROUP BY state`
+	rows, err := r.pool.Query(ctx, q, runID)
+	if err != nil {
+		return FlowStateCounts{}, err
+	}
+	defer rows.Close()
+	var out FlowStateCounts
+	for rows.Next() {
+		var state string
+		var n int
+		if err := rows.Scan(&state, &n); err != nil {
+			return FlowStateCounts{}, err
+		}
+		out.Total += n
+		switch FlowState(state) {
+		case FlowPending:
+			out.Pending = n
+		case FlowAssigned:
+			out.Assigned = n
+		case FlowRunning:
+			out.Running = n
+		case FlowSucceeded:
+			out.Succeeded = n
+		case FlowFailed:
+			out.Failed = n
+		case FlowCancelled:
+			out.Cancelled = n
+		}
+	}
+	return out, rows.Err()
+}
+
 // --- Flow ---
 
 func (r *Repository) InsertFlow(ctx context.Context, flow *Flow) error {
@@ -240,6 +389,101 @@ func (r *Repository) InsertStep(ctx context.Context, step *Step) error {
 	).Scan(&step.ID, &step.Version, &step.CreatedAt, &step.UpdatedAt)
 }
 
+// UpdateStepStateFromScheduler transitions a Step to `to` using the FSM
+// validator and optimistic concurrency. Intended for FlowScheduler paths
+// that do not need the full T1/T2 transaction (e.g. cancelling a pending
+// Step when the parent Run's budget is exhausted).
+func (r *Repository) UpdateStepStateFromScheduler(ctx context.Context, id string, expectedVersion int, to StepState) error {
+	current, err := r.GetStep(ctx, id)
+	if err != nil {
+		return err
+	}
+	if current.Version != expectedVersion {
+		return ErrVersionConflict
+	}
+	if err := ValidateStepTransition(current.State, to); err != nil {
+		return err
+	}
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE steps SET state = $1, version = version + 1, updated_at = NOW()
+		WHERE id = $2 AND version = $3`,
+		string(to), id, expectedVersion)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrVersionConflict
+	}
+	return nil
+}
+
+// UpdateStepArm records the CWS-selected arm (agent_type, provider) on
+// a Step. Only allowed while the Step is still pending — once a Step
+// has entered the lease/execute pipeline, the arm is immutable (the
+// paper's monotonicity invariant, Proposition 5.1).
+//
+// Empty values are ignored so the caller can set one field without
+// overwriting the other.
+func (r *Repository) UpdateStepArm(ctx context.Context, stepID, agentType, provider string) error {
+	const q = `
+		UPDATE steps
+		SET agent_type = COALESCE(NULLIF($2, ''), agent_type),
+		    provider   = COALESCE(NULLIF($3, ''), provider),
+		    version    = version + 1,
+		    updated_at = NOW()
+		WHERE id = $1 AND state = 'pending'`
+	tag, err := r.pool.Exec(ctx, q, stepID, agentType, provider)
+	if err != nil {
+		return fmt.Errorf("update step arm: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		// Either the Step is gone or it already left 'pending'.
+		return ErrVersionConflict
+	}
+	return nil
+}
+
+// MarkStepRunning transitions a Step from leased → running. This is the
+// entry into execution after the FlowScheduler has already successfully
+// acquired the etcd lease and mirrored it via T1. Uses optimistic
+// concurrency and the FSM validator; returns ErrVersionConflict if the row
+// moved underneath us.
+func (r *Repository) MarkStepRunning(ctx context.Context, stepID string) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return fmt.Errorf("mark running: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var state string
+	var version int
+	if err := tx.QueryRow(ctx,
+		`SELECT state, version FROM steps WHERE id = $1 FOR UPDATE`, stepID,
+	).Scan(&state, &version); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("mark running: read: %w", err)
+	}
+	if err := ValidateStepTransition(StepState(state), StepRunning); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE steps
+		SET state = 'running',
+		    version = version + 1,
+		    updated_at = NOW()
+		WHERE id = $1 AND version = $2`,
+		stepID, version)
+	if err != nil {
+		return fmt.Errorf("mark running: update: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrVersionConflict
+	}
+	return tx.Commit(ctx)
+}
+
 func (r *Repository) GetStep(ctx context.Context, id string) (*Step, error) {
 	const q = `
 		SELECT id, flow_id, run_id, tenant_id, state, regime, workload_class,
@@ -249,6 +493,7 @@ func (r *Repository) GetStep(ctx context.Context, id string) (*Step, error) {
 		       event_stream, COALESCE(output_ref, ''),
 		       COALESCE(tokens_used, 0), COALESCE(cost_usd, 0), COALESCE(duration_ms, 0),
 		       COALESCE(failure_reason, ''),
+		       COALESCE(retry_of::TEXT, ''), COALESCE(retry_count, 0),
 		       version, created_at, updated_at
 		FROM steps WHERE id = $1`
 	step := &Step{}
@@ -261,6 +506,7 @@ func (r *Repository) GetStep(ctx context.Context, id string) (*Step, error) {
 		&step.EventStreamRaw, &step.OutputRef,
 		&step.TokensUsed, &step.CostUSD, &step.DurationMS,
 		&step.FailureReason,
+		&step.RetryOf, &step.RetryCount,
 		&step.Version, &step.CreatedAt, &step.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -406,6 +652,8 @@ func (r *Repository) ListPendingSteps(ctx context.Context, tenantID string, limi
 	const q = `
 		SELECT id, flow_id, run_id, tenant_id, state, regime, workload_class,
 		       COALESCE(agent_type, ''), COALESCE(provider, ''),
+		       event_stream,
+		       COALESCE(retry_of::TEXT, ''), COALESCE(retry_count, 0),
 		       version, created_at, updated_at
 		FROM steps
 		WHERE state = 'pending' AND ($1 = '' OR tenant_id::TEXT = $1)
@@ -424,6 +672,8 @@ func (r *Repository) ListPendingSteps(ctx context.Context, tenantID string, limi
 		if err := rows.Scan(
 			&s.ID, &s.FlowID, &s.RunID, &s.TenantID, &state, &regime, &s.WorkloadClass,
 			&s.AgentType, &s.Provider,
+			&s.EventStreamRaw,
+			&s.RetryOf, &s.RetryCount,
 			&s.Version, &s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -433,4 +683,51 @@ func (r *Repository) ListPendingSteps(ctx context.Context, tenantID string, limi
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+// InsertRetryStep creates a new Step row chained to the given parent
+// via retry_of. Everything pipeline-relevant is copied from parent
+// (flow_id, run_id, tenant_id, regime, workload_class, agent_type,
+// provider, event_stream, input_ref, input_hash) so the next pick-up
+// replays the original input. retry_count is incremented.
+//
+// The parent Step itself is NOT mutated — paper §5.3 single-monotone
+// invariant. The old row stays failed; Flow finalization skips it
+// because CountStepsByFlow excludes retry-of parents.
+func (r *Repository) InsertRetryStep(ctx context.Context, parent *Step) (*Step, error) {
+	const q = `
+		INSERT INTO steps
+			(flow_id, run_id, tenant_id, state, regime, workload_class,
+			 agent_type, provider, input_ref, input_hash, event_stream,
+			 retry_of, retry_count)
+		VALUES ($1, $2, $3, 'pending', $4, $5,
+		        $6, $7, NULLIF($8, ''), $9, $10,
+		        $11::UUID, $12)
+		RETURNING id, version, created_at, updated_at`
+	retry := &Step{
+		FlowID:         parent.FlowID,
+		RunID:          parent.RunID,
+		TenantID:       parent.TenantID,
+		State:          StepPending,
+		Regime:         parent.Regime,
+		WorkloadClass:  parent.WorkloadClass,
+		AgentType:      parent.AgentType,
+		Provider:       parent.Provider,
+		InputRef:       parent.InputRef,
+		InputHash:      parent.InputHash,
+		EventStreamRaw: parent.EventStreamRaw,
+		RetryOf:        parent.ID,
+		RetryCount:     parent.RetryCount + 1,
+	}
+	err := r.pool.QueryRow(ctx, q,
+		retry.FlowID, retry.RunID, retry.TenantID,
+		string(retry.Regime), retry.WorkloadClass,
+		retry.AgentType, retry.Provider,
+		retry.InputRef, retry.InputHash, retry.EventStreamRaw,
+		retry.RetryOf, retry.RetryCount,
+	).Scan(&retry.ID, &retry.Version, &retry.CreatedAt, &retry.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("insert retry step: %w", err)
+	}
+	return retry, nil
 }

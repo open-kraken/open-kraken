@@ -14,7 +14,12 @@ import (
 	"open-kraken/backend/go/internal/api/http/handlers"
 	"open-kraken/backend/go/internal/ael"
 	"open-kraken/backend/go/internal/authz"
+	"open-kraken/backend/go/internal/cws"
+	"open-kraken/backend/go/internal/embedder"
+	"open-kraken/backend/go/internal/estimator"
+	"open-kraken/backend/go/internal/flowscheduler"
 	"open-kraken/backend/go/internal/ledger"
+	"open-kraken/backend/go/internal/llmexec"
 	"open-kraken/backend/go/internal/memory"
 	"open-kraken/backend/go/internal/message"
 	"open-kraken/backend/go/internal/node"
@@ -23,6 +28,9 @@ import (
 	"open-kraken/backend/go/internal/orchestration"
 	"open-kraken/backend/go/internal/plugin"
 	"open-kraken/backend/go/internal/presence"
+	llmprovider "open-kraken/backend/go/internal/provider"
+	llmanthropic "open-kraken/backend/go/internal/provider/anthropic"
+	llmopenai "open-kraken/backend/go/internal/provider/openai"
 	platformhttp "open-kraken/backend/go/internal/platform/http"
 	"open-kraken/backend/go/internal/platform/logger"
 	runtimecfg "open-kraken/backend/go/internal/platform/runtime"
@@ -30,6 +38,7 @@ import (
 	"open-kraken/backend/go/internal/pty"
 	"open-kraken/backend/go/internal/realtime"
 	"open-kraken/backend/go/internal/runtime/instance"
+	"open-kraken/backend/go/internal/sem"
 	"open-kraken/backend/go/internal/session"
 	"open-kraken/backend/go/internal/settings"
 	"open-kraken/backend/go/internal/skill"
@@ -38,6 +47,8 @@ import (
 	"open-kraken/backend/go/internal/terminal"
 	"open-kraken/backend/go/internal/terminal/provider"
 	"open-kraken/backend/go/internal/tokentrack"
+	"open-kraken/backend/go/internal/vector"
+	"open-kraken/backend/go/internal/verifier"
 )
 
 // seedNodes registers a local node representing this machine and starts a
@@ -75,6 +86,270 @@ func seedNodes(ctx context.Context, svc *node.Service) {
 			}
 		}
 	}()
+}
+
+// buildSEMService returns the paper-§5.7 SEM facade. Batch 1 uses an
+// in-memory vector store + HashEmbedder so the pipeline is exercisable
+// end-to-end without Qdrant. Batch 2 will switch in QdrantStore +
+// OpenAIEmbedder through env flags without changing this signature.
+//
+// Returns nil when AEL is disabled — without the PG sem_records table
+// there is no source of truth to outbox from.
+func buildSEMService(aelSvc *ael.Service, log *logger.Logger) *sem.Service {
+	if aelSvc == nil {
+		return nil
+	}
+	emb := embedder.NewHashEmbedder(256)
+	vec := vector.NewMemoryVectorStore()
+	svc, err := sem.New(aelSvc, vec, emb, sem.Config{})
+	if err != nil {
+		log.Error("sem service init failed", logger.WithFields("error", err.Error()))
+		return nil
+	}
+	log.Info("sem service enabled",
+		logger.WithFields("embedder", emb.Name(), "dim", emb.Dim(), "store", "memory"))
+	return svc
+}
+
+// buildInstanceManager constructs the AgentInstance pool and, when AEL
+// is available, attaches a PG-backed Repository + performs crash
+// recovery. Returning a fully-wired Manager keeps main.go linear even
+// as persistence grows optional backends.
+func buildInstanceManager(ctx context.Context, aelSvc *ael.Service, log *logger.Logger) *instance.Manager {
+	if aelSvc == nil {
+		log.Info("agent instance pool: memory-only (AEL disabled)")
+		return instance.NewManager()
+	}
+	pool := aelSvc.Repo().Pool()
+	if pool == nil {
+		log.Warn("agent instance pool: AEL pool unavailable; falling back to memory")
+		return instance.NewManager()
+	}
+
+	repo := instance.NewPGRepository(pool)
+	onErr := func(err error, s instance.Snapshot) {
+		log.Error("agent instance persistence failed",
+			logger.WithFields("instance_id", s.ID, "state", string(s.State), "error", err.Error()))
+	}
+	mgr := instance.NewManagerWithRepository(repo, onErr)
+
+	stats, err := mgr.Restore(ctx)
+	if err != nil {
+		log.Error("agent instance restore failed", logger.WithFields("error", err.Error()))
+	} else {
+		log.Info("agent instance pool restored",
+			logger.WithFields(
+				"restored", stats.Restored,
+				"crashed", stats.Crashed,
+				"skipped", stats.Skipped,
+			))
+	}
+	return mgr
+}
+
+// buildStepExecutor returns the flowscheduler.StepExecutor wired to
+// every LLM provider enabled by runtime config. When cfg.LLMProviders
+// is empty — or no enabled provider has a usable API key — it falls
+// back to NoopExecutor so CI / offline dev keep working.
+//
+// The resulting Executor routes each Step by its Provider string
+// (which CWS writes at arm-pick time). Adding a new provider backend
+// is a three-line change: extend the switch in resolveProvider below
+// and register a Candidate row in buildCWSCatalog.
+func buildStepExecutor(cfg runtimecfg.Config, aelSvc *ael.Service, log *logger.Logger) flowscheduler.StepExecutor {
+	providers := map[string]llmprovider.LLMProvider{}
+	for _, name := range cfg.LLMProviders {
+		p := resolveProvider(name, cfg, log)
+		if p == nil {
+			continue
+		}
+		providers[name] = p
+	}
+	if len(providers) == 0 {
+		return flowscheduler.NoopExecutor{}
+	}
+
+	names := make([]string, 0, len(providers))
+	for n := range providers {
+		names = append(names, n)
+	}
+	binder := newAELSkillBinder(aelSvc)
+	log.Info("llm providers enabled", logger.WithFields(
+		"providers", names,
+		"default_provider", cfg.LLMDefaultProvider,
+		"default_model", cfg.LLMDefaultModel,
+		"skill_binder", binder != nil,
+	))
+
+	exec, err := llmexec.NewMulti(providers, llmexec.Options{
+		DefaultModel:    cfg.LLMDefaultModel,
+		DefaultProvider: cfg.LLMDefaultProvider,
+		SkillBinder:     binder,
+	})
+	if err != nil {
+		log.Error("llmexec build failed; using NoopExecutor",
+			logger.WithFields("error", err.Error()))
+		return flowscheduler.NoopExecutor{}
+	}
+	return exec
+}
+
+// newAELSkillBinder adapts *ael.Service into the narrow llmexec.SkillBinder
+// interface so the provider layer keeps zero knowledge of AEL types.
+// Returns nil when aelSvc is nil, which llmexec treats as "no skill
+// library wired" and skips the lookup.
+func newAELSkillBinder(aelSvc *ael.Service) llmexec.SkillBinder {
+	if aelSvc == nil {
+		return nil
+	}
+	return llmexec.SkillBinderFunc(func(ctx context.Context, agentType, workloadClass, tenantID string) (*llmexec.SkillBinding, error) {
+		skill, err := aelSvc.FindSkillForAgent(ctx, agentType, workloadClass, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		return &llmexec.SkillBinding{
+			ID:             skill.ID,
+			Name:           skill.Name,
+			PromptTemplate: skill.PromptTemplate,
+		}, nil
+	})
+}
+
+// resolveProvider constructs one provider instance for the given name,
+// returning nil when the backend is unknown or its credential is missing.
+// Nil returns do not crash the server — they just mean that provider is
+// skipped in the routing table.
+func resolveProvider(name string, cfg runtimecfg.Config, log *logger.Logger) llmprovider.LLMProvider {
+	switch name {
+	case "anthropic":
+		if cfg.AnthropicAPIKey == "" {
+			log.Warn("llm provider=anthropic declared but no ANTHROPIC_API_KEY; skipping")
+			return nil
+		}
+		client, err := llmanthropic.New(llmanthropic.Config{APIKey: cfg.AnthropicAPIKey})
+		if err != nil {
+			log.Error("anthropic provider init failed", logger.WithFields("error", err.Error()))
+			return nil
+		}
+		return client
+	case "openai":
+		if cfg.OpenAIAPIKey == "" {
+			log.Warn("llm provider=openai declared but no OPENAI_API_KEY; skipping")
+			return nil
+		}
+		client, err := llmopenai.New(llmopenai.Config{APIKey: cfg.OpenAIAPIKey})
+		if err != nil {
+			log.Error("openai provider init failed", logger.WithFields("error", err.Error()))
+			return nil
+		}
+		return client
+	default:
+		log.Warn("unknown llm provider; skipping", logger.WithFields("provider", name))
+		return nil
+	}
+}
+
+// Ensure the concrete provider types satisfy the interface even if a
+// future refactor changes import paths.
+var (
+	_ llmprovider.LLMProvider = (*llmanthropic.Client)(nil)
+	_ llmprovider.LLMProvider = (*llmopenai.Client)(nil)
+)
+
+// buildCWSSelector constructs the CWS UCB-1 selector. The catalog lists
+// the arms that correspond to currently-installed providers so Pick
+// never returns an arm that has no real executor behind it. Stats go to
+// PostgreSQL via the AEL pool when available; otherwise we fall back to
+// in-memory stats (single-process dev).
+//
+// Returns nil when AEL is disabled — without AEL there is no source of
+// truth for reward attribution and no durable place for stats.
+func buildCWSSelector(cfg runtimecfg.Config, aelSvc *ael.Service, log *logger.Logger) cws.Selector {
+	if aelSvc == nil {
+		return nil
+	}
+
+	catalog := buildCWSCatalog(cfg)
+	if catalog == nil {
+		log.Info("cws disabled: no provider arms registered")
+		return nil
+	}
+
+	var stats cws.StatsRepo
+	if pool := aelSvc.Repo().Pool(); pool != nil {
+		stats = cws.NewPGStats(pool)
+		log.Info("cws stats: postgres")
+	} else {
+		stats = cws.NewMemoryStats()
+		log.Info("cws stats: memory (no pg pool)")
+	}
+
+	opts := cws.Options{}
+	if cfg.CWSCostAlpha > 0 && cfg.CWSCostBaselineUSD > 0 {
+		opts.RewardModel = cws.BudgetAwareRewardModel{
+			Alpha:        cfg.CWSCostAlpha,
+			CostBaseline: cfg.CWSCostBaselineUSD,
+		}
+		log.Info("cws reward model: budget-aware",
+			logger.WithFields("alpha", cfg.CWSCostAlpha, "baseline_usd", cfg.CWSCostBaselineUSD))
+	} else {
+		log.Info("cws reward model: default (success-driven)")
+	}
+	return cws.NewUCBSelector(catalog, stats, opts)
+}
+
+// buildVerifierRegistry returns the Registry handed to the FlowScheduler
+// for VerificationCallback lookups. Today it is empty: the scheduler's
+// VERIFIABLE branch falls back to the success-indicator reward when no
+// row is registered, which is safe and conservative.
+//
+// This is the single place to attach concrete verifiers. Examples of
+// what a real deployment adds here:
+//
+//	reg.Register("VERIFIABLE", "code-gen", gotestVerifier)
+//	reg.Register("VERIFIABLE", "json-schema", schemaVerifier(myEnvelope))
+//	reg.RegisterDefault("VERIFIABLE", llmJudgeVerifier)
+//
+// Keeping the wiring in one function means adding / renaming verifiers
+// never touches the scheduler, cws, or provider packages.
+func buildVerifierRegistry(cfg runtimecfg.Config, log *logger.Logger) verifier.Registry {
+	reg := verifier.NewStaticRegistry()
+	// Intentionally empty for now. Add rows above this line as
+	// verifiers land.
+	log.Info("verifier registry: empty (VERIFIABLE falls back to success indicator)")
+	return reg
+}
+
+// buildCWSCatalog returns the StaticCatalog of arms legal for this
+// deployment. Today it tracks only the provider selected by
+// OPEN_KRAKEN_LLM_PROVIDER; extending this is the one-line change a
+// new provider needs ("add a few Candidate rows").
+//
+// A nil return means "no arms available"; callers disable CWS in that
+// case rather than creating a selector that always returns ErrNoCandidates.
+func buildCWSCatalog(cfg runtimecfg.Config) cws.Catalog {
+	if len(cfg.LLMProviders) == 0 {
+		return nil
+	}
+
+	// Cartesian product: for each enabled provider, register the
+	// common agent roles at OPAQUE regime with wildcard workload_class.
+	// When multiple providers are live, CWS UCB picks across them per
+	// (agent_type, workload_class) arm — that's the whole point of
+	// multi-provider support.
+	agentTypes := []string{"assistant", "planner"}
+	candidates := make([]cws.Candidate, 0, len(cfg.LLMProviders)*len(agentTypes))
+	for _, prov := range cfg.LLMProviders {
+		for _, at := range agentTypes {
+			candidates = append(candidates, cws.Candidate{
+				AgentType:     at,
+				Provider:      prov,
+				WorkloadClass: "",
+				Regime:        cws.RegimeOpaque,
+			})
+		}
+	}
+	return cws.NewStaticCatalog(candidates...)
 }
 
 // initTracing initialises the OpenTelemetry tracer if enabled.
@@ -186,9 +461,19 @@ func main() {
 	}
 	defer stepLeaseSvc.Close()
 
-	// Paper §4: AgentInstance pool manager (always in-process).
-	instanceMgr := instance.NewManager()
+	// Paper §4: AgentInstance pool manager. When AEL is configured we
+	// wire a PG-backed Repository so the pool survives restarts; the
+	// dev fallback stays fully in-memory.
+	instanceMgr := buildInstanceManager(ctx, aelSvc, log)
 	defer instanceMgr.Close()
+
+	// Paper §5.7: Shared Execution Memory (L2/L3). Batch 1 wires the
+	// service but does not yet expose it through the HTTP layer — that
+	// handler swap lands in the next slice. Held here so we keep the
+	// import honest and so SEM writes from the scheduler (future work)
+	// have a live handle to consume.
+	semSvc := buildSEMService(aelSvc, log)
+	_ = semSvc
 
 	// Paper §6.1: Prometheus metrics (always registered; listener conditional on addr).
 	metrics := okprometheus.New()
@@ -266,13 +551,41 @@ func main() {
 		{MemberID: "member_1", WorkspaceID: "ws_open_kraken", DisplayName: "Runner", Role: authz.RoleMember, Password: "runner", Avatar: "RN"},
 	}
 
-	// Wire HTTP handler.
-	// stepLeaseSvc, instanceMgr, and metrics are used by the runtime scheduler
-	// (Phase 2+). Assign them here to prevent "declared and not used" errors
-	// while keeping the build clean for callers that don't yet consume them.
-	_ = stepLeaseSvc
-	_ = instanceMgr
-	_ = metrics
+	// Paper §3.3 / §5.3: FlowScheduler connects AEL + Step Lease + AgentInstance
+	// into an end-to-end execution path. Only started when AEL is configured —
+	// without PG there is no durable Step store to poll.
+	if aelSvc != nil {
+		executor := buildStepExecutor(cfg, aelSvc, log)
+		selector := buildCWSSelector(cfg, aelSvc, log)
+		if selector != nil {
+			log.Info("cws selector enabled (ucb-1)")
+		}
+		verifiers := buildVerifierRegistry(cfg, log)
+		est := estimator.NewCharCountEstimator()
+		log.Info("estimator: char-count",
+			logger.WithFields("chars_per_token", est.CharsPerToken, "output_guess", est.OutputGuess))
+		retryPolicy := flowscheduler.NewDefaultRetryPolicy(cfg.RetryMaxAttempts)
+		log.Info("retry policy", logger.WithFields("max_attempts", cfg.RetryMaxAttempts))
+		sched := flowscheduler.New(flowscheduler.Config{
+			NodeID:    "node-local",
+			Selector:  selector,
+			Verifiers: verifiers,
+			Estimator: est,
+			Retry:     retryPolicy,
+		}, flowscheduler.NewServiceLedger(aelSvc), stepLeaseSvc, instanceMgr, executor, metrics, log)
+		if err := sched.Start(ctx); err != nil {
+			log.Error("flowscheduler start failed", logger.WithFields("error", err.Error()))
+		} else {
+			log.Info("flowscheduler started", logger.WithFields("node_id", "node-local"))
+			defer sched.Stop()
+		}
+	} else {
+		// Keep the unused symbols anchored so a refactor accidentally dropping
+		// AEL wiring still produces a compile-time reminder.
+		_ = stepLeaseSvc
+		_ = instanceMgr
+		_ = metrics
+	}
 
 	apiHandler := apihttp.NewHandlerWithDependencies(termSvc, hub, projectRepo, cfg.WorkspaceRoot, cfg.APIBasePath, cfg.WSPath, apihttp.ExtendedServices{
 		NodeService:      nodeSvc,

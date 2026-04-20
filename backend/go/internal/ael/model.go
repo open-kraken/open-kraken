@@ -127,9 +127,15 @@ type Step struct {
 	CostUSD        float64
 	DurationMS     int
 	FailureReason  string
-	Version        int
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// RetryOf is the direct parent Step ID when this row is a retry
+	// (paper §5.3). Empty for the original Step in a chain. Flow /
+	// Run finalization only counts Steps that are the leaf of their
+	// retry chain (no other Step has this one's ID as retry_of).
+	RetryOf    string
+	RetryCount int
+	Version    int
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // SideEffect records any interaction with a system external to the agent runtime.

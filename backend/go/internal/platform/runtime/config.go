@@ -60,6 +60,48 @@ type Config struct {
 	// PrometheusAddr is the host:port for the Prometheus metrics scrape endpoint.
 	// When empty, metrics registration still happens but no HTTP listener is started.
 	PrometheusAddr string
+
+	// --- LLM provider (paper §5.4 agent runtime executor) ---
+	//
+	// LLMProviders is the comma-separated list of provider backends the
+	// FlowScheduler activates. Known values today: "anthropic",
+	// "openai". Empty falls back to NoopExecutor so CI / offline dev
+	// keep working. Each entry still needs its own credential env var
+	// (see below).
+	LLMProviders []string
+	// AnthropicAPIKey is the Anthropic credential. `ANTHROPIC_API_KEY`
+	// is accepted as a fallback for the upstream SDK convention; the
+	// legacy `OPEN_KRAKEN_LLM_API_KEY` is also honoured for a single-
+	// provider deployment.
+	AnthropicAPIKey string
+	// OpenAIAPIKey is the OpenAI credential. `OPENAI_API_KEY` is the
+	// fallback to match the upstream SDK convention.
+	OpenAIAPIKey string
+	// LLMDefaultModel is the model used when a Step's event_stream does
+	// not specify one. Empty means Steps must set model explicitly.
+	LLMDefaultModel string
+	// LLMDefaultProvider is the provider key llmexec routes to when a
+	// Step arrives without one set. Defaults to the first entry of
+	// LLMProviders when empty.
+	LLMDefaultProvider string
+
+	// --- CWS budget awareness (paper §5.2.6 tail) ---
+	//
+	// CWSCostAlpha is the cost-sensitivity weight of the CWS reward
+	// model in [0, 1]. 0 = pure success-driven (same as pre-budget
+	// DefaultRewardModel). 1 = reward scales linearly with (1 -
+	// cost/baseline). Zero or unset → DefaultRewardModel.
+	CWSCostAlpha float64
+	// CWSCostBaselineUSD is the per-Step cost at which the cost
+	// penalty fully applies. Zero or unset → DefaultRewardModel.
+	CWSCostBaselineUSD float64
+
+	// RetryMaxAttempts caps the retry chain length per Step (paper
+	// §5.3). 0 or negative disables automatic retries; a failed Step
+	// immediately propagates into the Flow / Run terminal state.
+	// Reasonable default is 3 — transient provider failures usually
+	// clear in under that.
+	RetryMaxAttempts int
 }
 
 func Load() (Config, error) {
@@ -89,6 +131,26 @@ func Load() (Config, error) {
 	cfg.PostgresDSN = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_POSTGRES_DSN"))
 	cfg.EtcdEndpoints = splitComma(os.Getenv("OPEN_KRAKEN_ETCD_ENDPOINTS"))
 	cfg.PrometheusAddr = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_PROMETHEUS_ADDR"))
+
+	cfg.LLMProviders = parseProviderList(os.Getenv("OPEN_KRAKEN_LLM_PROVIDER"))
+	cfg.AnthropicAPIKey = strings.TrimSpace(firstNonEmpty(
+		os.Getenv("ANTHROPIC_API_KEY"),
+		os.Getenv("OPEN_KRAKEN_LLM_API_KEY"),
+	))
+	cfg.OpenAIAPIKey = strings.TrimSpace(firstNonEmpty(
+		os.Getenv("OPENAI_API_KEY"),
+		os.Getenv("OPEN_KRAKEN_OPENAI_API_KEY"),
+	))
+	cfg.LLMDefaultModel = strings.TrimSpace(os.Getenv("OPEN_KRAKEN_LLM_DEFAULT_MODEL"))
+	cfg.LLMDefaultProvider = strings.ToLower(strings.TrimSpace(os.Getenv("OPEN_KRAKEN_LLM_DEFAULT_PROVIDER")))
+	if cfg.LLMDefaultProvider == "" && len(cfg.LLMProviders) > 0 {
+		cfg.LLMDefaultProvider = cfg.LLMProviders[0]
+	}
+
+	cfg.CWSCostAlpha = parseFloatEnv("OPEN_KRAKEN_CWS_COST_ALPHA")
+	cfg.CWSCostBaselineUSD = parseFloatEnv("OPEN_KRAKEN_CWS_COST_BASELINE_USD")
+
+	cfg.RetryMaxAttempts = parseIntEnv("OPEN_KRAKEN_RETRY_MAX_ATTEMPTS", 3)
 
 	if cfg.APIBasePath == cfg.WSPath {
 		return Config{}, fmt.Errorf("OPEN_KRAKEN_API_BASE_PATH and OPEN_KRAKEN_WS_PATH must be distinct")
@@ -144,6 +206,42 @@ func parseIntEnv(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+// parseProviderList splits a comma-separated provider name list and
+// lower-cases each entry so callers can compare case-insensitively.
+// Empty input produces nil (callers treat that as "disabled").
+func parseProviderList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, p := range parts {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+func parseFloatEnv(key string) float64 {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0
+	}
+	var f float64
+	if _, err := fmt.Sscanf(raw, "%f", &f); err != nil {
+		return 0
+	}
+	return f
 }
 
 func splitComma(raw string) []string {

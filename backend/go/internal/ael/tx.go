@@ -235,6 +235,43 @@ func insertSideEffectTx(ctx context.Context, tx pgx.Tx, runID string, se *SideEf
 	return err
 }
 
+// --- T3: Lease renewal mirror ---
+//
+// The authoritative lease extension lives in etcd; the scheduler calls
+// Lease.Keepalive there first. T3 reflects the new expiry into the PG
+// mirror so T4 (the expiry scanner) sees a consistent picture. T3 never
+// changes Step state — it is a lease-expiry update, not a transition.
+//
+// Failures here are recoverable (etcd already knows about the renewal);
+// callers should log and continue executing.
+
+// T3LeaseRenewalInput carries the new expiry set by a successful etcd
+// keepalive. ObservedAt is the clock reading when the keepalive
+// succeeded; stored into updated_at so operators can see how current
+// the mirror is.
+type T3LeaseRenewalInput struct {
+	StepID         string
+	LeaseExpiresAt time.Time
+}
+
+// T3LeaseRenewal updates steps.lease_expires_at to reflect a fresh
+// etcd keepalive. Only applies to Steps that are currently leased or
+// running — a renewal on a Step that has moved to a terminal state is
+// a no-op and returns nil so the caller does not have to special-case
+// the race between "last keepalive" and "T2 commit".
+func (r *Repository) T3LeaseRenewal(ctx context.Context, in T3LeaseRenewalInput) error {
+	const q = `
+		UPDATE steps
+		SET lease_expires_at = $1,
+		    updated_at       = NOW()
+		WHERE id = $2 AND state IN ('leased', 'running')`
+	_, err := r.pool.Exec(ctx, q, in.LeaseExpiresAt.UTC(), in.StepID)
+	if err != nil {
+		return fmt.Errorf("T3: update lease expiry: %w", err)
+	}
+	return nil
+}
+
 // --- T4: Lease expiry backup scanner ---
 //
 // The authoritative expiry path is etcd watch on /leases/step/ (see

@@ -31,6 +31,19 @@ type AgentInstance struct {
 	lastActive    time.Time
 	terminatedAt  time.Time
 	crashReason   string
+
+	// onChange is fired after every successful state transition. The
+	// Manager uses it to mirror the snapshot into the Repository. Nil
+	// means "no persistence wired" — the running path is byte-identical
+	// to the pre-persistence code.
+	//
+	// The callback receives a Snapshot that was built WITHOUT holding
+	// the instance's write lock (snapshotFromInstance acquires RLock),
+	// so implementations are free to block (PG call) without
+	// deadlocking the instance. Errors are the callback's problem —
+	// AgentInstance never rolls back an in-memory transition because
+	// persistence failed.
+	onChange func(Snapshot)
 }
 
 // New constructs an AgentInstance in the `created` state.
@@ -89,13 +102,15 @@ func (a *AgentInstance) Schedule() error {
 // successfully leased a Step to this instance.
 func (a *AgentInstance) AssignStep(stepID string) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if err := Validate(a.state, StateRunning); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	a.state = StateRunning
 	a.assignedStep = stepID
 	a.lastActive = time.Now().UTC()
+	a.mu.Unlock()
+	a.fireChange()
 	return nil
 }
 
@@ -103,13 +118,15 @@ func (a *AgentInstance) AssignStep(stepID string) error {
 // context is preserved for the next Step assignment.
 func (a *AgentInstance) CompleteStep() error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if err := Validate(a.state, StateIdle); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	a.state = StateIdle
 	a.assignedStep = ""
 	a.lastActive = time.Now().UTC()
+	a.mu.Unlock()
+	a.fireChange()
 	return nil
 }
 
@@ -128,14 +145,16 @@ func (a *AgentInstance) Resume() error {
 // Terminate moves an instance to the terminated state (clean shutdown).
 func (a *AgentInstance) Terminate() error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if err := Validate(a.state, StateTerminated); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	a.state = StateTerminated
 	a.assignedStep = ""
 	a.terminatedAt = time.Now().UTC()
 	a.lastActive = a.terminatedAt
+	a.mu.Unlock()
+	a.fireChange()
 	return nil
 }
 
@@ -144,21 +163,23 @@ func (a *AgentInstance) Terminate() error {
 // caller should evaluate contextL1 for L2 promotion (artifacts → SEM).
 func (a *AgentInstance) Crash(reason string) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if err := Validate(a.state, StateCrashed); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	a.state = StateCrashed
 	a.crashReason = reason
 	a.terminatedAt = time.Now().UTC()
 	a.lastActive = a.terminatedAt
+	a.mu.Unlock()
+	a.fireChange()
 	return nil
 }
 
 func (a *AgentInstance) transition(to State, assignedStep string) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if err := Validate(a.state, to); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	a.state = to
@@ -166,7 +187,19 @@ func (a *AgentInstance) transition(to State, assignedStep string) error {
 		a.assignedStep = assignedStep
 	}
 	a.lastActive = time.Now().UTC()
+	a.mu.Unlock()
+	a.fireChange()
 	return nil
+}
+
+// fireChange notifies the Manager's persistence hook. Called AFTER the
+// write lock is released so the callback can take its own locks or do
+// blocking I/O without deadlocking the instance.
+func (a *AgentInstance) fireChange() {
+	if a.onChange == nil {
+		return
+	}
+	a.onChange(snapshotFromInstance(a))
 }
 
 // --- L1 context access ---
