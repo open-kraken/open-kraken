@@ -6,10 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"open-kraken/backend/go/internal/authn"
 	"open-kraken/backend/go/internal/authz"
 	"open-kraken/backend/go/internal/node"
 	"open-kraken/backend/go/internal/realtime"
 	"open-kraken/backend/go/internal/roster"
+	"open-kraken/backend/go/internal/settings"
 )
 
 var errAgentRuntimeUnavailable = errors.New("agent runtime is not configured")
@@ -60,10 +62,31 @@ func (h *WorkspaceHandler) initRosterFromDisk() {
 	}
 }
 
+func (h *WorkspaceHandler) membersWithTerminalStatusLocked() []map[string]any {
+	members := make([]map[string]any, 0, len(h.state.Members.Members))
+	statusBySession := map[string]string{}
+	if h.service != nil {
+		for _, info := range h.service.ListSessions(h.state.Workspace.ID) {
+			statusBySession[info.SessionID] = string(info.Status)
+		}
+	}
+	for _, member := range h.state.Members.Members {
+		row := cloneMap(member)
+		if terminalID := strings.TrimSpace(asString(row["terminalId"])); terminalID != "" {
+			if status := statusBySession[terminalID]; status != "" {
+				row["terminalStatus"] = status
+			}
+		}
+		members = append(members, row)
+	}
+	return members
+}
+
 func (h *WorkspaceHandler) membersAndTeamsPayload() map[string]any {
+	members := h.membersWithTerminalStatusLocked()
 	return map[string]any{
-		"members": h.state.Members.Members,
-		"teams":   h.expandTeamsResponse(),
+		"members": members,
+		"teams":   h.expandTeamsResponse(members),
 		"meta": map[string]any{
 			"version":     h.rosterVersion,
 			"workspaceId": h.state.Workspace.ID,
@@ -92,9 +115,9 @@ func (h *WorkspaceHandler) MemberCanUseSkills(memberID string) bool {
 	return false
 }
 
-func (h *WorkspaceHandler) expandTeamsResponse() []map[string]any {
+func (h *WorkspaceHandler) expandTeamsResponse(sourceMembers []map[string]any) []map[string]any {
 	byID := map[string]map[string]any{}
-	for _, m := range h.state.Members.Members {
+	for _, m := range sourceMembers {
 		id := asString(m["memberId"])
 		if id != "" {
 			byID[id] = cloneMap(m)
@@ -347,6 +370,74 @@ func (h *WorkspaceHandler) cleanupInitializedAgent(row map[string]any) {
 	}
 }
 
+func requesterMemberID(r *http.Request) string {
+	if principal, err := authn.ResolvePrincipal(r); err == nil && strings.TrimSpace(principal.MemberID) != "" {
+		return principal.MemberID
+	}
+	return actorID(r)
+}
+
+func providerAuthLookupKeys(providerID, terminalType string) []string {
+	keys := []string{}
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		for _, existing := range keys {
+			if existing == value {
+				return
+			}
+		}
+		keys = append(keys, value)
+	}
+	add(providerID)
+	switch strings.TrimSpace(terminalType) {
+	case "codex":
+		add("codex-cli")
+	case "claude":
+		add("claude-code")
+	case "gemini":
+		add("gemini-cli")
+	case "qwen":
+		add("qwen-code")
+	}
+	add(terminalType)
+	return keys
+}
+
+func providerEnvFromAuth(providerID, terminalType string, providerAuth map[string]settings.ProviderAuthSetting) map[string]string {
+	if len(providerAuth) == 0 {
+		return nil
+	}
+	var auth settings.ProviderAuthSetting
+	for _, key := range providerAuthLookupKeys(providerID, terminalType) {
+		if row, ok := providerAuth[key]; ok {
+			auth = row
+			break
+		}
+	}
+	if strings.TrimSpace(auth.APIKey) == "" || strings.TrimSpace(auth.Mode) != "api_key" {
+		return nil
+	}
+	env := map[string]string{}
+	switch strings.TrimSpace(terminalType) {
+	case "codex":
+		env["OPENAI_API_KEY"] = auth.APIKey
+	case "claude":
+		env["ANTHROPIC_API_KEY"] = auth.APIKey
+	case "gemini":
+		env["GEMINI_API_KEY"] = auth.APIKey
+	case "qwen":
+		env["DASHSCOPE_API_KEY"] = auth.APIKey
+		env["QWEN_API_KEY"] = auth.APIKey
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
+
 func (h *WorkspaceHandler) initializeAgentRuntime(r *http.Request, memberID string, row map[string]any, body map[string]any) (map[string]any, error) {
 	if h.instanceMgr == nil || h.providerReg == nil {
 		return nil, errAgentRuntimeUnavailable
@@ -396,13 +487,21 @@ func (h *WorkspaceHandler) initializeAgentRuntime(r *http.Request, memberID stri
 	if cwd == "" {
 		cwd = strings.TrimSpace(asString(body["cwd"]))
 	}
-	info, err := h.service.CreateSessionForMember(
+	var env map[string]string
+	if h.settingsSvc != nil {
+		us, err := h.settingsSvc.Get(requesterMemberID(r))
+		if err == nil {
+			env = providerEnvFromAuth(providerID, terminalType, us.ProviderAuth)
+		}
+	}
+	info, err := h.service.CreateSessionForMemberWithEnv(
 		r.Context(),
 		memberID,
 		workspaceID,
 		terminalType,
 		command,
 		cwd,
+		env,
 		h.providerReg,
 		nil,
 	)
@@ -525,7 +624,7 @@ func (h *WorkspaceHandler) HandleTeams(w http.ResponseWriter, r *http.Request, w
 		case http.MethodGet:
 			h.mu.RLock()
 			defer h.mu.RUnlock()
-			writeJSON(w, http.StatusOK, map[string]any{"teams": h.expandTeamsResponse()})
+			writeJSON(w, http.StatusOK, map[string]any{"teams": h.expandTeamsResponse(h.membersWithTerminalStatusLocked())})
 		case http.MethodPost:
 			if !h.enforceMemberManage(w, r) {
 				return

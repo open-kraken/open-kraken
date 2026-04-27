@@ -24,6 +24,7 @@ type TerminalRuntimeDeps = {
   realtimeClient?: AppShellContextValue['realtimeClient'];
   pushNotification: AppShellContextValue['pushNotification'];
   initialTerminalId: string;
+  resolveMemberSession?: (workspaceId: string, memberId: string) => Promise<string>;
 };
 
 type TerminalPanelController = {
@@ -74,6 +75,9 @@ type TerminalEnvelopePayload = {
 };
 
 const defaultTerminalId = '';
+const isMemberTerminalId = (terminalId: string) => terminalId.startsWith('term_');
+const memberIdFromTerminalId = (terminalId: string) =>
+  isMemberTerminalId(terminalId) ? terminalId.slice(5) : terminalId;
 
 const getTerminalRuntimeApi = (apiClient: unknown): TerminalRuntimeApi => {
   if (!apiClient || typeof apiClient !== 'object') {
@@ -264,12 +268,16 @@ export const createTerminalPanelController = ({
   apiClient,
   realtimeClient,
   pushNotification,
-  initialTerminalId
+  initialTerminalId,
+  resolveMemberSession = resolveOrCreateMemberSession
 }: TerminalRuntimeDeps): TerminalPanelController => {
   const runtimeApi = getTerminalRuntimeApi(apiClient);
   const resolveSessionId = async (terminalId: string, memberId: string) => {
+    if (!isMemberTerminalId(terminalId)) {
+      return terminalId;
+    }
     try {
-      const sessionId = await resolveOrCreateMemberSession('ws_open_kraken', memberId);
+      const sessionId = await resolveMemberSession('ws_open_kraken', memberId);
       return sessionId || terminalId;
     } catch {
       return terminalId;
@@ -277,7 +285,7 @@ export const createTerminalPanelController = ({
   };
   const store = createTerminalStore({
     attachSession: async (terminalId) => {
-      const memberId = terminalId.startsWith('term_') ? terminalId.slice(5) : terminalId;
+      const memberId = memberIdFromTerminalId(terminalId);
       const sessionId = await resolveSessionId(terminalId, memberId);
       const raw = await runtimeApi.attachTerminal(sessionId);
       return adaptAttachResponse(raw as Record<string, unknown>, sessionId, memberId);
@@ -285,7 +293,7 @@ export const createTerminalPanelController = ({
   });
 
   const requestResync = async (terminalId: string, reason: string) => {
-    const memberId = terminalId.startsWith('term_') ? terminalId.slice(5) : terminalId;
+    const memberId = memberIdFromTerminalId(terminalId);
     const sessionId = await resolveSessionId(terminalId, memberId);
     const raw = await runtimeApi.attachTerminal(sessionId);
     const result = adaptAttachResponse(raw as Record<string, unknown>, sessionId, memberId);

@@ -76,6 +76,9 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	if ext.MessageService != nil {
 		workspaceHandler.SetMessageService(ext.MessageService)
 	}
+	if ext.SettingsService != nil {
+		workspaceHandler.SetSettingsService(ext.SettingsService)
+	}
 	if ext.InstanceManager != nil || ext.ProviderRegistry != nil {
 		workspaceHandler.SetAgentRuntime(ext.InstanceManager, ext.ProviderRegistry, ext.NodeService)
 	}

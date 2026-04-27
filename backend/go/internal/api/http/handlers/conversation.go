@@ -24,8 +24,8 @@ func (h *WorkspaceHandler) HandleChatHome(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{
 		"workspace":             h.state.Workspace,
 		"conversations":         h.state.Conversations,
-		"members":               h.state.Members.Members,
-		"teams":                 h.expandTeamsResponse(),
+		"members":               h.membersWithTerminalStatusLocked(),
+		"teams":                 h.expandTeamsResponse(h.membersWithTerminalStatusLocked()),
 		"defaultConversationId": firstConversationID(h.state.Conversations),
 		"totalUnreadCount":      totalUnreadCount(h.state.Conversations),
 	})

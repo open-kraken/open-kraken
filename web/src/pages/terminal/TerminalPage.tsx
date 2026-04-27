@@ -41,20 +41,23 @@ import {
   Monitor,
 } from 'lucide-react';
 
-const terminalIdForMember = (memberId: string) => `term_${memberId}`;
+const fallbackTerminalIdForMember = (memberId: string) => `term_${memberId}`;
+const terminalIdForMember = (member: Pick<MemberFixture, 'memberId' | 'terminalId'>) =>
+  member.terminalId?.trim() || fallbackTerminalIdForMember(member.memberId);
+const acceptsTerminalHash = (raw: string) => raw.startsWith('term_') || raw.startsWith('session-');
 
 export const TerminalPage = () => {
   const { t } = useI18n();
   const { realtime, workspace, apiClient, realtimeClient, pushNotification } = useAppShell();
   const { account } = useAuth();
-  const defaultTerminalId = `term_${account?.memberId ?? 'owner_1'}`;
+  const defaultTerminalId = fallbackTerminalIdForMember(account?.memberId ?? 'owner_1');
 
   const bootTerminalId = useMemo(() => {
     if (typeof window === 'undefined') {
       return defaultTerminalId;
     }
     const raw = window.location.hash.replace(/^#/, '').trim();
-    return raw.startsWith('term_') ? raw : defaultTerminalId;
+    return acceptsTerminalHash(raw) ? raw : defaultTerminalId;
   }, []);
 
   const terminalRuntime = useTerminalPanelRuntime({
@@ -104,7 +107,7 @@ export const TerminalPage = () => {
   useEffect(() => {
     const onHash = () => {
       const raw = window.location.hash.replace(/^#/, '').trim();
-      if (raw.startsWith('term_')) {
+      if (acceptsTerminalHash(raw)) {
         void terminalRuntime.attachTo(raw);
       }
     };
@@ -119,7 +122,7 @@ export const TerminalPage = () => {
   const sessionsByMember = useMemo(() => {
     return roster.map((m) => ({
       member: m,
-      terminalId: terminalIdForMember(m.memberId),
+      terminalId: terminalIdForMember(m),
     }));
   }, [roster]);
 
@@ -138,14 +141,14 @@ export const TerminalPage = () => {
     if (sessionMemberId) {
       return roster.find((m) => m.memberId === sessionMemberId);
     }
-    return roster.find((m) => terminalIdForMember(m.memberId) === activeTerminalId);
+    return roster.find((m) => terminalIdForMember(m) === activeTerminalId);
   }, [roster, terminalRuntime.state.session?.memberId, activeTerminalId]);
 
   /** Send text input to the active terminal session. */
   const handleSendInput = useCallback((data: string) => {
     const sessionId = terminalRuntime.state.session?.terminalId;
     if (!sessionId) return;
-    void sendTerminalInput(sessionId, data + '\n').catch((err) => {
+    void sendTerminalInput(sessionId, data).catch((err) => {
       pushNotification({
         tone: 'error',
         title: t('terminal.inputError'),
@@ -191,7 +194,6 @@ export const TerminalPage = () => {
         'gemini-cli': 'gemini',
         'codex-cli': 'codex',
         'qwen-code': 'qwen',
-        'opencode': 'opencode',
         'shell': 'shell',
       };
       const terminalType = providerToTerminalType[newSessionData.provider] ?? 'shell';
@@ -203,9 +205,8 @@ export const TerminalPage = () => {
       setNewSessionModalOpen(false);
       setNewSessionData({ member: '', provider: 'claude-code', workingDir: '~/workspace' });
       // Attach to the new session
-      const termId = terminalIdForMember(newSessionData.member);
-      setHashForTerminal(termId);
-      void terminalRuntime.attachTo(termId);
+      setHashForTerminal(sessionId);
+      void terminalRuntime.attachTo(sessionId);
       pushNotification({
         tone: 'info',
         title: t('terminal.sessionCreated'),
@@ -315,7 +316,7 @@ export const TerminalPage = () => {
                 <p className="px-3 py-6 text-center text-xs app-text-faint">{t('terminal.loadingRoster')}</p>
               ) : (
                 roster.map((member) => {
-                  const tid = terminalIdForMember(member.memberId);
+                  const tid = terminalIdForMember(member);
                   const isActive = tid === activeTerminalId;
                   const hasSession = Boolean(member.terminalStatus);
 

@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /build
 
@@ -11,15 +11,21 @@ RUN go mod download
 COPY backend/go/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /kraken-backend ./cmd/server
 
-# Stage 2: Minimal runtime
-FROM gcr.io/distroless/static:nonroot
+# Stage 2: Runtime with shell utilities and AI CLI dependencies.
+FROM node:20-alpine
+
+RUN apk add --no-cache bash git openssh-client \
+  && npm install -g @openai/codex
 
 COPY --from=builder /kraken-backend /kraken-backend
+COPY backend/tests/fixtures /open-kraken/backend/tests/fixtures
 
 EXPOSE 8080
 
 ENV OPEN_KRAKEN_HTTP_ADDR=0.0.0.0:8080 \
     OPEN_KRAKEN_APP_DATA_ROOT=/data \
     OPEN_KRAKEN_WEB_DIST_DIR=/web/dist
+
+WORKDIR /
 
 ENTRYPOINT ["/kraken-backend"]

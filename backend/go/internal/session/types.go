@@ -37,6 +37,7 @@ type CreateRequest struct {
 	Cols         uint16            `json:"cols"`
 	Rows         uint16            `json:"rows"`
 	Metadata     map[string]string `json:"metadata"`
+	Env          map[string]string `json:"-"`
 }
 
 type AttachRequest struct {

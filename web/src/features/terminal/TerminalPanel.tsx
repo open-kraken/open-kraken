@@ -59,7 +59,10 @@ export const TerminalPanel = ({
     view.primaryAction.kind === 'retry' ? t('terminalPanel.retry') : t('terminalPanel.attach');
   const followHint = view.followOutput ? t('terminalPanel.followOn') : t('terminalPanel.followOff');
 
-  const isAttached = state.runtime.connection === 'attached' && state.runtime.process === 'running';
+  const canSendInput =
+    state.runtime.connection === 'attached' &&
+    state.runtime.process !== 'exited' &&
+    state.runtime.process !== 'failed';
 
   const handleInputSubmit = useCallback(() => {
     const data = inputValue;
@@ -143,8 +146,8 @@ export const TerminalPanel = ({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleInputKeyDown}
-            placeholder={isAttached ? t('terminalPanel.inputPlaceholder') : t('terminalPanel.inputDisabled')}
-            disabled={!isAttached}
+            placeholder={canSendInput ? t('terminalPanel.inputPlaceholder') : t('terminalPanel.inputDisabled')}
+            disabled={!canSendInput}
             aria-label={t('terminalPanel.inputAria')}
             autoComplete="off"
             spellCheck={false}
@@ -152,7 +155,7 @@ export const TerminalPanel = ({
           <button
             type="button"
             onClick={handleInputSubmit}
-            disabled={!isAttached || inputValue.length === 0}
+            disabled={!canSendInput || inputValue.length === 0}
             className="terminal-panel__send"
           >
             {t('terminalPanel.inputSend')}

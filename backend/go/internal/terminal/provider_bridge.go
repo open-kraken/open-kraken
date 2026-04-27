@@ -68,6 +68,16 @@ func (s *Service) CreateSessionForMember(
 	registry *provider.Registry,
 	messageSink semantic.MessageSink,
 ) (session.SessionInfo, error) {
+	return s.CreateSessionForMemberWithEnv(ctx, memberID, workspaceID, terminalType, customCommand, cwd, nil, registry, messageSink)
+}
+
+func (s *Service) CreateSessionForMemberWithEnv(
+	ctx context.Context,
+	memberID, workspaceID, terminalType, customCommand, cwd string,
+	env map[string]string,
+	registry *provider.Registry,
+	messageSink semantic.MessageSink,
+) (session.SessionInfo, error) {
 	req := session.CreateRequest{
 		SessionID:    fmt.Sprintf("session-%d", s.counter.Add(1)),
 		MemberID:     memberID,
@@ -75,6 +85,7 @@ func (s *Service) CreateSessionForMember(
 		TerminalType: terminalType,
 		Command:      customCommand,
 		CWD:          cwd,
+		Env:          env,
 		Cols:         80,
 		Rows:         24,
 		KeepAlive:    true,

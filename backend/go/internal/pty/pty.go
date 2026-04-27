@@ -15,6 +15,7 @@ import (
 type LaunchRequest struct {
 	Command string
 	CWD     string
+	Env     map[string]string
 	Cols    uint16
 	Rows    uint16
 }
@@ -59,6 +60,15 @@ func (l *LocalLauncher) Launch(_ context.Context, req LaunchRequest) (Process, e
 	}
 	if req.CWD != "" {
 		cmd.Dir = req.CWD
+	}
+	if len(req.Env) > 0 {
+		cmd.Env = os.Environ()
+		for key, value := range req.Env {
+			if strings.TrimSpace(key) == "" {
+				continue
+			}
+			cmd.Env = append(cmd.Env, key+"="+value)
+		}
 	}
 
 	ptmx, err := ptylib.StartWithSize(cmd, &ptylib.Winsize{Cols: req.Cols, Rows: req.Rows})

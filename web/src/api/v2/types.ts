@@ -54,7 +54,7 @@ export interface SideEffectDTO {
 export interface SkillDefinitionDTO {
   id: string;
   name: string;
-  version: string;
+  version: number;
   description: string;
   prompt_template: string;
   tenant_id: string;
@@ -110,9 +110,12 @@ export interface CreateStepInput {
 
 export interface CreateSkillInput {
   name: string;
-  version: string;
+  version: number;
   description: string;
   prompt_template: string;
+  tool_requirements?: string[];
+  agent_type_affinity?: string[];
+  workload_class_tags?: string[];
   tenant_id?: string;
   tags?: string[];
 }

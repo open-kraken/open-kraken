@@ -1,0 +1,37 @@
+{
+  "agent-node-1": {
+    "id": "agent-node-1",
+    "hostname": "f5944c2beeda",
+    "nodeType": "k8s_pod",
+    "status": "online",
+    "labels": {
+      "agent_id": "333",
+      "dataDir": "/data",
+      "skillsDir": "/skills"
+    },
+    "agents": [
+      "test_ai_shell_003",
+      "3333",
+      "333"
+    ],
+    "registeredAt": "2026-04-27T13:22:06.255324514Z",
+    "lastHeartbeatAt": "2026-04-27T15:03:36.288941763Z"
+  },
+  "agent-node-2": {
+    "id": "agent-node-2",
+    "hostname": "15a13961d99c",
+    "nodeType": "k8s_pod",
+    "status": "online",
+    "labels": {
+      "agent_id": "232323",
+      "dataDir": "/data",
+      "skillsDir": "/skills"
+    },
+    "agents": [
+      "ui_shell_agent_163924",
+      "232323"
+    ],
+    "registeredAt": "2026-04-27T13:22:06.255298639Z",
+    "lastHeartbeatAt": "2026-04-27T15:03:36.289693013Z"
+  }
+}

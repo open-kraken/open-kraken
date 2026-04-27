@@ -7,6 +7,9 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const webRoot = dirname(scriptDir);
 const outdir = `${webRoot}/dist`;
 const entryPoint = `${webRoot}/src/main.tsx`;
+const viteEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => key.startsWith('VITE_'))
+);
 
 await rm(outdir, { recursive: true, force: true });
 await mkdir(`${outdir}/assets`, { recursive: true });
@@ -15,6 +18,15 @@ const result = await build({
   entryPoints: [entryPoint],
   outdir: `${outdir}/assets`,
   bundle: true,
+  conditions: ['style'],
+  define: {
+    'import.meta.env': JSON.stringify({
+      ...viteEnv,
+      DEV: false,
+      PROD: true,
+      MODE: 'production'
+    })
+  },
   format: 'esm',
   jsx: 'automatic',
   metafile: true,

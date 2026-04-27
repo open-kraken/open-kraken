@@ -10,6 +10,10 @@ import { SettingsAccountSection } from '@/features/settings/SettingsAccountSecti
 import { SettingsNotificationSection } from '@/features/settings/SettingsNotificationSection';
 import { SettingsKeybindsSection } from '@/features/settings/SettingsKeybindsSection';
 import { getHttpClient } from '@/api/http-binding';
+import claudeLogo from '@/assets/provider-logos/claude.svg';
+import geminiLogo from '@/assets/provider-logos/gemini.svg';
+import openAILogo from '@/assets/provider-logos/openai.svg';
+import qwenLogo from '@/assets/provider-logos/qwen.svg';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ExternalLink, CheckCircle } from 'lucide-react';
+import { ExternalLink, CheckCircle, KeyRound } from 'lucide-react';
 
 type ApiDiagResult = {
   ok: boolean;
@@ -41,7 +45,111 @@ type BackendSettings = {
   soundEnabled?: boolean;
   dndStart?: string;
   dndEnd?: string;
+  providerAuth?: Record<string, ProviderAuthSetting>;
 };
+
+type ProviderAuthSetting = {
+  mode?: 'api_key' | 'account' | 'none';
+  account?: string;
+  apiKey?: string;
+  hasApiKey?: boolean;
+  updatedAt?: string;
+};
+
+const providerAuthOptions = [
+  { id: 'codex-cli', name: 'Codex CLI', logoSrc: openAILogo, logoClassName: 'h-7 w-20', authLabel: 'OpenAI API key or Codex login' },
+  { id: 'claude-code', name: 'Claude Code', logoSrc: claudeLogo, logoClassName: 'h-7 w-20', authLabel: 'Anthropic API key or Claude login' },
+  { id: 'gemini-cli', name: 'Gemini CLI', logoSrc: geminiLogo, authLabel: 'Google API key or Gemini login' },
+  { id: 'qwen-code', name: 'Qwen Code', logoSrc: qwenLogo, authLabel: 'DashScope/Qwen key or login' },
+];
+
+function ProviderCredentialRow({
+  provider,
+  auth,
+  configured,
+  onSave,
+}: {
+  provider: (typeof providerAuthOptions)[number];
+  auth: ProviderAuthSetting;
+  configured: boolean;
+  onSave: (patch: ProviderAuthSetting) => void;
+}) {
+  const [mode, setMode] = useState<ProviderAuthSetting['mode']>(auth.mode ?? 'api_key');
+  const [account, setAccount] = useState(auth.account ?? '');
+  const [apiKey, setApiKey] = useState('');
+
+  useEffect(() => {
+    setMode(auth.mode ?? 'api_key');
+    setAccount(auth.account ?? '');
+    setApiKey('');
+  }, [auth.account, auth.mode, auth.hasApiKey]);
+
+  return (
+    <div className="rounded-lg border app-border-subtle p-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex h-10 w-24 shrink-0 items-center justify-center p-1">
+            <img src={provider.logoSrc} alt="" className={`object-contain ${provider.logoClassName ?? 'h-8 w-8'}`} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-semibold app-text-strong">{provider.name}</h4>
+              <Badge
+                variant="outline"
+                className={configured ? 'text-green-600 border-green-600' : 'app-text-faint'}
+              >
+                {configured ? 'Configured' : 'Missing'}
+              </Badge>
+            </div>
+            <p className="text-xs app-text-muted mt-1">{provider.authLabel}</p>
+            {auth.updatedAt && (
+              <p className="text-[11px] app-text-faint mt-1">
+                Updated {new Date(auth.updatedAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid flex-1 gap-3 md:grid-cols-[140px_1fr_1fr_auto]">
+          <Select value={mode ?? 'api_key'} onValueChange={(value) => setMode(value as ProviderAuthSetting['mode'])}>
+            <SelectTrigger aria-label={`${provider.name} auth mode`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="api_key">API key</SelectItem>
+              <SelectItem value="account">Account</SelectItem>
+              <SelectItem value="none">None</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Input
+            aria-label={`${provider.name} account`}
+            value={account}
+            onChange={(event) => setAccount(event.target.value)}
+            placeholder="Account or login hint"
+          />
+
+          <Input
+            aria-label={`${provider.name} API key`}
+            type="password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder={auth.hasApiKey ? 'Key saved' : 'Paste API key'}
+            disabled={mode !== 'api_key'}
+          />
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onSave({ mode, account: account.trim(), apiKey: apiKey.trim() })}
+          >
+            Save
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export const SettingsPage = () => {
   const { t, locale, setLocale } = useI18n();
@@ -124,6 +232,29 @@ export const SettingsPage = () => {
     { combo: 'Cmd+Enter', description: 'Send message', scope: 'Chat' },
     { combo: 'Escape', description: 'Close modal/dialog', scope: 'Global' },
   ];
+
+  const updateProviderAuth = useCallback(
+    (providerId: string, patch: ProviderAuthSetting) => {
+      const current = backendSettings?.providerAuth ?? {};
+      const previous = current[providerId] ?? {};
+      void saveSettings({
+        providerAuth: {
+          ...current,
+          [providerId]: {
+            ...previous,
+            ...patch,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      });
+      pushNotification({
+        tone: 'info',
+        title: 'Provider credentials saved',
+        detail: providerAuthOptions.find((p) => p.id === providerId)?.name ?? providerId,
+      });
+    },
+    [backendSettings?.providerAuth, pushNotification, saveSettings],
+  );
 
   return (
     <div className="h-full overflow-auto">
@@ -225,6 +356,35 @@ export const SettingsPage = () => {
 
         {/* Keybinds Section (Phase 9) */}
         <SettingsKeybindsSection />
+
+        {/* Provider Credentials */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-semibold app-text-strong">Provider Credentials</h3>
+              <p className="text-sm app-text-muted mt-1">
+                Central place for AI assistant CLI API keys and account hints.
+              </p>
+            </div>
+            <KeyRound size={18} className="app-text-faint" />
+          </div>
+
+          <div className="space-y-3">
+            {providerAuthOptions.map((provider) => {
+              const auth = backendSettings?.providerAuth?.[provider.id] ?? {};
+              const configured = Boolean(auth.hasApiKey || auth.account);
+              return (
+                <ProviderCredentialRow
+                  key={provider.id}
+                  provider={provider}
+                  auth={auth}
+                  configured={configured}
+                  onSave={(patch) => updateProviderAuth(provider.id, patch)}
+                />
+              );
+            })}
+          </div>
+        </Card>
 
         {/* Theme */}
         <Card className="p-6 mb-6">

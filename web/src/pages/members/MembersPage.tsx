@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '@/auth/AuthProvider';
+import { getHttpClient } from '@/api/http-binding';
+import claudeLogo from '@/assets/provider-logos/claude.svg';
+import geminiLogo from '@/assets/provider-logos/gemini.svg';
+import openAILogo from '@/assets/provider-logos/openai.svg';
+import qwenLogo from '@/assets/provider-logos/qwen.svg';
 import {
   buildMembersPageModel,
   type MembersPageModel,
@@ -50,7 +56,7 @@ import {
   Grid3x3,
   GitBranch,
   Plus,
-  Terminal as TerminalIcon,
+  Code,
 } from 'lucide-react';
 
 /* ── Invite AI Assistant Modal (multi-step) ── */
@@ -60,6 +66,8 @@ interface Provider {
   /** Backend `terminalType` key — must match `provider.Registry` (claude, gemini, codex, opencode, qwen, shell). */
   terminalType: string;
   name: string;
+  logoSrc?: string;
+  logoClassName?: string;
   command: string;
   unlimitedFlag?: string;
   description: string;
@@ -70,6 +78,8 @@ const providers: Provider[] = [
     id: 'claude-code',
     terminalType: 'claude',
     name: 'Claude Code',
+    logoSrc: claudeLogo,
+    logoClassName: 'h-7 w-20',
     command: 'claude',
     unlimitedFlag: '--dangerously-skip-permissions',
     description: "Anthropic's coding assistant with comprehensive tooling",
@@ -78,6 +88,7 @@ const providers: Provider[] = [
     id: 'gemini-cli',
     terminalType: 'gemini',
     name: 'Gemini CLI',
+    logoSrc: geminiLogo,
     command: 'gemini',
     description: "Google's AI assistant for coding and analysis",
   },
@@ -85,20 +96,16 @@ const providers: Provider[] = [
     id: 'codex-cli',
     terminalType: 'codex',
     name: 'Codex CLI',
+    logoSrc: openAILogo,
+    logoClassName: 'h-7 w-20',
     command: 'codex',
     description: "OpenAI's code generation model",
-  },
-  {
-    id: 'opencode',
-    terminalType: 'opencode',
-    name: 'OpenCode',
-    command: 'opencode',
-    description: 'Open source coding assistant',
   },
   {
     id: 'qwen-code',
     terminalType: 'qwen',
     name: 'Qwen Code',
+    logoSrc: qwenLogo,
     command: 'qwen',
     description: "Alibaba's coding model",
   },
@@ -117,6 +124,7 @@ function InviteAIAssistantModal({
   teams = [],
   selectedTeam = '',
   onCreate,
+  providerAuth = {},
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -133,12 +141,13 @@ function InviteAIAssistantModal({
     workingDir: string;
     teamId: string;
   }) => Promise<void>;
+  providerAuth?: Record<string, { hasApiKey?: boolean; account?: string; mode?: string }>;
 }) {
   const [step, setStep] = useState(1);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [command, setCommand] = useState('');
-  const [workingDir, setWorkingDir] = useState('/home/user/project');
+  const [workingDir, setWorkingDir] = useState('/');
   const [teamId, setTeamId] = useState(selectedTeam);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,7 +202,7 @@ function InviteAIAssistantModal({
     setSelectedProvider(null);
     setDisplayName('');
     setCommand('');
-    setWorkingDir('/home/user/project');
+    setWorkingDir('/');
     setTeamId(selectedTeam);
     setError(null);
     onOpenChange(false);
@@ -230,7 +239,10 @@ function InviteAIAssistantModal({
             <div className="space-y-3">
               <Label>Select AI Provider *</Label>
               <div className="grid grid-cols-2 gap-3">
-                {providers.map((provider) => (
+                {providers.map((provider) => {
+                  const auth = providerAuth[provider.id];
+                  const needsAuth = provider.id !== 'shell' && !auth?.hasApiKey && !auth?.account;
+                  return (
                   <button
                     key={provider.id}
                     onClick={() => handleProviderSelect(provider)}
@@ -240,14 +252,25 @@ function InviteAIAssistantModal({
                         : 'border-gray-200 dark:border-gray-700'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 rounded bg-gradient-to-br from-purple-500 to-pink-500 text-white">
-                        <TerminalIcon size={16} />
+                    <div className="flex flex-col items-center text-center gap-3">
+                      <div className="flex h-10 w-24 shrink-0 items-center justify-center">
+                        {provider.logoSrc ? (
+                          <img src={provider.logoSrc} alt="" className={`object-contain ${provider.logoClassName ?? 'h-8 w-8'}`} />
+                        ) : (
+                          <Code size={18} aria-hidden="true" />
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-sm app-text-strong mb-1">
-                          {provider.name}
-                        </h4>
+                      <div className="min-w-0">
+                        <div className="mb-1 flex flex-col items-center gap-1">
+                          <h4 className="font-semibold text-sm app-text-strong">
+                            {provider.name}
+                          </h4>
+                          {needsAuth && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-yellow-600 border-yellow-500">
+                              Needs auth
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs app-text-muted leading-relaxed">
                           {provider.description}
                         </p>
@@ -257,7 +280,8 @@ function InviteAIAssistantModal({
                       </div>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -401,9 +425,289 @@ function InviteAIAssistantModal({
   );
 }
 
+function NewTeamModal({
+  open,
+  onOpenChange,
+  existingTeamIds,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  existingTeamIds: string[];
+  onCreate: (input: { teamId: string; name: string }) => Promise<void>;
+}) {
+  const [teamName, setTeamName] = useState('');
+  const [teamId, setTeamId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setTeamName('');
+      setTeamId('');
+      setError(null);
+    }
+  }, [open]);
+
+  const resolvedTeamId = (teamId.trim() || teamIdFromName(teamName)).trim();
+  const resolvedTeamName = teamName.trim() || resolvedTeamId;
+  const duplicate = resolvedTeamId
+    ? existingTeamIds.some((id) => id.toLowerCase() === resolvedTeamId.toLowerCase())
+    : false;
+
+  const handleCreate = async () => {
+    if (!resolvedTeamId || duplicate) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await onCreate({ teamId: resolvedTeamId, name: resolvedTeamName });
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create team');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="size-5" />
+            New Team
+          </DialogTitle>
+          <DialogDescription>
+            Create a workspace team for grouping members and AI assistants.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div>
+            <Label htmlFor="newTeamName">Team Name</Label>
+            <Input
+              id="newTeamName"
+              value={teamName}
+              onChange={(event) => setTeamName(event.target.value)}
+              placeholder="e.g., Backend Squad"
+              disabled={loading}
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="newTeamId">Team ID</Label>
+            <Input
+              id="newTeamId"
+              value={teamId}
+              onChange={(event) => setTeamId(event.target.value)}
+              placeholder={teamName ? teamIdFromName(teamName) : 'e.g., backend_squad'}
+              disabled={loading}
+              className="mt-1 font-mono text-sm"
+            />
+            <p className="text-xs app-text-faint mt-1">
+              Used by APIs and mentions. Leave blank to generate it from the name.
+            </p>
+          </div>
+
+          {duplicate && (
+            <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
+              <p className="text-xs text-red-600">A team with this ID already exists.</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 border-t app-border-subtle">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => void handleCreate()}
+            disabled={!resolvedTeamId || duplicate || loading}
+            className="app-accent-bg hover:opacity-90 text-white"
+          >
+            {loading ? 'Creating...' : 'Create Team'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InviteMemberModal({
+  open,
+  onOpenChange,
+  teams,
+  selectedTeam,
+  existingMemberIds,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  teams: Array<{ teamId: string; name: string }>;
+  selectedTeam: string;
+  existingMemberIds: string[];
+  onCreate: (input: { memberId: string; displayName: string; roleType: string; teamId: string }) => Promise<void>;
+}) {
+  const [displayName, setDisplayName] = useState('');
+  const [memberId, setMemberId] = useState('');
+  const [roleType, setRoleType] = useState('member');
+  const [teamId, setTeamId] = useState(selectedTeam);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTeamId(selectedTeam);
+      setDisplayName('');
+      setMemberId('');
+      setRoleType('member');
+      setError(null);
+    }
+  }, [open, selectedTeam]);
+
+  const resolvedMemberId = (memberId.trim() || idFromName(displayName)).trim();
+  const resolvedDisplayName = displayName.trim() || resolvedMemberId;
+  const duplicate = resolvedMemberId
+    ? existingMemberIds.some((id) => id.toLowerCase() === resolvedMemberId.toLowerCase())
+    : false;
+  const teamList = teams.length > 0 ? teams : [{ teamId: 'team_default', name: 'Workspace team' }];
+
+  const handleCreate = async () => {
+    if (!resolvedMemberId || duplicate) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await onCreate({
+        memberId: resolvedMemberId,
+        displayName: resolvedDisplayName,
+        roleType,
+        teamId: teamId || teamList[0]?.teamId || 'team_default',
+      });
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to invite member');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="size-5" />
+            Invite Member
+          </DialogTitle>
+          <DialogDescription>
+            Add a human workspace member to the selected team.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div>
+            <Label htmlFor="inviteMemberName">Display Name</Label>
+            <Input
+              id="inviteMemberName"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder="e.g., Ada Lovelace"
+              disabled={loading}
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="inviteMemberId">Member ID</Label>
+            <Input
+              id="inviteMemberId"
+              value={memberId}
+              onChange={(event) => setMemberId(event.target.value)}
+              placeholder={displayName ? idFromName(displayName) : 'e.g., ada_lovelace'}
+              disabled={loading}
+              className="mt-1 font-mono text-sm"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="inviteMemberRole">Role</Label>
+            <Select value={roleType} onValueChange={setRoleType}>
+              <SelectTrigger id="inviteMemberRole" className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="supervisor">Supervisor</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="inviteMemberTeam">Team</Label>
+            <Select value={teamId || teamList[0]?.teamId} onValueChange={setTeamId}>
+              <SelectTrigger id="inviteMemberTeam" className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {teamList.map((team) => (
+                  <SelectItem key={team.teamId} value={team.teamId}>
+                    {team.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {duplicate && (
+            <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
+              <p className="text-xs text-red-600">A member with this ID already exists.</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 border-t app-border-subtle">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => void handleCreate()}
+            disabled={!resolvedMemberId || duplicate || loading}
+            className="app-accent-bg hover:opacity-90 text-white"
+          >
+            {loading ? 'Inviting...' : 'Invite Member'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ── Helpers ── */
 
 type StatusKey = 'idle' | 'running' | 'success' | 'error' | 'offline';
+
+const idFromName = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const teamIdFromName = (name: string) =>
+  idFromName(name);
 
 const statusToDisplay = (status: StatusKey): string => {
   switch (status) {
@@ -462,12 +766,16 @@ const emptyModel: MembersPageModel = {
 
 export const MembersPage = () => {
   const { workspace, realtime, apiClient, navigate } = useAppShell();
+  const { account } = useAuth();
   const [model, setModel] = useState<MembersPageModel>(emptyModel);
   const [nodeByMemberId, setNodeByMemberId] = useState<Record<string, MemberNodeBinding>>({});
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
+  const [providerAuth, setProviderAuth] = useState<Record<string, { hasApiKey?: boolean; account?: string; mode?: string }>>({});
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grid' | 'org'>('grid');
+  const [inviteMemberModalOpen, setInviteMemberModalOpen] = useState(false);
   const [inviteAIModalOpen, setInviteAIModalOpen] = useState(false);
+  const [newTeamModalOpen, setNewTeamModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [membersResponse, roadmapResponse] = await Promise.all([
@@ -505,6 +813,17 @@ export const MembersPage = () => {
   useEffect(() => {
     void getSkills().then((res) => setAvailableSkills(res.skills));
   }, []);
+
+  useEffect(() => {
+    if (!account?.memberId) return;
+    const http = getHttpClient();
+    void http
+      .get<{ providerAuth?: Record<string, { hasApiKey?: boolean; account?: string; mode?: string }> }>(
+        `settings?memberId=${encodeURIComponent(account.memberId)}`,
+      )
+      .then((settings) => setProviderAuth(settings.providerAuth ?? {}))
+      .catch(() => setProviderAuth({}));
+  }, [account?.memberId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -636,7 +955,12 @@ export const MembersPage = () => {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setInviteMemberModalOpen(true)}
+            >
               <UserPlus size={14} className="mr-1" />
               Invite Member
             </Button>
@@ -676,7 +1000,12 @@ export const MembersPage = () => {
                 </Badge>
               </TabsTrigger>
             ))}
-            <Button variant="ghost" size="sm" className="ml-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-2"
+              onClick={() => setNewTeamModalOpen(true)}
+            >
               <Plus size={14} className="mr-1" />
               New Team
             </Button>
@@ -793,11 +1122,33 @@ export const MembersPage = () => {
       </div>
 
       {/* Invite AI Assistant Modal */}
+      <InviteMemberModal
+        open={inviteMemberModalOpen}
+        onOpenChange={setInviteMemberModalOpen}
+        teams={teamOptions}
+        selectedTeam={activeTeam?.teamId ?? 'team_default'}
+        existingMemberIds={model.members.map((member) => member.memberId)}
+        onCreate={async (config) => {
+          await apiClient.createMember({
+            memberId: config.memberId,
+            displayName: config.displayName,
+            roleType: config.roleType,
+            manualStatus: 'online',
+            terminalStatus: 'offline',
+            createRuntime: false,
+            teamId: config.teamId,
+          });
+          await load();
+        }}
+      />
+
+      {/* Invite AI Assistant Modal */}
       <InviteAIAssistantModal
         open={inviteAIModalOpen}
         onOpenChange={setInviteAIModalOpen}
         teams={teamOptions}
         selectedTeam={activeTeam?.teamId ?? 'team_default'}
+        providerAuth={providerAuth}
         onCreate={async (config) => {
           await apiClient.createMember({
             memberId: config.memberId,
@@ -813,6 +1164,20 @@ export const MembersPage = () => {
             workingDir: config.workingDir,
             teamId: config.teamId,
           });
+          await load();
+        }}
+      />
+      <NewTeamModal
+        open={newTeamModalOpen}
+        onOpenChange={setNewTeamModalOpen}
+        existingTeamIds={teams.map((team) => team.teamId)}
+        onCreate={async ({ teamId, name }) => {
+          await apiClient.createTeam({
+            teamId,
+            name,
+            memberIds: [],
+          });
+          setSelectedTeamId(teamId);
           await load();
         }}
       />

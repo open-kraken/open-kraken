@@ -267,9 +267,10 @@ export const DashboardPage = () => {
                   onClick={() => setPeriod(p)}
                   className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
                     period === p
-                      ? 'app-accent-bg app-accent-text'
+                      ? 'app-accent-bg text-white shadow-sm'
                       : 'app-text-muted hover:app-text-strong'
                   }`}
+                  aria-pressed={period === p}
                 >
                   {p}
                 </button>

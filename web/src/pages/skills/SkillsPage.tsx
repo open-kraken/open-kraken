@@ -248,9 +248,12 @@ function TreeNode({
 
 const NEW_SKILL_DEFAULT: CreateSkillInput = {
   name: '',
-  version: '1.0.0',
+  version: 1,
   description: '',
   prompt_template: '',
+  tool_requirements: [],
+  agent_type_affinity: [],
+  workload_class_tags: [],
 };
 
 function SkillLibraryTab() {
@@ -363,7 +366,20 @@ function SkillLibraryTab() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="lib-version">Version</Label>
-                <Input id="lib-version" placeholder="1.0.0" value={form.version} onChange={(e) => field('version', e.target.value)} />
+                <Input
+                  id="lib-version"
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="1"
+                  value={String(form.version)}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      version: Math.max(1, Number.parseInt(e.target.value, 10) || 1),
+                    }))
+                  }
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="lib-desc">Description</Label>

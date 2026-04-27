@@ -48,12 +48,15 @@ const createTestApi = () => {
   };
 };
 
+const resolveTestMemberSession = async (_workspaceId: string, memberId: string) => `term_${memberId}`;
+
 test('terminal controller drives attach and canonical realtime flow for the real page container', async () => {
   const testApi = createTestApi();
   const controller = createTerminalPanelController({
     apiClient: testApi.apiClient,
     pushNotification: testApi.pushNotification,
-    initialTerminalId: 'term_owner_1'
+    initialTerminalId: 'term_owner_1',
+    resolveMemberSession: resolveTestMemberSession
   });
 
   await controller.attach();
@@ -86,7 +89,8 @@ test('terminal controller normalizes legacy websocket names and requests resync 
   const controller = createTerminalPanelController({
     apiClient: testApi.apiClient,
     pushNotification: testApi.pushNotification,
-    initialTerminalId: 'term_owner_1'
+    initialTerminalId: 'term_owner_1',
+    resolveMemberSession: resolveTestMemberSession
   });
 
   await controller.handleRealtimeEvent({
@@ -124,7 +128,8 @@ test('shared realtime transport handshake and canonical terminal events drive th
     apiClient: testApi.apiClient,
     realtimeClient,
     pushNotification: testApi.pushNotification,
-    initialTerminalId: 'term_owner_1'
+    initialTerminalId: 'term_owner_1',
+    resolveMemberSession: resolveTestMemberSession
   });
 
   realtimeClient.subscribe('workspace', (event) => {
@@ -231,7 +236,8 @@ test('handshake resync requests a fresh attach for the active terminal', async (
   const controller = createTerminalPanelController({
     apiClient: testApi.apiClient,
     pushNotification: testApi.pushNotification,
-    initialTerminalId: 'term_owner_1'
+    initialTerminalId: 'term_owner_1',
+    resolveMemberSession: resolveTestMemberSession
   });
 
   await controller.attach();

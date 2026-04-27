@@ -19,6 +19,7 @@ import (
 	"open-kraken/backend/go/internal/roster"
 	"open-kraken/backend/go/internal/runtime/instance"
 	"open-kraken/backend/go/internal/session"
+	"open-kraken/backend/go/internal/settings"
 	"open-kraken/backend/go/internal/terminal"
 	"open-kraken/backend/go/internal/terminal/provider"
 )
@@ -60,6 +61,7 @@ type WorkspaceHandler struct {
 	instanceMgr   *instance.Manager
 	providerReg   *provider.Registry
 	nodeSvc       *node.Service
+	settingsSvc   *settings.Service
 	// teams mirrors roster.json (memberIds); expanded in API responses.
 	teams         []roster.Team
 	rosterVersion int64
@@ -94,6 +96,10 @@ func (h *WorkspaceHandler) SetAgentRuntime(mgr *instance.Manager, reg *provider.
 	h.instanceMgr = mgr
 	h.providerReg = reg
 	h.nodeSvc = nodeSvc
+}
+
+func (h *WorkspaceHandler) SetSettingsService(svc *settings.Service) {
+	h.settingsSvc = svc
 }
 
 // publishSnapshots publishes initial snapshot events for all conversations,

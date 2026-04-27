@@ -43,6 +43,7 @@ func (s *Service) CreateSession(ctx context.Context, req session.CreateRequest) 
 	process, err := s.launcher.Launch(ctx, pty.LaunchRequest{
 		Command: req.Command,
 		CWD:     req.CWD,
+		Env:     req.Env,
 		Cols:    req.Cols,
 		Rows:    req.Rows,
 	})
