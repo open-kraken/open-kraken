@@ -20,9 +20,20 @@ func NewService(loader *Loader, binding BindingRepository) *Service {
 
 // ListSkills returns all skills discovered in the skill root directory.
 func (s *Service) ListSkills() ([]SkillEntry, error) {
-	entries, err := s.loader.Load()
+	entries, err := s.catalog()
 	if err != nil {
 		return nil, fmt.Errorf("skill list: %w", err)
+	}
+	return entries, nil
+}
+
+func (s *Service) catalog() ([]SkillEntry, error) {
+	entries, err := s.loader.Load()
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return builtinCatalog(), nil
 	}
 	return entries, nil
 }
@@ -56,7 +67,7 @@ func (s *Service) ReplaceMemberSkills(ctx context.Context, memberID string, skil
 		return fmt.Errorf("skill replace: memberID is required")
 	}
 
-	catalog, err := s.loader.Load()
+	catalog, err := s.catalog()
 	if err != nil {
 		return fmt.Errorf("skill replace: load catalog: %w", err)
 	}
@@ -89,7 +100,7 @@ func (s *Service) ReplaceMemberSkills(ctx context.Context, memberID string, skil
 // Unknown skills (not in catalog) are reported as conflicts.
 func (s *Service) ImportSkills(ctx context.Context, entries []ImportEntry, strategy ImportStrategy) (ImportResult, error) {
 	// Build catalog index.
-	catalog, err := s.loader.Load()
+	catalog, err := s.catalog()
 	if err != nil {
 		return ImportResult{}, fmt.Errorf("skill import: load catalog: %w", err)
 	}
@@ -173,7 +184,7 @@ func (s *Service) ListMemberSkills(ctx context.Context, memberID string) ([]Skil
 	}
 
 	// Build index of catalog entries for O(1) lookup.
-	all, err := s.loader.Load()
+	all, err := s.catalog()
 	if err != nil {
 		// Return names-only entries when the catalog is unavailable.
 		entries := make([]SkillEntry, 0, len(names))

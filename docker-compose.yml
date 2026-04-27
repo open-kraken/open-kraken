@@ -143,6 +143,7 @@ services:
     environment:
       OPEN_KRAKEN_HTTP_ADDR: "0.0.0.0:8080"
       OPEN_KRAKEN_APP_DATA_ROOT: /data
+      OPEN_KRAKEN_WORKSPACE_ROOT: /data
       OPEN_KRAKEN_WEB_DIST_DIR: /web/dist
       OPEN_KRAKEN_LOG_LEVEL: info
       OPEN_KRAKEN_JWT_SECRET: "${OPEN_KRAKEN_JWT_SECRET:-}"

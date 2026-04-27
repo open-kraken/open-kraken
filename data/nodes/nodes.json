@@ -15,7 +15,7 @@
       "333"
     ],
     "registeredAt": "2026-04-27T13:22:06.255324514Z",
-    "lastHeartbeatAt": "2026-04-27T15:03:36.288941763Z"
+    "lastHeartbeatAt": "2026-04-27T15:37:06.322292471Z"
   },
   "agent-node-2": {
     "id": "agent-node-2",
@@ -23,15 +23,16 @@
     "nodeType": "k8s_pod",
     "status": "online",
     "labels": {
-      "agent_id": "232323",
+      "agent_id": "33334444",
       "dataDir": "/data",
       "skillsDir": "/skills"
     },
     "agents": [
       "ui_shell_agent_163924",
-      "232323"
+      "232323",
+      "33334444"
     ],
     "registeredAt": "2026-04-27T13:22:06.255298639Z",
-    "lastHeartbeatAt": "2026-04-27T15:03:36.289693013Z"
+    "lastHeartbeatAt": "2026-04-27T15:37:06.323555846Z"
   }
 }

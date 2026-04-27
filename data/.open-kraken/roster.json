@@ -1,0 +1,76 @@
+{
+  "meta": {
+    "workspaceId": "ws_open_kraken",
+    "version": 2,
+    "updatedAt": "2026-04-27T15:23:29.028079093Z",
+    "storage": "workspace"
+  },
+  "members": [
+    {
+      "avatar": "CO",
+      "displayName": "Claire",
+      "manualStatus": "online",
+      "memberId": "owner_1",
+      "roleType": "owner",
+      "terminalStatus": "working",
+      "workspaceId": "ws_open_kraken"
+    },
+    {
+      "avatar": "PL",
+      "displayName": "Planner",
+      "manualStatus": "online",
+      "memberId": "assistant_1",
+      "roleType": "assistant",
+      "terminalStatus": "online",
+      "workspaceId": "ws_open_kraken"
+    },
+    {
+      "avatar": "RN",
+      "displayName": "Runner",
+      "manualStatus": "dnd",
+      "memberId": "member_1",
+      "roleType": "member",
+      "terminalStatus": "offline",
+      "workspaceId": "ws_open_kraken"
+    },
+    {
+      "agentInstanceId": "97a88149-15e1-4468-aed2-8921437ffbcf",
+      "agentPlacementState": "placed",
+      "agentProvider": "codex",
+      "agentRuntimeState": "idle",
+      "agentType": "assistant",
+      "avatar": "33",
+      "command": "codex",
+      "displayName": "33334444",
+      "manualStatus": "online",
+      "memberId": "33334444",
+      "nodeHostname": "15a13961d99c",
+      "nodeId": "agent-node-2",
+      "roleType": "assistant",
+      "runtimeReady": true,
+      "teamId": "team_platform",
+      "terminalId": "session-4",
+      "terminalStatus": "starting",
+      "terminalType": "codex",
+      "workspaceId": "ws_open_kraken"
+    }
+  ],
+  "teams": [
+    {
+      "teamId": "team_platform",
+      "name": "Platform",
+      "memberIds": [
+        "owner_1",
+        "assistant_1",
+        "33334444"
+      ]
+    },
+    {
+      "teamId": "team_delivery",
+      "name": "Delivery",
+      "memberIds": [
+        "member_1"
+      ]
+    }
+  ]
+}

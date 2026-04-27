@@ -19,9 +19,13 @@ type TerminalRuntimeApi = {
   subscribe?: (listener: (event: unknown) => void) => () => void;
 };
 
+type TerminalRealtimeClient = AppShellContextValue['realtimeClient'] & {
+  send?: (message: unknown) => boolean;
+};
+
 type TerminalRuntimeDeps = {
   apiClient: unknown;
-  realtimeClient?: AppShellContextValue['realtimeClient'];
+  realtimeClient?: TerminalRealtimeClient;
   pushNotification: AppShellContextValue['pushNotification'];
   initialTerminalId: string;
   resolveMemberSession?: (workspaceId: string, memberId: string) => Promise<string>;
@@ -125,6 +129,7 @@ const unwrapRealtimeEnvelope = (rawEvent: unknown): unknown => {
     terminalId: payload.terminalId,
     subscriptionScope: payload.subscriptionScope,
     resyncRequired: payload.resyncRequired,
+    ...(payload && typeof payload === 'object' ? payload : {}),
     ...(payload.payload && typeof payload.payload === 'object' ? payload.payload : {})
   };
 };
@@ -272,6 +277,16 @@ export const createTerminalPanelController = ({
   resolveMemberSession = resolveOrCreateMemberSession
 }: TerminalRuntimeDeps): TerminalPanelController => {
   const runtimeApi = getTerminalRuntimeApi(apiClient);
+  const attachRealtimeStream = (sessionId: string, afterSeq = 0) => {
+    realtimeClient?.send?.({
+      type: 'terminal.attach',
+      payload: {
+        sessionId,
+        subscriberId: `web_terminal_${sessionId}`,
+        afterSeq
+      }
+    });
+  };
   const resolveSessionId = async (terminalId: string, memberId: string) => {
     if (!isMemberTerminalId(terminalId)) {
       return terminalId;
@@ -288,7 +303,9 @@ export const createTerminalPanelController = ({
       const memberId = memberIdFromTerminalId(terminalId);
       const sessionId = await resolveSessionId(terminalId, memberId);
       const raw = await runtimeApi.attachTerminal(sessionId);
-      return adaptAttachResponse(raw as Record<string, unknown>, sessionId, memberId);
+      const result = adaptAttachResponse(raw as Record<string, unknown>, sessionId, memberId);
+      attachRealtimeStream(result.session.terminalId, 0);
+      return result;
     }
   });
 
@@ -348,6 +365,9 @@ export const createTerminalPanelController = ({
         if (handshake.event === 'handshake.accepted' && handshake.resyncRequired && activeTerminalId) {
           return requestResync(activeTerminalId, 'handshake requested snapshot resync');
         }
+        if (handshake.event === 'handshake.accepted' && activeTerminalId) {
+          attachRealtimeStream(activeTerminalId, store.getState().output.lastSeq);
+        }
       }
 
       const normalized = normalizeTerminalRealtimeEvent(rawEvent);
@@ -398,13 +418,14 @@ export const useTerminalPanelRuntime = ({
 
   useEffect(() => {
     const runtimeApi = getTerminalRuntimeApi(apiClient);
-    void controller.attach();
     if (realtimeClient) {
       const subscription = realtimeClient.subscribe('workspace', (event) => {
         void controller.handleRealtimeEvent(event).then(setState);
       });
+      void controller.attach();
       return () => subscription.unsubscribe();
     }
+    void controller.attach();
     if (runtimeApi.subscribe) {
       return runtimeApi.subscribe((event) => {
         void controller.handleRealtimeEvent(event).then(setState);

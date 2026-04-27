@@ -18,6 +18,7 @@ export type RealtimeHandler<TPayload> = (event: RealtimeEnvelope<TPayload>) => v
 export type RealtimeTransport = {
   open: (cursor: string | null) => void;
   close: () => void;
+  send?: (message: unknown) => boolean;
 };
 
 type ListenerRecord = {
@@ -32,6 +33,7 @@ export class RealtimeClient {
   private status: RealtimeConnectionStatus = 'idle';
   private cursor: string | null = null;
   private lastSequenceByChannel = new Map<string, number>();
+  private pendingOutbound: unknown[] = [];
 
   constructor(private readonly transport: RealtimeTransport) {}
 
@@ -45,6 +47,7 @@ export class RealtimeClient {
     this.transport.close();
     this.listeners.clear();
     this.lastSequenceByChannel.clear();
+    this.pendingOutbound = [];
     this.status = 'disconnected';
   }
 
@@ -54,9 +57,32 @@ export class RealtimeClient {
     // Status remains 'reconnecting' until the next dispatched event.
   }
 
+  send(message: unknown) {
+    if (this.transport.send?.(message)) {
+      return true;
+    }
+    this.pendingOutbound.push(message);
+    return false;
+  }
+
   /** Called by the transport layer once the underlying connection is open. */
   markConnected() {
     this.status = 'connected';
+    this.flushOutbound();
+  }
+
+  private flushOutbound() {
+    if (this.pendingOutbound.length === 0) {
+      return;
+    }
+    const pending = this.pendingOutbound;
+    this.pendingOutbound = [];
+    for (const message of pending) {
+      if (!this.transport.send?.(message)) {
+        this.pendingOutbound.unshift(message);
+        return;
+      }
+    }
   }
 
   subscribe<TPayload>(channel: string, handler: RealtimeHandler<TPayload>): RealtimeSubscription {

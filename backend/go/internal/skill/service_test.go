@@ -128,6 +128,31 @@ func TestServiceReplaceMemberSkillsValidatesCatalog(t *testing.T) {
 	}
 }
 
+func TestServiceUsesBuiltinCatalogWhenSkillRootIsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	svc := NewService(NewLoader(filepath.Join(dir, "skills")), NewJSONBindingRepository(dir))
+	ctx := context.Background()
+
+	catalog, err := svc.ListSkills()
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(catalog) == 0 {
+		t.Fatal("expected built-in catalog entries")
+	}
+
+	if err := svc.ReplaceMemberSkills(ctx, "assistant-1", []string{"code-review", "react-ui"}); err != nil {
+		t.Fatalf("replace built-ins: %v", err)
+	}
+	assigned, err := svc.ListMemberSkills(ctx, "assistant-1")
+	if err != nil {
+		t.Fatalf("list member: %v", err)
+	}
+	if len(assigned) != 2 || assigned[0].Name != "code-review" || assigned[1].Name != "react-ui" {
+		t.Fatalf("unexpected assigned built-ins: %v", assigned)
+	}
+}
+
 func TestServiceBindIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	svc := NewService(NewLoader(dir), NewJSONBindingRepository(dir))

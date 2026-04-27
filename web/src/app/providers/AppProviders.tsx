@@ -155,10 +155,18 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
           detail: 'Realtime disconnected',
           lastCursor: null
         });
+      },
+      send: (message) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          return false;
+        }
+        ws.send(JSON.stringify(message));
+        return true;
       }
     });
     return client;
-  }, [account?.memberId]);
+  }, [account?.memberId, authToken]);
 
   useEffect(() => {
     const onPopState = () => {

@@ -49,7 +49,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { listSkillDefinitions, createSkillDefinition } from '@/api/v2/skills';
 import type { SkillDefinitionDTO, CreateSkillInput } from '@/api/v2/types';
-import type { MemberFixture } from '@/features/members/member-page-model';
+import { normalizeMembersEnvelope, type MemberFixture } from '@/features/members/member-page-model';
 
 /* ── Skill Tree types ── */
 
@@ -578,6 +578,20 @@ function SkillAssignmentsTab({
     );
   }
 
+  if (skills.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <Card className="p-8 max-w-md text-center">
+          <Package size={32} className="app-text-faint mx-auto mb-3" />
+          <h2 className="text-base font-semibold app-text-strong mb-2">No Assignable Skills</h2>
+          <p className="text-sm app-text-muted">
+            Add markdown skills to the catalog or create skill definitions before assigning them to AI Assistants.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex overflow-hidden">
       <div className="w-[340px] app-surface-strong border-r app-border-subtle flex flex-col">
@@ -744,7 +758,7 @@ export const SkillsPage = () => {
   const { t } = useI18n();
   const { apiClient } = useAppShell();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'catalog' | 'assignments' | 'library'>('catalog');
+  const [activeTab, setActiveTab] = useState<'catalog' | 'assignments' | 'library'>('assignments');
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [assignmentState, setAssignmentState] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -777,7 +791,7 @@ export const SkillsPage = () => {
     setAssignmentState('loading');
     try {
       const membersResponse = await apiClient.getMembers();
-      const assistants = (membersResponse.members ?? []).filter(isAssistantMember);
+      const assistants = normalizeMembersEnvelope(membersResponse).filter(isAssistantMember);
       const entries = await Promise.all(
         assistants.map(async (member) => {
           try {
@@ -971,6 +985,15 @@ export const SkillsPage = () => {
               <span className="text-xs text-green-600 mr-2">{message.text}</span>
             )}
             <Button
+              variant={activeTab === 'assignments' ? 'default' : 'outline'}
+              size="sm"
+              className="h-8"
+              onClick={() => setActiveTab('assignments')}
+            >
+              <Users size={14} className="mr-1" />
+              Assign to AI
+            </Button>
+            <Button
               variant="outline"
               size="sm"
               className="h-8"
@@ -995,7 +1018,7 @@ export const SkillsPage = () => {
                 {importing ? 'Applying...' : 'Apply Import'}
               </Button>
             )}
-            <Button size="sm" className="h-8" onClick={() => setActiveTab('library')}>
+            <Button variant="outline" size="sm" className="h-8" onClick={() => setActiveTab('library')}>
               <Plus size={14} className="mr-1" />
               New Skill
             </Button>

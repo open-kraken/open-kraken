@@ -4,7 +4,7 @@
  * colors, cursor positioning, scrollback, and resize.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -40,6 +40,16 @@ export const XtermRenderer = ({
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const lastWrittenLength = useRef(0);
+  const onInputRef = useRef(onInput);
+  const onResizeRef = useRef(onResize);
+
+  useEffect(() => {
+    onInputRef.current = onInput;
+  }, [onInput]);
+
+  useEffect(() => {
+    onResizeRef.current = onResize;
+  }, [onResize]);
 
   // Initialize xterm on mount.
   useEffect(() => {
@@ -91,12 +101,12 @@ export const XtermRenderer = ({
 
     // Handle user input.
     term.onData((data) => {
-      onInput?.(data);
+      onInputRef.current?.(data);
     });
 
     // Handle resize.
     term.onResize(({ cols, rows }) => {
-      onResize?.(cols, rows);
+      onResizeRef.current?.(cols, rows);
     });
 
     termRef.current = term;

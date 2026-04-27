@@ -63,6 +63,7 @@ export const TerminalPanel = ({
     state.runtime.connection === 'attached' &&
     state.runtime.process !== 'exited' &&
     state.runtime.process !== 'failed';
+  const shouldShowTerminal = view.showOutput || state.runtime.connection === 'attached';
 
   const handleInputSubmit = useCallback(() => {
     const data = inputValue;
@@ -120,8 +121,9 @@ export const TerminalPanel = ({
       ) : null}
 
       {/* Use XtermRenderer for real terminal output */}
-      {view.showOutput ? (
+      {shouldShowTerminal ? (
         <XtermRenderer
+          key={state.session?.terminalId ?? state.activeTerminalId ?? 'terminal'}
           outputText={view.outputText}
           followOutput={view.followOutput}
           onInput={handleXtermInput}
@@ -137,7 +139,7 @@ export const TerminalPanel = ({
       )}
 
       {/* Fallback text input for non-PTY mode */}
-      {onSendInput && !view.showOutput && (
+      {onSendInput && !shouldShowTerminal && (
         <div className="terminal-panel__input" data-role="terminal-input">
           <span className="terminal-panel__prompt">&gt;</span>
           <input

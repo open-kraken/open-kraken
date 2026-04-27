@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   Play,
   RotateCcw,
@@ -43,9 +44,18 @@ import {
   Trash2,
   ArrowRight,
   Pencil,
+  Copy,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -379,6 +389,15 @@ const connectionLineStyle = { stroke: "#0ea5e9", strokeWidth: 2, strokeDasharray
 let nodeIdCounter = 100;
 
 type Selection = { kind: "node"; id: string } | { kind: "edge"; id: string } | null;
+type NodeContextMenuState = { nodeId: string; x: number; y: number } | null;
+type NodeEditDraft = {
+  label: string;
+  taskId: string;
+  description: string;
+  agent: string;
+  status: string;
+  scheduledDate: string;
+};
 
 const taskStatusToNodeStatus = (status: string) => {
   switch (status) {
@@ -474,6 +493,17 @@ export function TaskMapPage() {
   const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([]);
   const [queueError, setQueueError] = useState<string>("");
   const [controlBusy, setControlBusy] = useState<string>("");
+  const [nodeMenu, setNodeMenu] = useState<NodeContextMenuState>(null);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [nodeEditDraft, setNodeEditDraft] = useState<NodeEditDraft>({
+    label: "",
+    taskId: "",
+    description: "",
+    agent: "",
+    status: "pending",
+    scheduledDate: "",
+  });
+  const [deleteNodeId, setDeleteNodeId] = useState<string | null>(null);
 
   const refreshQueue = useCallback(async () => {
     try {
@@ -513,6 +543,9 @@ export function TaskMapPage() {
 
   const selectedNode = selection?.kind === "node" ? nodes.find((n) => n.id === selection.id) ?? null : null;
   const selectedEdge = selection?.kind === "edge" ? edges.find((e) => e.id === selection.id) ?? null : null;
+  const contextNode = nodeMenu ? nodes.find((n) => n.id === nodeMenu.nodeId) ?? null : null;
+  const editingNode = editingNodeId ? nodes.find((n) => n.id === editingNodeId) ?? null : null;
+  const deleteCandidateNode = deleteNodeId ? nodes.find((n) => n.id === deleteNodeId) ?? null : null;
   const selectedBackendTask = selectedNode?.data.backendTaskId
     ? queueTasks.find((task) => task.id === selectedNode.data.backendTaskId)
     : null;
@@ -560,18 +593,69 @@ export function TaskMapPage() {
   );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setNodeMenu(null);
     setSelection({ kind: "node", id: node.id });
     setSelectedView("graph");
   }, []);
 
   const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    setNodeMenu(null);
     setSelection({ kind: "edge", id: edge.id });
     setSelectedView("graph");
   }, []);
 
   const onPaneClick = useCallback(() => {
+    setNodeMenu(null);
     setSelection(null);
   }, []);
+
+  const openNodeMenu = useCallback(
+    (event: React.MouseEvent | MouseEvent, nodeId: string) => {
+      event.preventDefault();
+      if ("stopPropagation" in event) event.stopPropagation();
+      setSelection({ kind: "node", id: nodeId });
+      setSelectedView("graph");
+      setNodeMenu({
+        nodeId,
+        x: Math.min(event.clientX, window.innerWidth - 220),
+        y: Math.min(event.clientY, window.innerHeight - 260),
+      });
+    },
+    [],
+  );
+
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      openNodeMenu(event, node.id);
+    },
+    [openNodeMenu],
+  );
+
+  const onFlowContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const nodeElement = target?.closest(".react-flow__node");
+      const nodeId = nodeElement?.getAttribute("data-id");
+      if (nodeId && nodes.some((node) => node.id === nodeId)) {
+        openNodeMenu(event, nodeId);
+        return;
+      }
+      if (selection?.kind === "node" && nodes.some((node) => node.id === selection.id)) {
+        openNodeMenu(event, selection.id);
+      }
+    },
+    [nodes, openNodeMenu, selection],
+  );
+
+  const onPaneContextMenu = useCallback(
+    (event: MouseEvent) => {
+      if (selection?.kind !== "node" || !nodes.some((node) => node.id === selection.id)) {
+        return;
+      }
+      openNodeMenu(event, selection.id);
+    },
+    [nodes, openNodeMenu, selection],
+  );
 
   /* ── Mutators ── */
 
@@ -592,6 +676,62 @@ export function TaskMapPage() {
     },
     [setNodes, setEdges],
   );
+
+  const openNodeEditor = useCallback((node: Node) => {
+    setNodeEditDraft({
+      label: String(node.data.label ?? ""),
+      taskId: String(node.data.taskId ?? ""),
+      description: String(node.data.description ?? ""),
+      agent: String(node.data.agent ?? ""),
+      status: String(node.data.backendStatus ?? node.data.status ?? "pending"),
+      scheduledDate: String(node.data.scheduledDate ?? ""),
+    });
+    setEditingNodeId(node.id);
+    setNodeMenu(null);
+  }, []);
+
+  const applyNodeEditor = useCallback(() => {
+    if (!editingNodeId) return;
+    const nextStatus = taskStatusToNodeStatus(nodeEditDraft.status);
+    updateNodeData(editingNodeId, {
+      label: nodeEditDraft.label,
+      taskId: nodeEditDraft.taskId,
+      description: nodeEditDraft.description,
+      agent: nodeEditDraft.agent,
+      status: nextStatus,
+      backendStatus: nodeEditDraft.status,
+      scheduledDate: nodeEditDraft.scheduledDate,
+    });
+    setEditingNodeId(null);
+  }, [editingNodeId, nodeEditDraft, updateNodeData]);
+
+  const duplicateNode = useCallback(
+    (node: Node) => {
+      const id = `node-${++nodeIdCounter}`;
+      setNodes((nds) => [
+        ...nds,
+        {
+          ...node,
+          id,
+          selected: false,
+          position: { x: node.position.x + 40, y: node.position.y + 40 },
+          data: {
+            ...node.data,
+            label: `${String(node.data.label ?? "Node")} copy`,
+            backendTaskId: undefined,
+          },
+        },
+      ]);
+      setSelection({ kind: "node", id });
+      setNodeMenu(null);
+    },
+    [setNodes],
+  );
+
+  const requestDeleteNode = useCallback((nodeId: string) => {
+    setDeleteNodeId(nodeId);
+    setNodeMenu(null);
+  }, []);
 
   const updateEdge = useCallback(
     (edgeId: string, patch: Partial<Edge>) => {
@@ -809,7 +949,7 @@ export function TaskMapPage() {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Flow Graph */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative" onContextMenu={onFlowContextMenu}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -819,6 +959,8 @@ export function TaskMapPage() {
             onReconnect={onReconnect}
             onNodeClick={onNodeClick}
             onEdgeClick={onEdgeClick}
+            onNodeContextMenu={onNodeContextMenu}
+            onPaneContextMenu={onPaneContextMenu}
             onPaneClick={onPaneClick}
             nodeTypes={nodeTypes}
             defaultEdgeOptions={defaultEdgeOptions}
@@ -901,6 +1043,97 @@ export function TaskMapPage() {
               </Card>
             </Panel>
           </ReactFlow>
+          {contextNode && nodeMenu && (
+            <div
+              className="fixed z-50 w-56 rounded-md border app-border-subtle app-surface-strong shadow-xl p-1"
+              style={{ left: nodeMenu.x, top: nodeMenu.y }}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <div className="px-2 py-1.5 border-b app-border-subtle mb-1">
+                <div className="text-xs font-semibold app-text-strong truncate">
+                  {String(contextNode.data.label ?? contextNode.id)}
+                </div>
+                <div className="text-[10px] font-mono app-text-faint truncate">{contextNode.id}</div>
+              </div>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-xs app-text-strong hover:app-surface-strong text-left"
+                onClick={() => openNodeEditor(contextNode)}
+              >
+                <Pencil size={13} />
+                Edit node
+              </button>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-xs app-text-strong hover:app-surface-strong text-left"
+                onClick={() => {
+                  setSelection({ kind: "node", id: contextNode.id });
+                  setSelectedView("graph");
+                  setNodeMenu(null);
+                }}
+              >
+                <Settings size={13} />
+                Open details
+              </button>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-xs app-text-strong hover:app-surface-strong text-left"
+                onClick={() => duplicateNode(contextNode)}
+              >
+                <Copy size={13} />
+                Duplicate
+              </button>
+              <div className="my-1 h-px bg-gray-200 dark:bg-gray-800" />
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-xs app-text-strong hover:app-surface-strong text-left disabled:opacity-50"
+                disabled={!contextNode.data.backendTaskId || Boolean(controlBusy)}
+                onClick={() => {
+                  const task = queueTasks.find((item) => item.id === contextNode.data.backendTaskId);
+                  void runTaskControl(task, String(contextNode.data.nodeId ?? ""), String(contextNode.data.agentId ?? ""));
+                  setNodeMenu(null);
+                }}
+              >
+                <Play size={13} />
+                Claim & start
+              </button>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-xs app-text-strong hover:app-surface-strong text-left disabled:opacity-50"
+                disabled={!contextNode.data.backendTaskId || Boolean(controlBusy)}
+                onClick={() => {
+                  const task = queueTasks.find((item) => item.id === contextNode.data.backendTaskId);
+                  void finishTaskControl(task, "ack");
+                  setNodeMenu(null);
+                }}
+              >
+                <CheckCircle size={13} />
+                Mark completed
+              </button>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-xs app-text-strong hover:app-surface-strong text-left disabled:opacity-50"
+                disabled={!contextNode.data.backendTaskId || Boolean(controlBusy)}
+                onClick={() => {
+                  const task = queueTasks.find((item) => item.id === contextNode.data.backendTaskId);
+                  void finishTaskControl(task, "nack");
+                  setNodeMenu(null);
+                }}
+              >
+                <AlertCircle size={13} />
+                Mark failed
+              </button>
+              <div className="my-1 h-px bg-gray-200 dark:bg-gray-800" />
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 text-left"
+                onClick={() => requestDeleteNode(contextNode.id)}
+              >
+                <Trash2 size={13} />
+                {contextNode.data.backendTaskId ? "Cancel task" : "Delete node"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right Sidebar */}
@@ -1484,6 +1717,113 @@ export function TaskMapPage() {
           </ScrollArea>
         </div>
       </div>
+      <Dialog open={Boolean(editingNode)} onOpenChange={(open) => !open && setEditingNodeId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit node</DialogTitle>
+            <DialogDescription>
+              Update the selected task map node. Queue-backed edits are visual until the next queue refresh.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs app-text-faint">Label</Label>
+              <Input
+                value={nodeEditDraft.label}
+                onChange={(event) => setNodeEditDraft((draft) => ({ ...draft, label: event.target.value }))}
+                className="h-8 text-sm mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs app-text-faint">Task ID</Label>
+              <Input
+                value={nodeEditDraft.taskId}
+                onChange={(event) => setNodeEditDraft((draft) => ({ ...draft, taskId: event.target.value }))}
+                className="h-8 text-sm mt-1 font-mono"
+              />
+            </div>
+            {editingNode?.type === "action" && (
+              <div>
+                <Label className="text-xs app-text-faint">Description</Label>
+                <Input
+                  value={nodeEditDraft.description}
+                  onChange={(event) => setNodeEditDraft((draft) => ({ ...draft, description: event.target.value }))}
+                  className="h-8 text-sm mt-1"
+                />
+              </div>
+            )}
+            {editingNode?.type !== "decision" && (
+              <>
+                <div>
+                  <Label className="text-xs app-text-faint">Agent</Label>
+                  <Input
+                    value={nodeEditDraft.agent}
+                    onChange={(event) => setNodeEditDraft((draft) => ({ ...draft, agent: event.target.value }))}
+                    className="h-8 text-sm mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs app-text-faint">Status</Label>
+                  <Select
+                    value={nodeEditDraft.status}
+                    onValueChange={(value) => setNodeEditDraft((draft) => ({ ...draft, status: value }))}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="claimed">Claimed</SelectItem>
+                      <SelectItem value="running">Running</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+            <div>
+              <Label className="text-xs app-text-faint">Scheduled Date</Label>
+              <Input
+                type="date"
+                value={nodeEditDraft.scheduledDate}
+                onChange={(event) => setNodeEditDraft((draft) => ({ ...draft, scheduledDate: event.target.value }))}
+                className="h-8 text-sm mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingNodeId(null)}>
+              Cancel
+            </Button>
+            <Button onClick={applyNodeEditor}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog
+        open={Boolean(deleteCandidateNode)}
+        onOpenChange={(open) => !open && setDeleteNodeId(null)}
+        title={deleteCandidateNode?.data.backendTaskId ? "Cancel task?" : "Delete node?"}
+        description={
+          deleteCandidateNode?.data.backendTaskId
+            ? "This cancels the queue task for this node and refreshes the task map."
+            : "This removes the node and its connected edges from the current task map."
+        }
+        variant="destructive"
+        confirmLabel={deleteCandidateNode?.data.backendTaskId ? "Cancel task" : "Delete node"}
+        onConfirm={() => {
+          if (!deleteCandidateNode) return;
+          const backendTaskId = deleteCandidateNode.data.backendTaskId;
+          if (backendTaskId) {
+            const task = queueTasks.find((item) => item.id === backendTaskId);
+            void finishTaskControl(task, "cancel");
+          } else {
+            deleteNode(deleteCandidateNode.id);
+          }
+          setDeleteNodeId(null);
+        }}
+      />
     </div>
   );
 }

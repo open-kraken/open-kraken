@@ -120,9 +120,14 @@ test('terminal controller normalizes legacy websocket names and requests resync 
 
 test('shared realtime transport handshake and canonical terminal events drive the terminal controller state', async () => {
   const testApi = createTestApi();
+  const sentMessages: unknown[] = [];
   const realtimeClient = new RealtimeClient({
     open: () => undefined,
-    close: () => undefined
+    close: () => undefined,
+    send: (message) => {
+      sentMessages.push(message);
+      return true;
+    }
   });
   const controller = createTerminalPanelController({
     apiClient: testApi.apiClient,
@@ -137,6 +142,16 @@ test('shared realtime transport handshake and canonical terminal events drive th
   });
 
   await controller.attach();
+  assert.deepEqual(sentMessages, [
+    {
+      type: 'terminal.attach',
+      payload: {
+        sessionId: 'term_owner_1',
+        subscriberId: 'web_terminal_term_owner_1',
+        afterSeq: 0
+      }
+    }
+  ]);
 
   realtimeClient.dispatch({
     type: 'handshake.accepted',
@@ -231,6 +246,41 @@ test('shared realtime transport handshake and canonical terminal events drive th
   assert.equal(state.runtime.process, 'exited');
 });
 
+test('backend websocket event payload fields survive realtime envelope normalization', async () => {
+  const testApi = createTestApi();
+  const realtimeClient = new RealtimeClient({
+    open: () => undefined,
+    close: () => undefined
+  });
+  const controller = createTerminalPanelController({
+    apiClient: testApi.apiClient,
+    realtimeClient,
+    pushNotification: testApi.pushNotification,
+    initialTerminalId: 'term_owner_1',
+    resolveMemberSession: resolveTestMemberSession
+  });
+
+  realtimeClient.subscribe('workspace', (event) => {
+    void controller.handleRealtimeEvent(event);
+  });
+
+  await controller.attach();
+  realtimeClient.dispatch({
+    cursor: 'rt_0100',
+    name: 'terminal.delta',
+    workspaceId: 'ws_open_kraken',
+    memberId: 'owner_1',
+    terminalId: 'term_owner_1',
+    payload: {
+      terminalId: 'term_owner_1',
+      sequence: 2,
+      data: 'live\n'
+    }
+  });
+
+  assert.equal(controller.getState().output.text, '$ attach\nlive\n');
+});
+
 test('handshake resync requests a fresh attach for the active terminal', async () => {
   const testApi = createTestApi();
   const controller = createTerminalPanelController({
@@ -258,4 +308,32 @@ test('handshake resync requests a fresh attach for the active terminal', async (
   assert.equal(state.output.text, '$ attach\n');
   assert.equal(testApi.notifications.length, 1);
   assert.match(testApi.notifications[0].detail, /handshake requested snapshot resync/);
+});
+
+test('realtime client queues outbound messages until the websocket is connected', () => {
+  let ready = false;
+  const sent: unknown[] = [];
+  const realtimeClient = new RealtimeClient({
+    open: () => undefined,
+    close: () => {
+      ready = false;
+    },
+    send: (message) => {
+      if (!ready) {
+        return false;
+      }
+      sent.push(message);
+      return true;
+    }
+  });
+
+  realtimeClient.connect();
+  realtimeClient.send({ type: 'terminal.attach', payload: { sessionId: 'session-1' } });
+  assert.deepEqual(sent, []);
+
+  ready = true;
+  realtimeClient.markConnected();
+  assert.deepEqual(sent, [
+    { type: 'terminal.attach', payload: { sessionId: 'session-1' } }
+  ]);
 });
