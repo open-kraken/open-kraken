@@ -85,6 +85,70 @@ func TestClaimAssignsAvailableAIAssistant(t *testing.T) {
 	}
 }
 
+func TestClaimByIDClaimsSpecificTask(t *testing.T) {
+	svc := setupService(t)
+	ctx := context.Background()
+	svc.SetAgentResolver(func(_ context.Context, nodeID string, busy map[string]bool) (string, error) {
+		if nodeID != "node-2" {
+			t.Fatalf("unexpected nodeID: %s", nodeID)
+		}
+		if len(busy) != 0 {
+			t.Fatalf("expected no busy agents, got %v", busy)
+		}
+		return "agent-2", nil
+	})
+
+	_, _ = svc.Enqueue(ctx, taskqueue.Task{
+		ID: "first", WorkspaceID: "ws1", Type: "task", Payload: `{}`, Priority: taskqueue.PriorityHigh,
+	})
+	_, _ = svc.Enqueue(ctx, taskqueue.Task{
+		ID: "second", WorkspaceID: "ws1", Type: "task", Payload: `{}`, Priority: taskqueue.PriorityLow,
+	})
+
+	claimed, err := svc.ClaimByID(ctx, "second", "node-2", "")
+	if err != nil {
+		t.Fatalf("ClaimByID: %v", err)
+	}
+	if claimed.ID != "second" {
+		t.Fatalf("claimed wrong task: %s", claimed.ID)
+	}
+	if claimed.Status != taskqueue.TaskStatusClaimed {
+		t.Fatalf("expected claimed, got %s", claimed.Status)
+	}
+	if claimed.NodeID != "node-2" || claimed.AgentID != "agent-2" {
+		t.Fatalf("unexpected placement: node=%q agent=%q", claimed.NodeID, claimed.AgentID)
+	}
+
+	first, err := svc.Get(ctx, "first")
+	if err != nil {
+		t.Fatalf("Get first: %v", err)
+	}
+	if first.Status != taskqueue.TaskStatusPending {
+		t.Fatalf("expected first task to remain pending, got %s", first.Status)
+	}
+}
+
+func TestClaimByIDCanUsePreferredAgent(t *testing.T) {
+	svc := setupService(t)
+	ctx := context.Background()
+	svc.SetAgentResolver(func(context.Context, string, map[string]bool) (string, error) {
+		t.Fatal("resolver should not be called when a preferred agent is supplied")
+		return "", nil
+	})
+
+	_, _ = svc.Enqueue(ctx, taskqueue.Task{
+		ID: "preferred", WorkspaceID: "ws1", Type: "task", Payload: `{}`,
+	})
+
+	claimed, err := svc.ClaimByID(ctx, "preferred", "node-3", "agent-preferred")
+	if err != nil {
+		t.Fatalf("ClaimByID: %v", err)
+	}
+	if claimed.AgentID != "agent-preferred" {
+		t.Fatalf("expected preferred agent, got %q", claimed.AgentID)
+	}
+}
+
 func TestClaimWithoutAvailableAIAssistantDoesNotTakeTask(t *testing.T) {
 	svc := setupService(t)
 	ctx := context.Background()

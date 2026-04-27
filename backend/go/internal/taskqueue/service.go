@@ -108,6 +108,51 @@ func (s *Service) Claim(ctx context.Context, queueName, nodeID string) (Task, er
 	return t, nil
 }
 
+// ClaimByID claims a specific pending task for the node. It is used by control
+// surfaces that operate on an explicit task rather than worker queue polling.
+func (s *Service) ClaimByID(ctx context.Context, taskID, nodeID, preferredAgentID string) (Task, error) {
+	t, err := s.repo.Get(ctx, taskID)
+	if err != nil {
+		return Task{}, fmt.Errorf("taskqueue claim by id: %w", err)
+	}
+	if !t.CanTransitionTo(TaskStatusClaimed) {
+		return Task{}, ErrInvalidTransition
+	}
+	agentID := preferredAgentID
+	if agentID != "" {
+		busy, err := s.busyAgents(ctx, nodeID)
+		if err != nil {
+			return Task{}, fmt.Errorf("taskqueue claim by id: %w", err)
+		}
+		if busy[agentID] {
+			return Task{}, ErrNoAvailableAgent
+		}
+	} else if s.agentResolver != nil {
+		busy, err := s.busyAgents(ctx, nodeID)
+		if err != nil {
+			return Task{}, fmt.Errorf("taskqueue claim by id: %w", err)
+		}
+		agentID, err = s.agentResolver(ctx, nodeID, busy)
+		if err != nil {
+			return Task{}, fmt.Errorf("taskqueue claim by id: %w", err)
+		}
+		if agentID == "" {
+			return Task{}, ErrNoAvailableAgent
+		}
+	}
+	now := s.now()
+	t.Status = TaskStatusClaimed
+	t.NodeID = nodeID
+	t.AgentID = agentID
+	t.ClaimedAt = now
+	t.UpdatedAt = now
+	if err := s.repo.Update(ctx, t); err != nil {
+		return Task{}, fmt.Errorf("taskqueue claim by id: %w", err)
+	}
+	s.publishEvent("task.claimed", t)
+	return t, nil
+}
+
 // Start marks a claimed task as running. The node that claimed the task
 // must provide its nodeID for verification.
 func (s *Service) Start(ctx context.Context, taskID, nodeID string) (Task, error) {

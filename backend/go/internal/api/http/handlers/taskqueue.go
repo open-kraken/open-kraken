@@ -124,16 +124,17 @@ func (h *TaskQueueHandler) handleTaskByID(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// handleTaskAction handles /queue/tasks/{id}/{action} (start, ack, nack).
+// handleTaskAction handles /queue/tasks/{id}/{action} (claim, start, ack, nack).
 func (h *TaskQueueHandler) handleTaskAction(w http.ResponseWriter, r *http.Request, id, action string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	var body struct {
-		NodeID string `json:"nodeId"`
-		Result string `json:"result"`
-		Error  string `json:"error"`
+		NodeID  string `json:"nodeId"`
+		AgentID string `json:"agentId"`
+		Result  string `json:"result"`
+		Error   string `json:"error"`
 	}
 	if !decodeJSON(r, &body, w) {
 		return
@@ -144,6 +145,8 @@ func (h *TaskQueueHandler) handleTaskAction(w http.ResponseWriter, r *http.Reque
 	var err error
 
 	switch action {
+	case "claim":
+		t, err = h.svc.ClaimByID(ctx, id, body.NodeID, body.AgentID)
 	case "start":
 		t, err = h.svc.Start(ctx, id, body.NodeID)
 	case "ack":

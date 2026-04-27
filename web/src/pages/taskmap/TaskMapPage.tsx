@@ -26,7 +26,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
   Play,
-  Pause,
   RotateCcw,
   Filter,
   Clock,
@@ -56,6 +55,19 @@ import {
 } from "@/components/ui/select";
 import { listRuns } from "@/api/v2/runs";
 import type { RunDTO } from "@/api/v2/types";
+import { getAgentStatuses, type AgentStatus } from "@/api/agents";
+import { assignAgentToNode, getNodes } from "@/api/nodes";
+import type { Node as RuntimeNode } from "@/types/node";
+import {
+  ackQueueTask,
+  cancelQueueTask,
+  claimQueueTaskById,
+  createQueueTask,
+  listQueueTasks,
+  nackQueueTask,
+  startQueueTask,
+  type QueueTask,
+} from "@/api/taskqueue";
 
 /* ------------------------------------------------------------------ */
 /*  Custom node components                                            */
@@ -169,25 +181,6 @@ const nodeTypes: NodeTypes = {
 /* ------------------------------------------------------------------ */
 /*  Mock data                                                         */
 /* ------------------------------------------------------------------ */
-
-const availableAgents = [
-  { id: "a1", name: "Claude BE", provider: "Anthropic", status: "online" as const },
-  { id: "a2", name: "Gemini FE", provider: "Google", status: "working" as const },
-  { id: "a3", name: "GPT-4 QA", provider: "OpenAI", status: "online" as const },
-  { id: "a4", name: "Claude Reviewer", provider: "Anthropic", status: "online" as const },
-  { id: "a5", name: "Qwen API", provider: "Alibaba", status: "working" as const },
-  { id: "a6", name: "Codex DevOps", provider: "OpenAI", status: "online" as const },
-  { id: "a7", name: "Shell Ops", provider: "Gemini", status: "offline" as const },
-  { id: "a8", name: "System", provider: "Internal", status: "online" as const },
-];
-
-const availableNodes = [
-  { id: "n1", hostname: "k8s-alpha-01", type: "K8s Pod", status: "online" as const },
-  { id: "n2", hostname: "k8s-alpha-02", type: "K8s Pod", status: "online" as const },
-  { id: "n3", hostname: "k8s-beta-01", type: "K8s Pod", status: "online" as const },
-  { id: "n4", hostname: "bare-metal-01", type: "Bare Metal", status: "online" as const },
-  { id: "n5", hostname: "bare-metal-02", type: "Bare Metal", status: "degraded" as const },
-];
 
 const initialNodes: Node[] = [
   {
@@ -387,13 +380,125 @@ let nodeIdCounter = 100;
 
 type Selection = { kind: "node"; id: string } | { kind: "edge"; id: string } | null;
 
+const taskStatusToNodeStatus = (status: string) => {
+  switch (status) {
+    case "completed":
+      return "success";
+    case "failed":
+    case "cancelled":
+      return "error";
+    case "running":
+      return "running";
+    default:
+      return "pending";
+  }
+};
+
+const formatMillis = (value?: number) => {
+  if (!value) return "";
+  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+};
+
+const taskDuration = (task: QueueTask) => {
+  const start = task.startedAt || task.claimedAt || task.createdAt;
+  const end = task.completedAt || task.updatedAt;
+  if (!start || !end || end <= start) return "";
+  const seconds = Math.max(1, Math.round((end - start) / 1000));
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+};
+
+const taskLabel = (task: QueueTask) => {
+  try {
+    const parsed = JSON.parse(task.payload) as { label?: unknown; title?: unknown };
+    const label = parsed.label ?? parsed.title;
+    if (label) return String(label);
+  } catch {
+    // Payload is user-provided JSON; fall back to task type when it is opaque.
+  }
+  return task.type || task.id;
+};
+
+const mapTaskToNode = (task: QueueTask, index: number): Node => ({
+  id: task.id,
+  type: "agent",
+  position: { x: 160 + (index % 3) * 280, y: 80 + Math.floor(index / 3) * 180 },
+  data: {
+    label: taskLabel(task),
+    status: taskStatusToNodeStatus(task.status),
+    backendStatus: task.status,
+    backendTaskId: task.id,
+    agent: task.agentId || "Unassigned",
+    agentId: task.agentId,
+    node: task.nodeId || "",
+    nodeId: task.nodeId || "",
+    taskId: task.id,
+    queue: task.queue || "default",
+    taskType: task.type,
+    duration: taskDuration(task),
+    progress: task.status === "completed" ? 100 : task.status === "running" ? 50 : undefined,
+    scheduledDate: task.createdAt ? new Date(task.createdAt).toISOString().slice(0, 10) : "",
+    startTime: formatMillis(task.startedAt),
+    endTime: formatMillis(task.completedAt),
+    lastError: task.lastError,
+    result: task.result,
+    attempts: task.attempts,
+    maxAttempts: task.maxAttempts,
+  },
+});
+
+const mapTasksToEdges = (tasks: QueueTask[]): Edge[] =>
+  tasks.slice(1).map((task, index) => {
+    const previous = tasks[index];
+    const color = task.status === "completed" ? "#10b981" : task.status === "running" ? "#eab308" : "#94a3b8";
+    return {
+      id: `queue-edge-${previous.id}-${task.id}`,
+      source: previous.id,
+      target: task.id,
+      type: "smoothstep",
+      animated: task.status === "running",
+      style: { stroke: color, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color, width: 20, height: 20 },
+      interactionWidth: 20,
+      reconnectable: true,
+    };
+  });
+
 export function TaskMapPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selection, setSelection] = useState<Selection>(null);
-  const [isPaused, setIsPaused] = useState(false);
   const [selectedView, setSelectedView] = useState<"graph" | "logs" | "details" | "runs">("graph");
   const [v2Runs, setV2Runs] = useState<RunDTO[]>([]);
+  const [queueTasks, setQueueTasks] = useState<QueueTask[]>([]);
+  const [runtimeNodes, setRuntimeNodes] = useState<RuntimeNode[]>([]);
+  const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([]);
+  const [queueError, setQueueError] = useState<string>("");
+  const [controlBusy, setControlBusy] = useState<string>("");
+
+  const refreshQueue = useCallback(async () => {
+    try {
+      const [tasks, nodesList, agentsList] = await Promise.all([
+        listQueueTasks(),
+        getNodes().catch(() => ({ nodes: [] })),
+        getAgentStatuses().catch(() => ({ agents: [] })),
+      ]);
+      setQueueTasks(tasks);
+      setRuntimeNodes(nodesList.nodes);
+      setAgentStatuses(agentsList.agents);
+      setQueueError("");
+      const ordered = [...tasks].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+      setNodes(ordered.map(mapTaskToNode));
+      setEdges(mapTasksToEdges(ordered));
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : "Task queue is unavailable.");
+    }
+  }, [setEdges, setNodes]);
+
+  useEffect(() => {
+    refreshQueue();
+    const id = setInterval(refreshQueue, 10_000);
+    return () => clearInterval(id);
+  }, [refreshQueue]);
 
   useEffect(() => {
     const load = () => {
@@ -408,6 +513,27 @@ export function TaskMapPage() {
 
   const selectedNode = selection?.kind === "node" ? nodes.find((n) => n.id === selection.id) ?? null : null;
   const selectedEdge = selection?.kind === "edge" ? edges.find((e) => e.id === selection.id) ?? null : null;
+  const selectedBackendTask = selectedNode?.data.backendTaskId
+    ? queueTasks.find((task) => task.id === selectedNode.data.backendTaskId)
+    : null;
+  const availableAgents =
+    agentStatuses.length > 0
+      ? agentStatuses.map((agent) => ({
+          id: agent.agentId,
+          name: agent.agentId,
+          provider: agent.provider ?? "runtime",
+          status: agent.presenceStatus === "offline" ? "offline" : agent.activeTasks > 0 ? "working" : "online",
+        }))
+      : [];
+  const availableNodes =
+    runtimeNodes.length > 0
+      ? runtimeNodes.map((node) => ({
+          id: node.id,
+          hostname: node.hostname || node.id,
+          type: node.nodeType === "bare_metal" ? "Bare Metal" : "K8s Pod",
+          status: node.status,
+        }))
+      : [];
 
   const onConnect = useCallback(
     (params: Connection) =>
@@ -486,6 +612,18 @@ export function TaskMapPage() {
 
   const addNode = useCallback(
     (type: "agent" | "action" | "decision") => {
+      if (type !== "decision") {
+        setControlBusy("create");
+        createQueueTask({
+          type: type === "agent" ? "manual-task" : "manual-action",
+          payload: JSON.stringify({ label: type === "agent" ? "New Task" : "New Action" }),
+          queue: "default",
+        })
+          .then(refreshQueue)
+          .catch((err) => setQueueError(err instanceof Error ? err.message : "Unable to create task."))
+          .finally(() => setControlBusy(""));
+        return;
+      }
       const id = `node-${++nodeIdCounter}`;
       const defaults: Record<string, Record<string, unknown>> = {
         agent: { label: "New Task", status: "pending", agent: "Unassigned" },
@@ -497,7 +635,76 @@ export function TaskMapPage() {
         { id, type, position: { x: 300, y: 200 }, data: defaults[type] },
       ]);
     },
-    [setNodes],
+    [refreshQueue, setNodes],
+  );
+
+  const runTaskControl = useCallback(
+    async (task: QueueTask | null | undefined, preferredNodeId?: string, preferredAgentId?: string) => {
+      if (!task) return;
+      const nodeId = preferredNodeId || task.nodeId || runtimeNodes.find((node) => node.status === "online")?.id || runtimeNodes[0]?.id || "";
+      if (!nodeId) {
+        setQueueError("Register a runtime node before starting this task.");
+        return;
+      }
+      setControlBusy(task.id);
+      try {
+        let current = task;
+        if (current.status === "pending") {
+          current = await claimQueueTaskById(current.id, nodeId, preferredAgentId);
+        }
+        if (current.status === "claimed") {
+          await startQueueTask(current.id, current.nodeId || nodeId);
+        }
+        await refreshQueue();
+      } catch (err) {
+        setQueueError(err instanceof Error ? err.message : "Unable to start task.");
+      } finally {
+        setControlBusy("");
+      }
+    },
+    [refreshQueue, runtimeNodes],
+  );
+
+  const finishTaskControl = useCallback(
+    async (task: QueueTask | null | undefined, mode: "ack" | "nack" | "cancel") => {
+      if (!task) return;
+      setControlBusy(task.id);
+      try {
+        if (mode === "ack") {
+          await ackQueueTask(task.id, task.nodeId, JSON.stringify({ completedFrom: "taskmap" }));
+        } else if (mode === "nack") {
+          await nackQueueTask(task.id, task.nodeId, "Marked failed from task map");
+        } else {
+          await cancelQueueTask(task.id);
+        }
+        await refreshQueue();
+      } catch (err) {
+        setQueueError(err instanceof Error ? err.message : "Unable to update task.");
+      } finally {
+        setControlBusy("");
+      }
+    },
+    [refreshQueue],
+  );
+
+  const assignTaskAgent = useCallback(
+    async (nodeId: string, agentId: string) => {
+      if (!nodeId) {
+        updateNodeData(selectedNode?.id ?? "", { agent: agentId, agentId });
+        setQueueError("Select a runtime node before assigning an agent.");
+        return;
+      }
+      setControlBusy("assign-agent");
+      try {
+        await assignAgentToNode(nodeId, { memberId: agentId });
+        await refreshQueue();
+      } catch (err) {
+        setQueueError(err instanceof Error ? err.message : "Unable to assign agent to node.");
+      } finally {
+        setControlBusy("");
+      }
+    },
+    [refreshQueue, selectedNode?.id, updateNodeData],
   );
 
   /* helper to resolve a node id to its label */
@@ -519,6 +726,7 @@ export function TaskMapPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h1 className="text-base font-bold app-text-strong">Task Map</h1>
+            <Badge variant="outline" className="text-[10px]">Queue-backed</Badge>
             <div className="flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1.5">
                 <Activity size={14} className="app-text-muted" />
@@ -576,13 +784,19 @@ export function TaskMapPage() {
               </Button>
             </div>
 
-            <Button variant="outline" size="sm" className="h-8" onClick={() => setIsPaused(!isPaused)}>
-              {isPaused ? <Play size={14} className="mr-1" /> : <Pause size={14} className="mr-1" />}
-              {isPaused ? "Resume" : "Pause"}
-            </Button>
-            <Button variant="outline" size="sm" className="h-8">
+            <Button variant="outline" size="sm" className="h-8" onClick={refreshQueue} disabled={Boolean(controlBusy)}>
               <RotateCcw size={14} className="mr-1" />
-              Restart
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => runTaskControl(selectedBackendTask, String(selectedNode?.data.nodeId ?? ""), String(selectedNode?.data.agentId ?? ""))}
+              disabled={!selectedBackendTask || Boolean(controlBusy)}
+            >
+              <Play size={14} className="mr-1" />
+              Start
             </Button>
             <Button variant="outline" size="sm" className="h-8">
               <Filter size={14} className="mr-1" />
@@ -766,8 +980,13 @@ export function TaskMapPage() {
                           <div>
                             <Label className="text-[11px] app-text-faint">Agent</Label>
                             <Select
-                              value={(selectedNode.data.agent as string) ?? ""}
-                              onValueChange={(v) => updateNodeData(selectedNode.id, { agent: v })}
+                              value={(selectedNode.data.agentId as string) || ""}
+                              onValueChange={(v) => {
+                                updateNodeData(selectedNode.id, { agent: v, agentId: v });
+                                if (selectedNode.data.backendTaskId) {
+                                  void assignTaskAgent(String(selectedNode.data.nodeId ?? selectedNode.data.node ?? ""), v);
+                                }
+                              }}
                               disabled={done}
                             >
                               <SelectTrigger className="h-8 text-sm mt-1">
@@ -775,7 +994,7 @@ export function TaskMapPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 {availableAgents.map((a) => (
-                                  <SelectItem key={a.id} value={a.name}>
+                                  <SelectItem key={a.id} value={a.id}>
                                     <div className="flex items-center gap-2">
                                       <div className={`w-2 h-2 rounded-full ${a.status === "online" ? "bg-green-500" : a.status === "working" ? "bg-yellow-500" : "bg-gray-400"}`} />
                                       <span>{a.name}</span>
@@ -789,8 +1008,11 @@ export function TaskMapPage() {
                           <div>
                             <Label className="text-[11px] app-text-faint">Node (Runtime)</Label>
                             <Select
-                              value={(selectedNode.data.node as string) ?? ""}
-                              onValueChange={(v) => updateNodeData(selectedNode.id, { node: v })}
+                              value={(selectedNode.data.nodeId as string) || (selectedNode.data.node as string) || ""}
+                              onValueChange={(v) => {
+                                const runtimeNode = runtimeNodes.find((node) => node.id === v);
+                                updateNodeData(selectedNode.id, { nodeId: v, node: runtimeNode?.hostname ?? v });
+                              }}
                               disabled={done}
                             >
                               <SelectTrigger className="h-8 text-sm mt-1 font-mono">
@@ -798,7 +1020,7 @@ export function TaskMapPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 {availableNodes.map((n) => (
-                                  <SelectItem key={n.id} value={n.hostname}>
+                                  <SelectItem key={n.id} value={n.id}>
                                     <div className="flex items-center gap-2">
                                       <div className={`w-2 h-2 rounded-full ${n.status === "online" ? "bg-green-500" : n.status === "degraded" ? "bg-yellow-500" : "bg-red-500"}`} />
                                       <span className="font-mono">{n.hostname}</span>
@@ -813,17 +1035,34 @@ export function TaskMapPage() {
                             <div>
                               <Label className="text-[11px] app-text-faint">Status</Label>
                               <Select
-                                value={(selectedNode.data.status as string) ?? "pending"}
-                                onValueChange={(v) => updateNodeData(selectedNode.id, { status: v })}
+                                value={(selectedNode.data.backendStatus as string) || (selectedNode.data.status as string) || "pending"}
+                                onValueChange={(v) => {
+                                  if (!selectedBackendTask) {
+                                    updateNodeData(selectedNode.id, { status: v });
+                                    return;
+                                  }
+                                  if (v === "running" || v === "claimed") {
+                                    void runTaskControl(selectedBackendTask, String(selectedNode.data.nodeId ?? ""), String(selectedNode.data.agentId ?? ""));
+                                  } else if (v === "completed") {
+                                    void finishTaskControl(selectedBackendTask, "ack");
+                                  } else if (v === "failed") {
+                                    void finishTaskControl(selectedBackendTask, "nack");
+                                  } else if (v === "cancelled") {
+                                    void finishTaskControl(selectedBackendTask, "cancel");
+                                  }
+                                }}
+                                disabled={Boolean(controlBusy)}
                               >
                                 <SelectTrigger className="h-8 text-sm mt-1">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="claimed">Claimed</SelectItem>
                                   <SelectItem value="running">Running</SelectItem>
-                                  <SelectItem value="success">Success</SelectItem>
-                                  <SelectItem value="error">Error</SelectItem>
+                                  <SelectItem value="completed">Completed</SelectItem>
+                                  <SelectItem value="failed">Failed</SelectItem>
+                                  <SelectItem value="cancelled">Cancelled</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -932,22 +1171,70 @@ export function TaskMapPage() {
 
                     {/* Actions */}
                     <div className="pt-3 border-t app-border-subtle space-y-2">
+                      {queueError && (
+                        <Card className="p-3 border-red-200 bg-red-50 dark:bg-red-950/20">
+                          <p className="text-xs text-red-600">{queueError}</p>
+                        </Card>
+                      )}
                       <Button variant="outline" size="sm" className="w-full justify-start">
                         <Terminal size={12} className="mr-2" />
                         View Logs
                       </Button>
-                      <Button variant="outline" size="sm" className="w-full justify-start">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-start"
+                        onClick={() => runTaskControl(selectedBackendTask, String(selectedNode.data.nodeId ?? ""), String(selectedNode.data.agentId ?? ""))}
+                        disabled={!selectedBackendTask || Boolean(controlBusy)}
+                      >
+                        <Play size={12} className="mr-2" />
+                        Claim & Start
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-start"
+                        onClick={() => finishTaskControl(selectedBackendTask, "ack")}
+                        disabled={!selectedBackendTask || selectedBackendTask.status !== "running" || Boolean(controlBusy)}
+                      >
+                        <CheckCircle size={12} className="mr-2" />
+                        Mark Completed
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-start"
+                        onClick={() => finishTaskControl(selectedBackendTask, "nack")}
+                        disabled={!selectedBackendTask || selectedBackendTask.status !== "running" || Boolean(controlBusy)}
+                      >
+                        <AlertCircle size={12} className="mr-2" />
+                        Mark Failed
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-start"
+                        onClick={refreshQueue}
+                        disabled={Boolean(controlBusy)}
+                      >
                         <RotateCcw size={12} className="mr-2" />
-                        Retry Node
+                        Refresh Node
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         className="w-full justify-start text-red-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-                        onClick={() => deleteNode(selectedNode.id)}
+                        onClick={() => {
+                          if (selectedBackendTask) {
+                            void finishTaskControl(selectedBackendTask, "cancel");
+                          } else {
+                            deleteNode(selectedNode.id);
+                          }
+                        }}
+                        disabled={Boolean(controlBusy)}
                       >
                         <Trash2 size={12} className="mr-2" />
-                        Delete Node
+                        {selectedBackendTask ? "Cancel Task" : "Delete Node"}
                       </Button>
                     </div>
                   </>
