@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -98,6 +99,32 @@ func TestServiceBindAndList(t *testing.T) {
 	}
 	if len(members) != 1 || members[0].Name != "toolx" {
 		t.Errorf("unexpected member skills: %v", members)
+	}
+}
+
+func TestServiceReplaceMemberSkillsValidatesCatalog(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "skills", "deploy.md"), "---\nname: deploy\ndescription: Deploy helper\n---\n")
+	writeFile(t, filepath.Join(dir, "skills", "qa.md"), "---\nname: qa\ndescription: QA helper\n---\n")
+
+	svc := NewService(NewLoader(filepath.Join(dir, "skills")), NewJSONBindingRepository(dir))
+	ctx := context.Background()
+
+	if err := svc.ReplaceMemberSkills(ctx, "m1", []string{" deploy ", "qa", "deploy"}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	names, err := svc.binding.ListByMember(ctx, "m1")
+	if err != nil {
+		t.Fatalf("list bindings: %v", err)
+	}
+	if len(names) != 2 || names[0] != "deploy" || names[1] != "qa" {
+		t.Fatalf("unexpected normalized bindings: %v", names)
+	}
+
+	err = svc.ReplaceMemberSkills(ctx, "m1", []string{"missing"})
+	if err == nil || !strings.Contains(err.Error(), `unknown skill "missing"`) {
+		t.Fatalf("expected unknown skill error, got %v", err)
 	}
 }
 

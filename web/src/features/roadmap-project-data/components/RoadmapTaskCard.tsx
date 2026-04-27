@@ -41,9 +41,11 @@ export const RoadmapTaskCard = ({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  const depTitles = (task.dependencies ?? [])
-    .map((depId) => allTasks.find((t) => t.id === depId)?.title)
-    .filter(Boolean);
+  const dependencies = (task.dependencies ?? [])
+    .map((depId) => allTasks.find((t) => t.id === depId))
+    .filter((dep): dep is RoadmapTaskItem => Boolean(dep));
+  const downstreamCount = allTasks.filter((candidate) => candidate.dependencies?.includes(task.id)).length;
+  const blockedDependencyCount = dependencies.filter((dep) => dep.status !== 'done').length;
 
   const assigneeName = task.assigneeId
     ? members.find((m) => m.memberId === task.assigneeId)?.displayName ?? task.assigneeId
@@ -99,9 +101,14 @@ export const RoadmapTaskCard = ({
         <span className={styles['roadmap-task-card__meta-item']} data-label="assignee">
           {assigneeName ?? t('roadmapPanel.unassigned')}
         </span>
-        {depTitles.length > 0 && (
+        {dependencies.length > 0 && (
           <span className={styles['roadmap-task-card__meta-item']} data-label="deps">
-            ← {depTitles.join(', ')}
+            {t('roadmapPanel.dependsCount', { count: dependencies.length })}
+          </span>
+        )}
+        {downstreamCount > 0 && (
+          <span className={styles['roadmap-task-card__meta-item']} data-label="downstream">
+            {t('roadmapPanel.downstreamCount', { count: downstreamCount })}
           </span>
         )}
         <span className={styles['roadmap-task-card__meta-item']} data-label="dates">
@@ -113,6 +120,19 @@ export const RoadmapTaskCard = ({
           </span>
         )}
       </div>
+
+      {dependencies.length > 0 && (
+        <div className={styles['roadmap-task-card__dependency-strip']}>
+          {dependencies.map((dep) => (
+            <span key={dep.id} className={styles['roadmap-task-card__dependency-chip']} data-status={dep.status}>
+              #{dep.number} {dep.title || t('roadmapPanel.taskTitle')}
+            </span>
+          ))}
+          {blockedDependencyCount > 0 ? (
+            <strong>{t('roadmapPanel.blockingCount', { count: blockedDependencyCount })}</strong>
+          ) : null}
+        </div>
+      )}
 
       {/* Expanded: edit all fields */}
       {expanded && (

@@ -1,14 +1,18 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"open-kraken/backend/go/internal/authz"
+	"open-kraken/backend/go/internal/node"
 	"open-kraken/backend/go/internal/realtime"
 	"open-kraken/backend/go/internal/roster"
 )
+
+var errAgentRuntimeUnavailable = errors.New("agent runtime is not configured")
 
 func teamsFromFixtureTeams(rows []teamFixtureRow) []roster.Team {
 	out := make([]roster.Team, 0, len(rows))
@@ -66,6 +70,26 @@ func (h *WorkspaceHandler) membersAndTeamsPayload() map[string]any {
 			"storage":     "workspace",
 		},
 	}
+}
+
+func (h *WorkspaceHandler) MemberCanUseSkills(memberID string) bool {
+	memberID = strings.TrimSpace(memberID)
+	if memberID == "" {
+		return false
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, member := range h.state.Members.Members {
+		if asString(member["memberId"]) != memberID {
+			continue
+		}
+		roleType := strings.TrimSpace(asString(member["roleType"]))
+		return roleType == "assistant" ||
+			strings.TrimSpace(asString(member["agentInstanceId"])) != "" ||
+			strings.TrimSpace(asString(member["agentRuntimeState"])) != "" ||
+			asBool(member["runtimeReady"])
+	}
+	return false
 }
 
 func (h *WorkspaceHandler) expandTeamsResponse() []map[string]any {
@@ -149,20 +173,21 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 				return
 			}
 			h.mu.Lock()
-			defer h.mu.Unlock()
 			for _, m := range h.state.Members.Members {
 				if asString(m["memberId"]) == memberID {
+					h.mu.Unlock()
 					writeJSON(w, http.StatusConflict, map[string]any{"message": "member already exists"})
 					return
 				}
 			}
+			h.mu.Unlock()
 			row := map[string]any{
 				"workspaceId":    h.state.Workspace.ID,
-				"memberId":      memberID,
-				"displayName":   strings.TrimSpace(asString(body["displayName"])),
-				"avatar":        strings.TrimSpace(asString(body["avatar"])),
-				"roleType":      strings.TrimSpace(asString(body["roleType"])),
-				"manualStatus":  strings.TrimSpace(asString(body["manualStatus"])),
+				"memberId":       memberID,
+				"displayName":    strings.TrimSpace(asString(body["displayName"])),
+				"avatar":         strings.TrimSpace(asString(body["avatar"])),
+				"roleType":       strings.TrimSpace(asString(body["roleType"])),
+				"manualStatus":   strings.TrimSpace(asString(body["manualStatus"])),
 				"terminalStatus": strings.TrimSpace(asString(body["terminalStatus"])),
 			}
 			if row["displayName"] == "" {
@@ -184,8 +209,35 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 			if row["terminalStatus"] == "" {
 				row["terminalStatus"] = "offline"
 			}
+			targetTeamID := h.resolveTargetTeamID(body)
+			if targetTeamID == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "teamId does not exist"})
+				return
+			}
+			if targetTeamID != "team_default" {
+				row["teamId"] = targetTeamID
+			}
+			if asBool(body["createRuntime"]) {
+				runtimeFields, err := h.initializeAgentRuntime(r, memberID, row, body)
+				if err != nil {
+					writeError(w, http.StatusBadRequest, err)
+					return
+				}
+				for k, v := range runtimeFields {
+					row[k] = v
+				}
+			}
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			for _, m := range h.state.Members.Members {
+				if asString(m["memberId"]) == memberID {
+					h.cleanupInitializedAgent(row)
+					writeJSON(w, http.StatusConflict, map[string]any{"message": "member already exists"})
+					return
+				}
+			}
 			h.state.Members.Members = append(h.state.Members.Members, row)
-			h.addMemberToDefaultTeam(memberID)
+			h.addMemberToTeam(targetTeamID, memberID)
 			_ = h.persistRosterLocked()
 			h.publishPresenceLocked()
 			writeJSON(w, http.StatusCreated, h.membersAndTeamsPayload())
@@ -283,9 +335,130 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNotFound)
 }
 
+func (h *WorkspaceHandler) cleanupInitializedAgent(row map[string]any) {
+	if terminalID := strings.TrimSpace(asString(row["terminalId"])); terminalID != "" && h.service != nil {
+		_ = h.service.Close(terminalID)
+	}
+	if instanceID := strings.TrimSpace(asString(row["agentInstanceId"])); instanceID != "" && h.instanceMgr != nil {
+		if inst, ok := h.instanceMgr.Get(instanceID); ok {
+			_ = inst.Terminate()
+			h.instanceMgr.Reap(instanceID)
+		}
+	}
+}
+
+func (h *WorkspaceHandler) initializeAgentRuntime(r *http.Request, memberID string, row map[string]any, body map[string]any) (map[string]any, error) {
+	if h.instanceMgr == nil || h.providerReg == nil {
+		return nil, errAgentRuntimeUnavailable
+	}
+
+	workspaceID := h.state.Workspace.ID
+	providerID := strings.TrimSpace(asString(body["providerId"]))
+	terminalType := strings.TrimSpace(asString(body["terminalType"]))
+	if terminalType == "" {
+		terminalType = providerID
+	}
+	if terminalType == "" {
+		terminalType = "shell"
+	}
+	agentType := strings.TrimSpace(asString(body["agentType"]))
+	if agentType == "" {
+		agentType = strings.TrimSpace(asString(row["roleType"]))
+	}
+	if agentType == "" {
+		agentType = "assistant"
+	}
+	hiveID := strings.TrimSpace(asString(body["teamId"]))
+	if hiveID == "" {
+		hiveID = strings.TrimSpace(asString(body["team"]))
+	}
+	if rowTeamID := strings.TrimSpace(asString(row["teamId"])); rowTeamID != "" {
+		hiveID = rowTeamID
+	}
+	if hiveID == "" {
+		hiveID = "team_default"
+	}
+
+	inst, err := h.instanceMgr.Spawn(agentType, terminalType, workspaceID, hiveID)
+	if err != nil {
+		return nil, err
+	}
+	inst.SetContext("memberId", memberID)
+	inst.SetContext("workspaceId", workspaceID)
+	inst.SetContext("displayName", asString(row["displayName"]))
+	inst.SetContext("providerId", providerID)
+	inst.SetContext("terminalType", terminalType)
+	inst.SetContext("createdBy", actorID(r))
+	inst.SetContext("readyForInstructions", true)
+
+	command := strings.TrimSpace(asString(body["command"]))
+	cwd := strings.TrimSpace(asString(body["workingDir"]))
+	if cwd == "" {
+		cwd = strings.TrimSpace(asString(body["cwd"]))
+	}
+	info, err := h.service.CreateSessionForMember(
+		r.Context(),
+		memberID,
+		workspaceID,
+		terminalType,
+		command,
+		cwd,
+		h.providerReg,
+		nil,
+	)
+	if err != nil {
+		_ = inst.Crash("terminal init failed: " + err.Error())
+		return nil, err
+	}
+	inst.SetContext("terminalId", info.SessionID)
+	inst.SetContext("command", info.Command)
+	inst.SetContext("cwd", cwd)
+	placement := map[string]any{
+		"agentPlacementState": "pending",
+	}
+	if h.nodeSvc != nil {
+		placed, err := h.nodeSvc.AutoAssignAgent(r.Context(), memberID)
+		if err == nil {
+			inst.SetContext("nodeId", placed.ID)
+			inst.SetContext("nodeHostname", placed.Hostname)
+			placement["nodeId"] = placed.ID
+			placement["nodeHostname"] = placed.Hostname
+			placement["agentPlacementState"] = "placed"
+		} else if !errors.Is(err, node.ErrNoAvailableNode) {
+			_ = inst.Crash("node placement failed: " + err.Error())
+			_ = h.service.Close(info.SessionID)
+			return nil, err
+		}
+	}
+	_ = inst.CompleteStep()
+
+	fields := map[string]any{
+		"agentInstanceId":   inst.ID(),
+		"agentRuntimeState": string(inst.State()),
+		"agentType":         inst.AgentType(),
+		"agentProvider":     inst.Provider(),
+		"runtimeReady":      true,
+		"terminalId":        info.SessionID,
+		"terminalType":      info.TerminalType,
+		"terminalStatus":    string(info.Status),
+		"command":           info.Command,
+	}
+	for k, v := range placement {
+		fields[k] = v
+	}
+	return fields, nil
+}
+
 func (h *WorkspaceHandler) addMemberToDefaultTeam(memberID string) {
+	h.addMemberToTeam("team_default", memberID)
+}
+
+func (h *WorkspaceHandler) addMemberToTeam(teamID, memberID string) {
+	if strings.TrimSpace(teamID) == "" {
+		teamID = "team_default"
+	}
 	for i := range h.teams {
-		if h.teams[i].TeamID != "team_default" {
+		if h.teams[i].TeamID != teamID {
 			continue
 		}
 		for _, id := range h.teams[i].MemberIDs {
@@ -301,6 +474,24 @@ func (h *WorkspaceHandler) addMemberToDefaultTeam(memberID string) {
 	}
 }
 
+func (h *WorkspaceHandler) resolveTargetTeamID(body map[string]any) string {
+	requested := strings.TrimSpace(asString(body["teamId"]))
+	if requested == "" {
+		requested = strings.TrimSpace(asString(body["team"]))
+	}
+	if requested == "" {
+		return "team_default"
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, team := range h.teams {
+		if team.TeamID == requested {
+			return team.TeamID
+		}
+	}
+	return ""
+}
+
 func (h *WorkspaceHandler) stripMemberFromTeams(memberID string) {
 	for i := range h.teams {
 		ids := make([]string, 0, len(h.teams[i].MemberIDs))
@@ -310,6 +501,17 @@ func (h *WorkspaceHandler) stripMemberFromTeams(memberID string) {
 			}
 		}
 		h.teams[i].MemberIDs = ids
+	}
+}
+
+func asBool(value any) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true") || v == "1" || strings.EqualFold(v, "yes")
+	default:
+		return false
 	}
 }
 

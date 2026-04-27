@@ -148,6 +148,10 @@ func TestNodeAgentAssign_Success(t *testing.T) {
 	if body["id"] != "assign-node" {
 		t.Errorf("expected id=assign-node in response, got %v", body)
 	}
+	agents, _ := body["agents"].([]any)
+	if len(agents) != 1 || agents[0] != "member-agent-1" {
+		t.Fatalf("expected assigned agents in response, got %v", body["agents"])
+	}
 }
 
 // TestNodeAgentAssign_NodeNotFound expects 404 when the target node does not exist.
@@ -190,11 +194,8 @@ func TestNodeAgentRemove_NotFoundAgent(t *testing.T) {
 
 	resp := doReq(t, env, http.MethodDelete, "/api/v1/nodes/rm-node2/agents/ghost-agent", nil)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status %d removing non-existent agent", resp.StatusCode)
-	}
-	if resp.StatusCode == http.StatusOK {
-		t.Logf("KNOWN GAP: removing non-existent agent should return 404 per contract, got 200 (idempotent delete)")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 removing non-existent agent, got %d", resp.StatusCode)
 	}
 }
 
@@ -229,19 +230,35 @@ func TestNodeAgentCapacityCountAfterRemove(t *testing.T) {
 	body := mustStatus(t, resp, http.StatusOK)
 	agents, _ := body["agents"].([]any)
 	for _, a := range agents {
-		if am, ok := a.(map[string]any); ok {
-			if am["agentId"] == "cap-agent-1" {
-				t.Errorf("agent cap-agent-1 still listed after removal: %v", body)
-			}
+		if a == "cap-agent-1" {
+			t.Errorf("agent cap-agent-1 still listed after removal: %v", body)
 		}
 	}
 }
 
-// TestNodeAgentAssign_CapacityExceeded is a placeholder for capacity enforcement.
-// The current implementation does not enforce maxAgents, so this test is skipped
-// until the feature is implemented (tracked as contract gap in T11 report).
 func TestNodeAgentAssign_CapacityExceeded(t *testing.T) {
-	t.Skip("capacity enforcement not yet implemented: node model has no maxAgents field")
+	env := startTestServer(t)
+	resp := doReq(t, env, http.MethodPost, "/api/v1/nodes/register", map[string]any{
+		"id":        "full-node",
+		"hostname":  "full-host",
+		"nodeType":  "k8s_pod",
+		"labels":    map[string]string{},
+		"maxAgents": 1,
+	})
+	mustStatus(t, resp, http.StatusCreated)
+
+	resp = doReq(t, env, http.MethodPost, "/api/v1/nodes/full-node/agents", map[string]any{
+		"memberId": "cap-agent-1",
+	})
+	mustStatus(t, resp, http.StatusOK)
+
+	resp = doReq(t, env, http.MethodPost, "/api/v1/nodes/full-node/agents", map[string]any{
+		"memberId": "cap-agent-2",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 when node is at capacity, got %d", resp.StatusCode)
+	}
 }
 
 // TestNodeSweeper_OfflineAfterTimeout advances the service clock past

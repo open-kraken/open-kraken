@@ -62,7 +62,14 @@ Review the code and provide feedback.`
 }
 
 func TestSkillHandlerBindAndListMemberSkills(t *testing.T) {
-	h, _ := newTestSkillHandler(t)
+	h, skillDir := newTestSkillHandler(t)
+
+	if err := os.WriteFile(filepath.Join(skillDir, "deploy.md"), []byte("---\nname: deploy\ndescription: Deploy helper\n---\n"), 0o644); err != nil {
+		t.Fatalf("write deploy skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "test-runner.md"), []byte("---\nname: test-runner\ndescription: Test helper\n---\n"), 0o644); err != nil {
+		t.Fatalf("write test-runner skill: %v", err)
+	}
 
 	// Bind skills via PUT with skills array.
 	body := `{"skills": ["deploy", "test-runner"]}`
@@ -82,5 +89,40 @@ func TestSkillHandlerBindAndListMemberSkills(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSkillHandlerRejectsUnknownMemberSkill(t *testing.T) {
+	h, _ := newTestSkillHandler(t)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/members/m-1/skills", strings.NewReader(`{"skills":["missing"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.HandleMemberSkills(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `unknown skill`) {
+		t.Fatalf("expected unknown skill error: %s", rec.Body.String())
+	}
+}
+
+func TestSkillHandlerRejectsSkillBindingForNonAssistant(t *testing.T) {
+	h, _ := newTestSkillHandler(t)
+	h.SetMemberSkillEligibility(func(memberID string) bool {
+		return memberID == "assistant-1"
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/members/human-1/skills", strings.NewReader(`{"skills":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.HandleMemberSkills(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `AI Assistant`) {
+		t.Fatalf("expected assistant eligibility error: %s", rec.Body.String())
 	}
 }

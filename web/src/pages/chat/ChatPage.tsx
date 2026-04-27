@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatAttachment, ChatConversation, ChatMessagePageResponse } from '@/api/api-client';
 import { fileToPendingAttachment, pendingToPayload, type PendingChatAttachment } from '@/features/chat/chat-attachments';
 import type { MemberFixture, TeamGroupFixture } from '@/features/members/member-page-model';
@@ -9,7 +9,7 @@ import {
   filterMentionCandidates,
   parseActiveMention
 } from '@/pages/chat/chat-mentions';
-import { useAuth } from '@/auth/AuthProvider';
+import { AuthContext } from '@/auth/AuthProvider';
 import { MessageMarkdown } from '@/features/chat/MessageMarkdown';
 import { TypingIndicator } from '@/features/chat/TypingIndicator';
 import { StatusDot } from '@/components/ui/status-dot';
@@ -101,6 +101,7 @@ type ChatRouteData = {
 
 type ChatRealtimeEvent = {
   body?: string;
+  conversationId?: string;
   messageId?: string;
   senderId?: string;
   status?: string;
@@ -388,7 +389,7 @@ const noticeToneBg: Record<string, string> = {
 export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeedbackOverride }) => {
   const { t } = useI18n();
   const { apiClient, realtime, realtimeClient, workspace } = useAppShell();
-  const { account } = useAuth();
+  const { account } = useContext(AuthContext) ?? { account: null };
   const SESSION_SENDER_ID = account?.memberId ?? 'owner_1';
   const [conversationItems, setConversationItems] = useState<ChatConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -472,20 +473,26 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
 
   // Realtime events
   useEffect(() => {
-    const subscription = realtimeClient.subscribe<ChatRealtimeEvent>('workspace.chat', (event) => {
+    const subscription = realtimeClient.subscribe<ChatRealtimeEvent>('chat', (event) => {
       if (event.type === 'chat.delta' && event.payload?.messageId) {
+        if (event.payload.conversationId && event.payload.conversationId !== activeConvId) {
+          void apiClient.getConversations().then((response) => setConversationItems(response.conversations)).catch(() => undefined);
+          return;
+        }
         setMessagePage((current) => ({
           ...current,
-          items: [
-            ...current.items,
-            {
-              id: event.payload.messageId ?? `msg_${Date.now()}`,
-              senderId: event.payload.senderId ?? 'unknown',
+          items: current.items.some((item) => item.id === event.payload?.messageId)
+            ? current.items
+            : [
+              ...current.items,
+              {
+                id: event.payload.messageId ?? `msg_${Date.now()}`,
+                senderId: event.payload.senderId ?? 'unknown',
               content: { type: 'text', text: event.payload.body ?? '' },
               createdAt: Date.now(),
               status: 'sent'
-            }
-          ]
+              }
+            ]
         }));
       }
 
@@ -498,7 +505,15 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
     });
 
     return () => { subscription.unsubscribe(); };
-  }, [realtimeClient]);
+    const updatedSubscription = realtimeClient.subscribe<ChatRealtimeEvent>('chat.updated', () => {
+      void apiClient.getConversations().then((response) => setConversationItems(response.conversations)).catch(() => undefined);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      updatedSubscription.unsubscribe();
+    };
+  }, [activeConvId, apiClient, realtimeClient]);
 
   /** Switch to a different conversation. */
   const switchConversation = useCallback(async (conversationId: string) => {
@@ -623,19 +638,33 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
     setPendingAttachments([]);
 
     try {
-      await apiClient.sendMessage(activeConvId, {
+      const response = await apiClient.sendMessage(activeConvId, {
         senderId: SESSION_SENDER_ID,
         content: { type: 'text', text },
         isAI: false,
         attachments: payloads.length ? payloads : undefined
       });
-      // Mark the optimistic message as sent
+      const saved = response.message;
       setMessagePage((current) => ({
         ...current,
-        items: current.items.map((m) =>
-          m.id === optimisticId ? { ...m, status: 'sent' } : m
-        )
+        items: saved
+          ? [
+              ...current.items.filter((m) => m.id !== optimisticId && m.id !== saved.id),
+              saved
+            ]
+          : current.items.map((m) => (m.id === optimisticId ? { ...m, status: 'sent' } : m))
       }));
+      if (saved) {
+        setConversationItems((current) => current.map((conversation) =>
+          conversation.id === activeConvId
+            ? {
+                ...conversation,
+                lastMessagePreview: saved.content?.text ?? conversation.lastMessagePreview,
+                lastMessageAt: saved.createdAt
+              } as ChatConversation
+            : conversation
+        ));
+      }
       setComposerState({ errorMessage: null, status: 'idle' });
     } catch (err) {
       // Mark message as failed and show error
@@ -909,7 +938,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
   };
 
   return (
-    <div className="h-full flex flex-col" data-route-page="chat">
+    <div className="h-full flex flex-col" data-route-page="chat" data-page-notice={model.pageNotice.code}>
       {/* Page-level notice banner */}
       {model.pageNotice.code !== 'live' && (
         <div className={`shrink-0 px-4 py-1.5 text-xs text-center ${noticeToneBg[model.pageNotice.tone] ?? ''}`}>
@@ -1085,18 +1114,25 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>View Members</DropdownMenuItem>
-                <DropdownMenuItem>Pin Conversation</DropdownMenuItem>
-                <DropdownMenuItem>Mute Notifications</DropdownMenuItem>
-                <DropdownMenuItem>Settings</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowStats(true)}>View Members</DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (activeConvId) void switchConversation(activeConvId);
+                  }}
+                >
+                  Refresh Messages
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
 
         {/* Messages */}
-        <ScrollArea className="flex-1 px-5 py-4">
+        <ScrollArea className="flex-1 px-5 py-4" data-chat-slot="messages">
           <div className="max-w-3xl mx-auto space-y-3">
+            <div className="sr-only">
+              Loaded conversations: {conversationItems.length} | Loaded messages: {model.messages.length}
+            </div>
             {isSwitching ? (
               <p className="text-center text-sm app-text-faint py-12">{t('chat.loadingMessages')}</p>
             ) : model.messages.length === 0 ? (

@@ -8,13 +8,14 @@ import (
 )
 
 var (
-	ErrNotFound        = errors.New("taskqueue: not found")
-	ErrInvalidID       = errors.New("taskqueue: id is required")
-	ErrInvalidType     = errors.New("taskqueue: type is required")
-	ErrInvalidPayload  = errors.New("taskqueue: payload is required")
-	ErrAlreadyExists   = errors.New("taskqueue: idempotency key already exists")
+	ErrNotFound          = errors.New("taskqueue: not found")
+	ErrInvalidID         = errors.New("taskqueue: id is required")
+	ErrInvalidType       = errors.New("taskqueue: type is required")
+	ErrInvalidPayload    = errors.New("taskqueue: payload is required")
+	ErrAlreadyExists     = errors.New("taskqueue: idempotency key already exists")
 	ErrInvalidTransition = errors.New("taskqueue: invalid status transition")
-	ErrAlreadyClaimed  = errors.New("taskqueue: task already claimed by another node")
+	ErrAlreadyClaimed    = errors.New("taskqueue: task already claimed by another node")
+	ErrNoAvailableAgent  = errors.New("taskqueue: no available AI Assistant on node")
 )
 
 // TaskStatus represents the lifecycle state of a task.
@@ -119,7 +120,7 @@ func (t Task) CanTransitionTo(next TaskStatus) bool {
 
 // IsTerminal reports whether the task is in a final state.
 func (t Task) IsTerminal() bool {
-	return t.Status == TaskStatusCompleted || t.Status == TaskStatusCancelled
+	return t.Status == TaskStatusCompleted || t.Status == TaskStatusFailed || t.Status == TaskStatusCancelled
 }
 
 // ShouldRetry reports whether the task can be retried after a failure.

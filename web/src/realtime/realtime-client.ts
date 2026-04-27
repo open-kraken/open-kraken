@@ -92,18 +92,26 @@ export class RealtimeClient {
       this.status = 'connected';
     }
 
-    // Normalize: backend may send { type, payload, ... } without channel/sequence/cursor
+    // Normalize: backend may send { name, payload, ... } while older mocks use { type, payload, ... }.
+    const rawRecord = raw as Record<string, unknown>;
+    const eventType = String(rawRecord.type ?? rawRecord.name ?? '');
     const event: RealtimeEnvelope<unknown> = {
-      type: String((raw as Record<string, unknown>).type ?? ''),
-      channel: String((raw as Record<string, unknown>).channel ?? (raw as Record<string, unknown>).type ?? 'workspace'),
-      payload: (raw as Record<string, unknown>).payload ?? raw,
-      sequence: typeof (raw as Record<string, unknown>).sequence === 'number'
-        ? (raw as Record<string, unknown>).sequence as number
+      type: eventType,
+      channel: String(rawRecord.channel ?? eventType ?? 'workspace'),
+      payload: rawRecord.payload ?? raw,
+      sequence: typeof rawRecord.sequence === 'number'
+        ? rawRecord.sequence as number
         : (this.lastSequenceByChannel.get(
-            String((raw as Record<string, unknown>).channel ?? (raw as Record<string, unknown>).type ?? 'workspace')
+            String(rawRecord.channel ?? eventType ?? 'workspace')
           ) ?? 0) + 1,
-      cursor: ((raw as Record<string, unknown>).cursor as string | null) ?? null,
+      cursor: (rawRecord.cursor as string | null) ?? null,
     };
+
+    const previousSequence = this.lastSequenceByChannel.get(event.channel);
+    if (previousSequence !== undefined && event.sequence > previousSequence + 1) {
+      this.status = 'stale';
+      throw new Error(`realtime_sequence_gap:${event.channel}:${previousSequence}->${event.sequence}`);
+    }
 
     this.lastSequenceByChannel.set(event.channel, event.sequence);
     this.cursor = event.cursor ?? this.cursor;

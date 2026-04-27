@@ -48,6 +48,67 @@ func TestEnqueueAndClaim(t *testing.T) {
 	}
 }
 
+func TestClaimAssignsAvailableAIAssistant(t *testing.T) {
+	svc := setupService(t)
+	ctx := context.Background()
+	claimCalls := 0
+	svc.SetAgentResolver(func(_ context.Context, nodeID string, busy map[string]bool) (string, error) {
+		if nodeID != "node-1" {
+			t.Fatalf("unexpected nodeID: %s", nodeID)
+		}
+		claimCalls++
+		if claimCalls == 1 {
+			return "agent-busy", nil
+		}
+		if !busy["agent-busy"] {
+			t.Fatalf("expected busy agent map to include already claimed assistant")
+		}
+		return "agent-free", nil
+	})
+
+	_, _ = svc.Enqueue(ctx, taskqueue.Task{
+		ID: "busy", WorkspaceID: "ws1", Type: "task", Payload: `{}`,
+	})
+	if _, err := svc.Claim(ctx, "default", "node-1"); err != nil {
+		t.Fatalf("first Claim: %v", err)
+	}
+
+	_, _ = svc.Enqueue(ctx, taskqueue.Task{
+		ID: "next", WorkspaceID: "ws1", Type: "task", Payload: `{}`,
+	})
+	claimed, err := svc.Claim(ctx, "default", "node-1")
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	if claimed.AgentID != "agent-free" {
+		t.Fatalf("expected claim to assign agent-free, got %q", claimed.AgentID)
+	}
+}
+
+func TestClaimWithoutAvailableAIAssistantDoesNotTakeTask(t *testing.T) {
+	svc := setupService(t)
+	ctx := context.Background()
+	svc.SetAgentResolver(func(context.Context, string, map[string]bool) (string, error) {
+		return "", taskqueue.ErrNoAvailableAgent
+	})
+
+	task, _ := svc.Enqueue(ctx, taskqueue.Task{
+		WorkspaceID: "ws1", Type: "task", Payload: `{}`,
+	})
+	_, err := svc.Claim(ctx, "default", "node-1")
+	if err == nil {
+		t.Fatal("expected no available agent error")
+	}
+
+	stored, err := svc.Get(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if stored.Status != taskqueue.TaskStatusPending {
+		t.Fatalf("expected task to remain pending, got %s", stored.Status)
+	}
+}
+
 func TestIdempotencyKey(t *testing.T) {
 	svc := setupService(t)
 	ctx := context.Background()
@@ -119,13 +180,13 @@ func TestNackWithRetry(t *testing.T) {
 	claimed, _ := svc.Claim(ctx, "default", "node-1")
 	started, _ := svc.Start(ctx, claimed.ID, "node-1")
 
-	// First nack → should re-queue (attempt 1 < maxAttempts 3).
+	// First nack → should enter retry delay (attempt 1 < maxAttempts 3).
 	nacked, err := svc.Nack(ctx, started.ID, "node-1", "timeout")
 	if err != nil {
 		t.Fatalf("Nack: %v", err)
 	}
-	if nacked.Status != taskqueue.TaskStatusPending {
-		t.Fatalf("expected pending after nack, got %s", nacked.Status)
+	if nacked.Status != taskqueue.TaskStatusRetrying {
+		t.Fatalf("expected retrying after nack, got %s", nacked.Status)
 	}
 	if nacked.Attempts != 1 {
 		t.Fatalf("expected 1 attempt, got %d", nacked.Attempts)

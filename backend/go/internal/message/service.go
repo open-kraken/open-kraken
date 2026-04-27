@@ -132,6 +132,7 @@ func (s *Service) publishChatDelta(m Message) {
 		Payload: realtime.ChatDeltaPayload{
 			ConversationID: m.ConversationID,
 			MessageID:      m.ID,
+			SenderID:       m.SenderID,
 			Sequence:       m.Seq,
 			Body:           m.ContentText,
 		},

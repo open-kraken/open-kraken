@@ -233,6 +233,9 @@ const adaptAttachResponse = (
   memberId: string
 ): TerminalAttachResult => {
   const snap = (raw.snapshot ?? {}) as Record<string, unknown>;
+  const rawBuffer = snap.buffer;
+  const bufferObject = rawBuffer && typeof rawBuffer === 'object' ? (rawBuffer as Record<string, unknown>) : null;
+  const bufferData = bufferObject ? bufferObject.data : rawBuffer;
   const sessionId = String(snap.sessionId ?? raw.sessionId ?? terminalId);
   return {
     session: {
@@ -248,9 +251,9 @@ const adaptAttachResponse = (
           terminalId: sessionId,
           seq: Number(snap.seq ?? 0),
           buffer: {
-            data: String(snap.buffer ?? ''),
-            rows: Number(snap.rows ?? 24),
-            cols: Number(snap.cols ?? 80),
+            data: String(bufferData ?? ''),
+            rows: Number(snap.rows ?? bufferObject?.rows ?? 24),
+            cols: Number(snap.cols ?? bufferObject?.cols ?? 80),
           },
         }
       : undefined,
@@ -264,10 +267,18 @@ export const createTerminalPanelController = ({
   initialTerminalId
 }: TerminalRuntimeDeps): TerminalPanelController => {
   const runtimeApi = getTerminalRuntimeApi(apiClient);
+  const resolveSessionId = async (terminalId: string, memberId: string) => {
+    try {
+      const sessionId = await resolveOrCreateMemberSession('ws_open_kraken', memberId);
+      return sessionId || terminalId;
+    } catch {
+      return terminalId;
+    }
+  };
   const store = createTerminalStore({
     attachSession: async (terminalId) => {
       const memberId = terminalId.startsWith('term_') ? terminalId.slice(5) : terminalId;
-      const sessionId = await resolveOrCreateMemberSession('ws_open_kraken', memberId);
+      const sessionId = await resolveSessionId(terminalId, memberId);
       const raw = await runtimeApi.attachTerminal(sessionId);
       return adaptAttachResponse(raw as Record<string, unknown>, sessionId, memberId);
     }
@@ -275,7 +286,7 @@ export const createTerminalPanelController = ({
 
   const requestResync = async (terminalId: string, reason: string) => {
     const memberId = terminalId.startsWith('term_') ? terminalId.slice(5) : terminalId;
-    const sessionId = await resolveOrCreateMemberSession('ws_open_kraken', memberId);
+    const sessionId = await resolveSessionId(terminalId, memberId);
     const raw = await runtimeApi.attachTerminal(sessionId);
     const result = adaptAttachResponse(raw as Record<string, unknown>, sessionId, memberId);
     const current = store.getState();

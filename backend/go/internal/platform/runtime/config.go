@@ -54,8 +54,8 @@ type Config struct {
 	// legacy ledger/memory/tokentrack SQLite files are used.
 	PostgresDSN string
 	// EtcdEndpoints is a comma-separated list of etcd client URLs used for Step Lease
-	// coordination, node heartbeats, and leader election. When empty, distributed
-	// step leasing is disabled (single-node mode using the in-memory fallback).
+	// coordination. When empty, distributed step leasing is disabled
+	// (single-node mode using the in-memory fallback).
 	EtcdEndpoints []string
 	// PrometheusAddr is the host:port for the Prometheus metrics scrape endpoint.
 	// When empty, metrics registration still happens but no HTTP listener is started.

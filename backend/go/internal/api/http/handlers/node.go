@@ -61,8 +61,13 @@ func (h *NodeHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		ID          string            `json:"id"`
 		Hostname    string            `json:"hostname"`
 		NodeType    string            `json:"nodeType"`
+		Type        string            `json:"type"`
 		Labels      map[string]string `json:"labels"`
 		WorkspaceID string            `json:"workspaceId"`
+		MaxAgents   int               `json:"maxAgents"`
+		Capacity    struct {
+			MaxAgents int `json:"maxAgents"`
+		} `json:"capacity"`
 	}
 	if !decodeJSON(r, &body, w) {
 		return
@@ -72,12 +77,21 @@ func (h *NodeHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if workspaceID == "" {
 		workspaceID = r.Header.Get("X-Kraken-Workspace-Id")
 	}
+	nodeType := body.NodeType
+	if nodeType == "" {
+		nodeType = body.Type
+	}
+	maxAgents := body.MaxAgents
+	if maxAgents == 0 {
+		maxAgents = body.Capacity.MaxAgents
+	}
 	n := node.Node{
 		ID:          body.ID,
 		Hostname:    body.Hostname,
-		NodeType:    node.NodeType(body.NodeType),
+		NodeType:    node.NodeType(nodeType),
 		Labels:      body.Labels,
 		WorkspaceID: workspaceID,
+		MaxAgents:   maxAgents,
 	}
 	registered, err := h.svc.Register(r.Context(), n)
 	if err != nil {
@@ -128,12 +142,17 @@ func (h *NodeHandler) handleGetByID(w http.ResponseWriter, r *http.Request, id s
 
 func (h *NodeHandler) handleAssignAgent(w http.ResponseWriter, r *http.Request, nodeID string) {
 	var body struct {
-		AgentID string `json:"agentId"`
+		AgentID  string `json:"agentId"`
+		MemberID string `json:"memberId"`
 	}
 	if !decodeJSON(r, &body, w) {
 		return
 	}
-	n, err := h.svc.AssignAgent(r.Context(), nodeID, body.AgentID)
+	agentID := body.AgentID
+	if agentID == "" {
+		agentID = body.MemberID
+	}
+	n, err := h.svc.AssignAgent(r.Context(), nodeID, agentID)
 	if err != nil {
 		writeNodeError(w, err)
 		return
@@ -152,11 +171,19 @@ func (h *NodeHandler) handleRemoveAgent(w http.ResponseWriter, r *http.Request, 
 
 func toNodeResponse(n node.Node) map[string]any {
 	return map[string]any{
-		"id":              n.ID,
-		"hostname":        n.Hostname,
-		"nodeType":        string(n.NodeType),
-		"status":          string(n.Status),
-		"labels":          n.Labels,
+		"id":         n.ID,
+		"hostname":   n.Hostname,
+		"nodeType":   string(n.NodeType),
+		"type":       string(n.NodeType),
+		"status":     string(n.Status),
+		"labels":     n.Labels,
+		"maxAgents":  n.MaxAgents,
+		"agentCount": n.AgentCount(),
+		"agents":     n.Agents,
+		"agentIds":   n.Agents,
+		"capacity": map[string]any{
+			"maxAgents": n.MaxAgents,
+		},
 		"workspaceId":     n.WorkspaceID,
 		"registeredAt":    n.RegisteredAt,
 		"lastHeartbeatAt": n.LastHeartbeatAt,
@@ -166,6 +193,14 @@ func toNodeResponse(n node.Node) map[string]any {
 func writeNodeError(w http.ResponseWriter, err error) {
 	if isNotFound(err) {
 		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if strings.Contains(err.Error(), "agent already assigned") {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	if strings.Contains(err.Error(), "maximum agent capacity reached") {
+		writeError(w, http.StatusUnprocessableEntity, err)
 		return
 	}
 	writeError(w, http.StatusBadRequest, err)

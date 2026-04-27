@@ -6,6 +6,7 @@ import (
 
 	"open-kraken/backend/go/internal/node"
 	"open-kraken/backend/go/internal/presence"
+	"open-kraken/backend/go/internal/runtime/instance"
 	"open-kraken/backend/go/internal/taskqueue"
 	"open-kraken/backend/go/internal/terminal"
 	"open-kraken/backend/go/internal/tokentrack"
@@ -19,6 +20,7 @@ type AgentStatusHandler struct {
 	presenceSvc *presence.Service
 	tokenSvc    *tokentrack.Service
 	taskSvc     *taskqueue.Service
+	instanceMgr *instance.Manager
 }
 
 // NewAgentStatusHandler creates an AgentStatusHandler.
@@ -28,6 +30,7 @@ func NewAgentStatusHandler(
 	presenceSvc *presence.Service,
 	tokenSvc *tokentrack.Service,
 	taskSvc *taskqueue.Service,
+	instanceMgr *instance.Manager,
 ) *AgentStatusHandler {
 	return &AgentStatusHandler{
 		termSvc:     termSvc,
@@ -35,6 +38,7 @@ func NewAgentStatusHandler(
 		presenceSvc: presenceSvc,
 		tokenSvc:    tokenSvc,
 		taskSvc:     taskSvc,
+		instanceMgr: instanceMgr,
 	}
 }
 
@@ -52,17 +56,20 @@ func (h *AgentStatusHandler) HandleList(w http.ResponseWriter, r *http.Request) 
 
 	// Gather node → agent mapping.
 	nodeAgentMap := map[string]string{} // agentID → nodeID
+	nodeHostMap := map[string]string{}  // agentID → hostname
 	if h.nodeSvc != nil {
 		nodes, err := h.nodeSvc.List(ctx)
 		if err == nil {
 			for _, n := range nodes {
 				for _, agentID := range n.Agents {
 					nodeAgentMap[agentID] = n.ID
+					nodeHostMap[agentID] = n.Hostname
 				}
 				// Legacy label fallback.
 				if aid, ok := n.Labels["agent_id"]; ok && aid != "" {
 					if _, exists := nodeAgentMap[aid]; !exists {
 						nodeAgentMap[aid] = n.ID
+						nodeHostMap[aid] = n.Hostname
 					}
 				}
 			}
@@ -106,6 +113,25 @@ func (h *AgentStatusHandler) HandleList(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	instanceMap := map[string]map[string]any{}
+	if h.instanceMgr != nil {
+		for _, inst := range h.instanceMgr.Snapshot() {
+			ctx := inst.SnapshotContext()
+			agentID, _ := ctx["memberId"].(string)
+			if agentID == "" {
+				continue
+			}
+			instanceMap[agentID] = map[string]any{
+				"agentInstanceId": inst.ID(),
+				"runtimeState":    string(inst.State()),
+				"agentType":       inst.AgentType(),
+				"provider":        inst.Provider(),
+				"runtimeReady":    instance.IsIdleOrScheduled(inst.State()),
+				"lastActive":      inst.LastActive().Format(time.RFC3339),
+			}
+		}
+	}
+
 	// Collect all known agent/member IDs from all sources.
 	allIDs := map[string]bool{}
 	for id := range nodeAgentMap {
@@ -117,11 +143,18 @@ func (h *AgentStatusHandler) HandleList(w http.ResponseWriter, r *http.Request) 
 	for id := range sessionMap {
 		allIDs[id] = true
 	}
+	for id := range taskCounts {
+		allIDs[id] = true
+	}
+	for id := range instanceMap {
+		allIDs[id] = true
+	}
 
 	for id := range allIDs {
 		entry := map[string]any{
-			"agentId": id,
-			"nodeId":  nodeAgentMap[id],
+			"agentId":      id,
+			"nodeId":       nodeAgentMap[id],
+			"nodeHostname": nodeHostMap[id],
 		}
 
 		// Presence.
@@ -153,6 +186,11 @@ func (h *AgentStatusHandler) HandleList(w http.ResponseWriter, r *http.Request) 
 
 		// Active tasks.
 		entry["activeTasks"] = taskCounts[id]
+		if runtime, ok := instanceMap[id]; ok {
+			for k, v := range runtime {
+				entry[k] = v
+			}
+		}
 
 		agents = append(agents, entry)
 	}
@@ -174,7 +212,7 @@ func (h *AgentStatusHandler) HandleByID(w http.ResponseWriter, r *http.Request, 
 	if h.nodeSvc != nil {
 		nodes, _ := h.nodeSvc.List(ctx)
 		for _, n := range nodes {
-			if n.HasAgent(agentID) {
+			if n.HasAgent(agentID) || n.Labels["agent_id"] == agentID {
 				entry["nodeId"] = n.ID
 				entry["nodeHostname"] = n.Hostname
 				break
@@ -234,6 +272,21 @@ func (h *AgentStatusHandler) HandleByID(w http.ResponseWriter, r *http.Request, 
 				}
 			}
 			entry["activeTasks"] = count
+		}
+	}
+
+	if h.instanceMgr != nil {
+		for _, inst := range h.instanceMgr.Snapshot() {
+			ctx := inst.SnapshotContext()
+			if memberID, _ := ctx["memberId"].(string); memberID == agentID {
+				entry["agentInstanceId"] = inst.ID()
+				entry["runtimeState"] = string(inst.State())
+				entry["agentType"] = inst.AgentType()
+				entry["provider"] = inst.Provider()
+				entry["runtimeReady"] = instance.IsIdleOrScheduled(inst.State())
+				entry["lastActive"] = inst.LastActive().Format(time.RFC3339)
+				break
+			}
 		}
 	}
 

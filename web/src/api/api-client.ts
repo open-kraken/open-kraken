@@ -25,6 +25,14 @@ export type CreateMemberInput = {
   roleType?: string;
   manualStatus?: string;
   terminalStatus?: string;
+  createRuntime?: boolean;
+  providerId?: string;
+  terminalType?: string;
+  agentType?: string;
+  command?: string;
+  workingDir?: string;
+  team?: string;
+  teamId?: string;
 };
 
 export type UpdateMemberInput = Partial<Pick<CreateMemberInput, 'displayName' | 'avatar' | 'roleType' | 'manualStatus' | 'terminalStatus'>>;
@@ -144,7 +152,7 @@ export type ApiClient = {
   /** Create or return an existing DM / team thread (server-dependent). */
   createConversation: (body: CreateConversationInput) => Promise<CreateConversationResponse>;
   getMessages: (conversationId: string) => Promise<ChatMessagePageResponse>;
-  sendMessage: (conversationId: string, payload: SendChatMessageInput) => Promise<unknown>;
+  sendMessage: (conversationId: string, payload: SendChatMessageInput) => Promise<{ message?: ChatMessage }>;
   getMembers: () => Promise<MembersResponse>;
   createMember: (body: CreateMemberInput) => Promise<MembersResponse>;
   updateMember: (memberId: string, body: UpdateMemberInput) => Promise<MembersResponse>;

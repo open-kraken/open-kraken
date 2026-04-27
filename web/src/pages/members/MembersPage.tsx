@@ -13,7 +13,6 @@ import { getNodes } from '@/api/nodes';
 import { buildNodeBindingByMemberId } from '@/features/members/member-runtime-map';
 import type { Skill } from '@/types/skill';
 import type { MemberNodeBinding } from '@/features/members/member-runtime-map';
-import { resolveOrCreateMemberSession } from '@/api/terminal';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -121,7 +120,7 @@ function InviteAIAssistantModal({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  teams?: string[];
+  teams?: Array<{ teamId: string; name: string }>;
   selectedTeam?: string;
   onCreate: (config: {
     memberId: string;
@@ -132,7 +131,7 @@ function InviteAIAssistantModal({
     terminalType: string;
     command: string;
     workingDir: string;
-    team: string;
+    teamId: string;
   }) => Promise<void>;
 }) {
   const [step, setStep] = useState(1);
@@ -140,9 +139,15 @@ function InviteAIAssistantModal({
   const [displayName, setDisplayName] = useState('');
   const [command, setCommand] = useState('');
   const [workingDir, setWorkingDir] = useState('/home/user/project');
-  const [team, setTeam] = useState(selectedTeam);
+  const [teamId, setTeamId] = useState(selectedTeam);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTeamId(selectedTeam);
+    }
+  }, [open, selectedTeam]);
 
   const handleProviderSelect = (provider: Provider) => {
     setSelectedProvider(provider);
@@ -173,7 +178,7 @@ function InviteAIAssistantModal({
         // if the user changed it to something other than the default.
         command: command && command !== selectedProvider.command ? command : '',
         workingDir,
-        team,
+        teamId,
       });
       handleClose();
     } catch (err) {
@@ -189,12 +194,13 @@ function InviteAIAssistantModal({
     setDisplayName('');
     setCommand('');
     setWorkingDir('/home/user/project');
-    setTeam(selectedTeam);
+    setTeamId(selectedTeam);
     setError(null);
     onOpenChange(false);
   };
 
-  const teamList = teams.length > 0 ? teams : ['Workspace Team'];
+  const teamList = teams.length > 0 ? teams : [{ teamId: 'team_default', name: 'Workspace team' }];
+  const selectedTeamName = teamList.find((t) => t.teamId === teamId)?.name ?? teamId;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -301,14 +307,14 @@ function InviteAIAssistantModal({
             <div className="space-y-4">
               <div>
                 <Label htmlFor="team">Assign to Team</Label>
-                <Select value={team} onValueChange={setTeam}>
+                <Select value={teamId} onValueChange={setTeamId}>
                   <SelectTrigger id="team" className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {teamList.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
+                      <SelectItem key={t.teamId} value={t.teamId}>
+                        {t.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -334,7 +340,7 @@ function InviteAIAssistantModal({
                   </div>
                   <div className="flex justify-between">
                     <span className="app-text-faint">Team:</span>
-                    <span className="app-text-strong font-medium">{team}</span>
+                    <span className="app-text-strong font-medium">{selectedTeamName}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="app-text-faint">Working Dir:</span>
@@ -447,7 +453,7 @@ const statusToAccentBar = (status: StatusKey) => {
 const emptyModel: MembersPageModel = {
   workspaceId: '',
   realtimeStatus: 'idle',
-  metrics: { total: 0, running: 0, offline: 0 },
+  metrics: { total: 0, aiAssistants: 0, running: 0, offline: 0 },
   teams: [],
   members: [],
 };
@@ -518,7 +524,7 @@ export const MembersPage = () => {
   const rosterMembers = activeTeam?.members ?? model.members;
 
   const totalTeams = teams.length;
-  const totalAgents = model.metrics.total;
+  const totalAgents = model.metrics.aiAssistants;
   const runningCount = model.metrics.running;
   const offlineCount = model.metrics.offline;
 
@@ -527,7 +533,7 @@ export const MembersPage = () => {
   const humans = rosterMembers.filter((m) => !isAgent(m));
   const agents = rosterMembers.filter((m) => isAgent(m));
 
-  const teamNames = teams.map((t) => t.name);
+  const teamOptions = teams.map((t) => ({ teamId: t.teamId, name: t.name }));
 
   const renderMemberCard = (member: MemberCardModel) => {
     const status = member.status as StatusKey;
@@ -575,6 +581,12 @@ export const MembersPage = () => {
             {node && (
               <div className="mt-2 text-xs app-text-muted">
                 Node: {node.hostname ?? node.nodeId}
+              </div>
+            )}
+
+            {isAgent(member) && (
+              <div className="mt-2 text-xs app-text-muted">
+                Runtime: {member.runtimeState ?? (member.runtimeReady ? 'ready' : 'pending')}
               </div>
             )}
 
@@ -660,7 +672,7 @@ export const MembersPage = () => {
               <TabsTrigger key={team.teamId} value={team.teamId} className="flex items-center gap-2">
                 <span>{team.name}</span>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 ml-1">
-                  {team.metrics.total}
+                  {team.metrics.aiAssistants}
                 </Badge>
               </TabsTrigger>
             ))}
@@ -784,29 +796,23 @@ export const MembersPage = () => {
       <InviteAIAssistantModal
         open={inviteAIModalOpen}
         onOpenChange={setInviteAIModalOpen}
-        teams={teamNames}
-        selectedTeam={activeTeam?.name ?? ''}
+        teams={teamOptions}
+        selectedTeam={activeTeam?.teamId ?? 'team_default'}
         onCreate={async (config) => {
-          // 1. Create member via backend API
           await apiClient.createMember({
             memberId: config.memberId,
             displayName: config.displayName,
             roleType: 'assistant',
+            manualStatus: 'online',
+            terminalStatus: 'starting',
+            createRuntime: true,
+            providerId: config.providerId,
+            terminalType: config.terminalType,
+            agentType: 'assistant',
+            command: config.command,
+            workingDir: config.workingDir,
+            teamId: config.teamId,
           });
-
-          // 2. Create the terminal session with the chosen provider so the
-          //    backend launches the real CLI (claude / gemini / ...) instead of bash.
-          try {
-            await resolveOrCreateMemberSession(workspace.workspaceId, config.memberId, {
-              terminalType: config.terminalType,
-              command: config.command,
-              cwd: config.workingDir,
-            });
-          } catch {
-            // Terminal session creation is best-effort; agent record still exists.
-          }
-
-          // 3. Reload the roster to show the new agent
           await load();
         }}
       />

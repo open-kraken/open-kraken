@@ -13,11 +13,14 @@ import (
 
 	"open-kraken/backend/go/internal/authz"
 	"open-kraken/backend/go/internal/message"
+	"open-kraken/backend/go/internal/node"
 	"open-kraken/backend/go/internal/projectdata"
 	"open-kraken/backend/go/internal/realtime"
 	"open-kraken/backend/go/internal/roster"
+	"open-kraken/backend/go/internal/runtime/instance"
 	"open-kraken/backend/go/internal/session"
 	"open-kraken/backend/go/internal/terminal"
+	"open-kraken/backend/go/internal/terminal/provider"
 )
 
 type teamFixtureRow struct {
@@ -54,6 +57,9 @@ type WorkspaceHandler struct {
 	projectRepo   projectdata.ProjectDataRepository
 	projectWriter projectdata.GuardedService
 	workspaceRoot string
+	instanceMgr   *instance.Manager
+	providerReg   *provider.Registry
+	nodeSvc       *node.Service
 	// teams mirrors roster.json (memberIds); expanded in API responses.
 	teams         []roster.Team
 	rosterVersion int64
@@ -80,6 +86,14 @@ func NewWorkspaceHandler(service *terminal.Service, hub *realtime.Hub, projectRe
 // When set, message list/create routes delegate to the service instead of fixture data.
 func (h *WorkspaceHandler) SetMessageService(svc *message.Service) {
 	h.msgSvc = svc
+}
+
+// SetAgentRuntime wires the backend AgentInstance pool and provider registry
+// used when the UI creates a real AI agent, not just a roster row.
+func (h *WorkspaceHandler) SetAgentRuntime(mgr *instance.Manager, reg *provider.Registry, nodeSvc *node.Service) {
+	h.instanceMgr = mgr
+	h.providerReg = reg
+	h.nodeSvc = nodeSvc
 }
 
 // publishSnapshots publishes initial snapshot events for all conversations,

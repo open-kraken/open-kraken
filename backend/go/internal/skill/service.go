@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // Service provides skill catalog operations and member-skill binding management.
@@ -54,7 +55,31 @@ func (s *Service) ReplaceMemberSkills(ctx context.Context, memberID string, skil
 	if memberID == "" {
 		return fmt.Errorf("skill replace: memberID is required")
 	}
-	if err := s.binding.SetSkills(ctx, memberID, skillNames); err != nil {
+
+	catalog, err := s.loader.Load()
+	if err != nil {
+		return fmt.Errorf("skill replace: load catalog: %w", err)
+	}
+	catalogSet := make(map[string]bool, len(catalog))
+	for _, entry := range catalog {
+		catalogSet[entry.Name] = true
+	}
+
+	seen := make(map[string]bool, len(skillNames))
+	validSkills := make([]string, 0, len(skillNames))
+	for _, name := range skillNames {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			continue
+		}
+		if !catalogSet[name] {
+			return fmt.Errorf("skill replace: unknown skill %q", name)
+		}
+		seen[name] = true
+		validSkills = append(validSkills, name)
+	}
+
+	if err := s.binding.SetSkills(ctx, memberID, validSkills); err != nil {
 		return fmt.Errorf("skill replace: %w", err)
 	}
 	return nil

@@ -224,6 +224,115 @@ func TestServiceAssignAgent(t *testing.T) {
 	}
 }
 
+func TestServiceAssignAgentEnforcesCapacity(t *testing.T) {
+	ctx := context.Background()
+	repo := newInMemoryRepo()
+	svc := newTestService(repo)
+
+	n := Node{ID: "node-cap", Hostname: "host-cap", NodeType: NodeTypeK8sPod, MaxAgents: 1}
+	if _, err := svc.Register(ctx, n); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := svc.AssignAgent(ctx, "node-cap", "agent-1"); err != nil {
+		t.Fatalf("assign first: %v", err)
+	}
+	if _, err := svc.AssignAgent(ctx, "node-cap", "agent-2"); !errors.Is(err, ErrMaxAgentsReached) {
+		t.Fatalf("expected ErrMaxAgentsReached, got %v", err)
+	}
+}
+
+func TestServiceAssignAgentRejectsDuplicateNodeAssignment(t *testing.T) {
+	ctx := context.Background()
+	repo := newInMemoryRepo()
+	svc := newTestService(repo)
+
+	if _, err := svc.Register(ctx, Node{ID: "node-a", Hostname: "host-a", NodeType: NodeTypeK8sPod}); err != nil {
+		t.Fatalf("register node-a: %v", err)
+	}
+	if _, err := svc.Register(ctx, Node{ID: "node-b", Hostname: "host-b", NodeType: NodeTypeK8sPod}); err != nil {
+		t.Fatalf("register node-b: %v", err)
+	}
+	if _, err := svc.AssignAgent(ctx, "node-a", "agent-1"); err != nil {
+		t.Fatalf("assign node-a: %v", err)
+	}
+	if _, err := svc.AssignAgent(ctx, "node-b", "agent-1"); !errors.Is(err, ErrAgentAlreadyAssigned) {
+		t.Fatalf("expected ErrAgentAlreadyAssigned, got %v", err)
+	}
+}
+
+func TestServiceAutoAssignAgentUsesLeastLoadedOnlineNode(t *testing.T) {
+	ctx := context.Background()
+	repo := newInMemoryRepo()
+	svc := newTestService(repo)
+
+	if _, err := svc.Register(ctx, Node{ID: "node-a", Hostname: "host-a", NodeType: NodeTypeK8sPod, MaxAgents: 3}); err != nil {
+		t.Fatalf("register node-a: %v", err)
+	}
+	if _, err := svc.Register(ctx, Node{ID: "node-b", Hostname: "host-b", NodeType: NodeTypeK8sPod, MaxAgents: 3}); err != nil {
+		t.Fatalf("register node-b: %v", err)
+	}
+	if _, err := svc.AssignAgent(ctx, "node-a", "existing-agent"); err != nil {
+		t.Fatalf("seed assignment: %v", err)
+	}
+
+	got, err := svc.AutoAssignAgent(ctx, "new-agent")
+	if err != nil {
+		t.Fatalf("auto assign: %v", err)
+	}
+	if got.ID != "node-b" {
+		t.Fatalf("expected least-loaded node-b, got %s", got.ID)
+	}
+}
+
+func TestServiceScanOfflineNodesMigratesAgents(t *testing.T) {
+	ctx := context.Background()
+	repo := newInMemoryRepo()
+	svc := newTestService(repo)
+	now := time.Now()
+	svc.now = func() time.Time { return now }
+
+	if _, err := svc.Register(ctx, Node{ID: "node-a", Hostname: "host-a", NodeType: NodeTypeK8sPod, MaxAgents: 2}); err != nil {
+		t.Fatalf("register node-a: %v", err)
+	}
+	if _, err := svc.Register(ctx, Node{ID: "node-b", Hostname: "host-b", NodeType: NodeTypeK8sPod, MaxAgents: 2}); err != nil {
+		t.Fatalf("register node-b: %v", err)
+	}
+	if _, err := svc.AssignAgent(ctx, "node-a", "agent-1"); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	placements := map[string]string{}
+	svc.SetAgentPlacementObserver(func(agentID string, n Node) {
+		placements[agentID] = n.ID
+	})
+
+	svc.now = func() time.Time { return now.Add(HeartbeatTimeout + time.Second) }
+	if _, err := svc.Heartbeat(ctx, "node-b"); err != nil {
+		t.Fatalf("heartbeat node-b: %v", err)
+	}
+	svc.scanOfflineNodes(ctx)
+
+	source, err := repo.FindByID(ctx, "node-a")
+	if err != nil {
+		t.Fatalf("find source: %v", err)
+	}
+	target, err := repo.FindByID(ctx, "node-b")
+	if err != nil {
+		t.Fatalf("find target: %v", err)
+	}
+	if source.Status != NodeStatusOffline {
+		t.Fatalf("expected source offline, got %s", source.Status)
+	}
+	if source.HasAgent("agent-1") {
+		t.Fatalf("agent remained on offline source: %+v", source.Agents)
+	}
+	if !target.HasAgent("agent-1") {
+		t.Fatalf("agent did not migrate to target: %+v", target.Agents)
+	}
+	if placements["agent-1"] != "node-b" {
+		t.Fatalf("placement observer was not called for migration: %+v", placements)
+	}
+}
+
 func TestServiceRemoveAgent(t *testing.T) {
 	ctx := context.Background()
 	repo := newInMemoryRepo()
@@ -251,6 +360,18 @@ func TestServiceRemoveAgent(t *testing.T) {
 func TestServiceRemoveAgentNotFound(t *testing.T) {
 	svc := newTestService(newInMemoryRepo())
 	_, err := svc.RemoveAgent(context.Background(), "missing-node", "agent-x")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestServiceRemoveAgentNotAssigned(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(newInMemoryRepo())
+	if _, err := svc.Register(ctx, Node{ID: "node-empty", Hostname: "host-empty", NodeType: NodeTypeK8sPod}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	_, err := svc.RemoveAgent(ctx, "node-empty", "agent-x")
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}

@@ -17,15 +17,6 @@ import {
   Package,
   Users,
   Code,
-  Eye,
-  Edit,
-  Copy,
-  MoreVertical,
-  FilePlus,
-  FolderPlus,
-  Move,
-  Archive,
-  Trash2,
   Terminal,
   Activity,
   Clock,
@@ -51,19 +42,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Checkbox } from '@/components/ui/checkbox';
 import { PixelAvatar } from '@/components/ui/pixel-avatar';
 import { StatusDot } from '@/components/ui/status-dot';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { listSkillDefinitions, createSkillDefinition } from '@/api/v2/skills';
 import type { SkillDefinitionDTO, CreateSkillInput } from '@/api/v2/types';
+import type { MemberFixture } from '@/features/members/member-page-model';
 
 /* ── Skill Tree types ── */
 
@@ -88,6 +74,10 @@ interface SkillTreeNode {
   children?: SkillTreeNode[];
 }
 
+type SkillUsage = NonNullable<SkillTreeNode['usedBy']>[number];
+
+type SkillBindingMap = Record<string, Skill[]>;
+
 /** Canonical display order for skill categories. */
 const CATEGORY_ORDER: SkillCategory[] = ['tech-lead', 'golang', 'react', 'qa', 'devops', 'other'];
 
@@ -100,7 +90,43 @@ const CATEGORY_LABELS: Record<SkillCategory, string> = {
   other: 'Other',
 };
 
-function buildTreeFromSkills(skills: Skill[]): SkillTreeNode[] {
+const isAssistantMember = (member: MemberFixture) =>
+  member.roleType === 'assistant' ||
+  Boolean(member.agentInstanceId) ||
+  Boolean(member.runtimeReady) ||
+  Boolean(member.agentRuntimeState);
+
+const assistantRuntimeStatus = (member: MemberFixture): SkillUsage['status'] => {
+  const raw = String(member.agentRuntimeState ?? member.terminalStatus ?? member.status ?? '').toLowerCase();
+  if (['error', 'failed', 'crashed'].includes(raw)) return 'error';
+  if (['running', 'working', 'busy', 'attached', 'online'].includes(raw)) return 'active';
+  return 'idle';
+};
+
+const buildUsageBySkill = (assistants: MemberFixture[], bindings: SkillBindingMap) => {
+  const byId = new Map(assistants.map((member) => [member.memberId, member]));
+  const usage = new Map<string, SkillUsage[]>();
+
+  for (const [memberId, memberSkills] of Object.entries(bindings)) {
+    const member = byId.get(memberId);
+    if (!member) continue;
+    for (const skill of memberSkills) {
+      const list = usage.get(skill.name) ?? [];
+      list.push({
+        agentId: member.memberId,
+        agentName: member.displayName ?? member.memberId,
+        status: assistantRuntimeStatus(member),
+        lastUsed: member.lastUpdatedAt ? new Date(member.lastUpdatedAt).toLocaleString() : 'Assigned',
+        usageCount: 0,
+      });
+      usage.set(skill.name, list);
+    }
+  }
+
+  return usage;
+};
+
+function buildTreeFromSkills(skills: Skill[], usageBySkill: Map<string, SkillUsage[]>): SkillTreeNode[] {
   const grouped = new Map<SkillCategory, Skill[]>();
   for (const s of skills) {
     const existing = grouped.get(s.category);
@@ -126,7 +152,7 @@ function buildTreeFromSkills(skills: Skill[]): SkillTreeNode[] {
         version: '1.0.0',
         language: s.category === 'golang' ? 'Go' : s.category === 'react' ? 'TypeScript' : 'Python',
         path: s.path,
-        usedBy: [],
+        usedBy: usageBySkill.get(s.name) ?? [],
         dependencies: [],
       })),
     }));
@@ -146,7 +172,6 @@ function TreeNode({
   selectedSkillId: string | null;
 }) {
   const [isExpanded, setIsExpanded] = useState(level === 0);
-  const [isHovered, setIsHovered] = useState(false);
 
   const isFolder = node.type === 'folder';
   const isSelected = selectedSkillId === node.id;
@@ -158,8 +183,6 @@ function TreeNode({
           isSelected ? 'app-surface-strong' : ''
         }`}
         style={{ paddingLeft: `${level * 20 + 8}px` }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
         onClick={() => {
           if (isFolder) {
             setIsExpanded(!isExpanded);
@@ -197,83 +220,10 @@ function TreeNode({
           {node.name}
         </span>
 
-        {!isFolder && node.usedBy && node.usedBy.length > 0 && !isHovered && (
+        {!isFolder && node.usedBy && node.usedBy.length > 0 && (
           <Badge variant="outline" className="text-[10px] h-5 shrink-0">
             {node.usedBy.length}
           </Badge>
-        )}
-
-        {/* Action Buttons (show on hover) */}
-        {isHovered && (
-          <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-            {isFolder && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Plus size={12} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem>
-                    <FilePlus size={14} className="mr-2" />
-                    New Skill
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <FolderPlus size={14} className="mr-2" />
-                    New Folder
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <MoreVertical size={12} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem>
-                  <Edit size={14} className="mr-2" />
-                  Rename
-                </DropdownMenuItem>
-                {!isFolder && (
-                  <>
-                    <DropdownMenuItem>
-                      <Copy size={14} className="mr-2" />
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Eye size={14} className="mr-2" />
-                      Preview
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuItem>
-                  <Move size={14} className="mr-2" />
-                  Move to...
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {isFolder && (
-                  <DropdownMenuItem>
-                    <Archive size={14} className="mr-2" />
-                    Archive Folder
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem className="text-red-600">
-                  <Trash2 size={14} className="mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         )}
       </div>
 
@@ -513,20 +463,282 @@ function SkillLibraryTab() {
   );
 }
 
+function SkillAssignmentsTab({
+  skills,
+  assistants,
+  bindings,
+  loading,
+  onReload,
+}: {
+  skills: Skill[];
+  assistants: MemberFixture[];
+  bindings: SkillBindingMap;
+  loading: boolean;
+  onReload: () => Promise<void>;
+}) {
+  const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [draft, setDraft] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (selectedAssistantId && assistants.some((member) => member.memberId === selectedAssistantId)) {
+      return;
+    }
+    setSelectedAssistantId(assistants[0]?.memberId ?? null);
+  }, [assistants, selectedAssistantId]);
+
+  useEffect(() => {
+    if (!selectedAssistantId) {
+      setDraft(new Set());
+      return;
+    }
+    setDraft(new Set((bindings[selectedAssistantId] ?? []).map((skill) => skill.name)));
+  }, [bindings, selectedAssistantId]);
+
+  const selectedAssistant = assistants.find((member) => member.memberId === selectedAssistantId) ?? null;
+  const selectedSkills = useMemo(
+    () => skills.filter((skill) => draft.has(skill.name)),
+    [draft, skills],
+  );
+  const filteredSkills = useMemo(() => {
+    const lower = query.trim().toLowerCase();
+    if (!lower) return skills;
+    return skills.filter(
+      (skill) =>
+        skill.name.toLowerCase().includes(lower) ||
+        skill.description.toLowerCase().includes(lower) ||
+        skill.category.toLowerCase().includes(lower),
+    );
+  }, [query, skills]);
+
+  const setSkillEnabled = (skillName: string, enabled: boolean) => {
+    setNotice(null);
+    setDraft((current) => {
+      const next = new Set(current);
+      if (enabled) {
+        next.add(skillName);
+      } else {
+        next.delete(skillName);
+      }
+      return next;
+    });
+  };
+
+  const save = async () => {
+    if (!selectedAssistantId) return;
+    setSaving(true);
+    setNotice(null);
+    try {
+      await updateMemberSkills(selectedAssistantId, { skills: selectedSkills });
+      await onReload();
+      setNotice({ tone: 'ok', text: 'Skill assignments saved.' });
+    } catch (err) {
+      setNotice({
+        tone: 'err',
+        text: err instanceof Error ? err.message : 'Failed to save skill assignments.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading && assistants.length === 0) {
+    return <div className="p-6 text-sm app-text-faint">Loading AI Assistants...</div>;
+  }
+
+  if (assistants.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <Card className="p-8 max-w-md text-center">
+          <Users size={32} className="app-text-faint mx-auto mb-3" />
+          <h2 className="text-base font-semibold app-text-strong mb-2">No AI Assistants Found</h2>
+          <p className="text-sm app-text-muted">
+            Create an AI Assistant from Members first. Skills can only be assigned to AI Assistant members.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 flex overflow-hidden">
+      <div className="w-[340px] app-surface-strong border-r app-border-subtle flex flex-col">
+        <div className="p-4 border-b app-border-subtle">
+          <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-3">
+            AI Assistants
+          </div>
+          <div className="text-sm app-text-muted">
+            {assistants.length} assistant{assistants.length === 1 ? '' : 's'} can receive skills.
+          </div>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-2 space-y-1">
+            {assistants.map((member) => {
+              const assignedCount = bindings[member.memberId]?.length ?? 0;
+              const active = member.memberId === selectedAssistantId;
+              return (
+                <button
+                  key={member.memberId}
+                  type="button"
+                  className={`w-full flex items-center gap-3 rounded px-3 py-2.5 text-left hover:app-surface-strong ${
+                    active ? 'app-surface-strong' : ''
+                  }`}
+                  onClick={() => {
+                    setSelectedAssistantId(member.memberId);
+                    setNotice(null);
+                  }}
+                >
+                  <PixelAvatar name={member.displayName ?? member.memberId} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium app-text-strong truncate">
+                      {member.displayName ?? member.memberId}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs app-text-faint">
+                      <StatusDot
+                        status={
+                          assistantRuntimeStatus(member) === 'active'
+                            ? 'success'
+                            : assistantRuntimeStatus(member) === 'error'
+                              ? 'error'
+                              : 'idle'
+                        }
+                      />
+                      <span>{member.agentRuntimeState ?? member.terminalStatus ?? 'idle'}</span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {assignedCount}
+                  </Badge>
+                </button>
+              );
+            })}
+          </div>
+        </ScrollArea>
+      </div>
+
+      <div className="flex-1 overflow-auto p-6">
+        <div className="max-w-5xl mx-auto space-y-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold app-text-strong">
+                {selectedAssistant?.displayName ?? selectedAssistant?.memberId ?? 'AI Assistant'} Skills
+              </h2>
+              <p className="text-sm app-text-muted mt-1">
+                Assign catalog skills that this AI Assistant should load during initialization.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => void onReload()} disabled={loading || saving}>
+                Refresh
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setDraft(new Set())} disabled={saving}>
+                Clear All
+              </Button>
+              <Button size="sm" onClick={() => void save()} disabled={!selectedAssistantId || saving}>
+                <CheckCircle size={14} className="mr-1" />
+                {saving ? 'Saving...' : 'Save Skills'}
+              </Button>
+            </div>
+          </div>
+
+          {notice && (
+            <div
+              className={`flex items-center gap-2 text-sm ${
+                notice.tone === 'ok' ? 'text-green-600' : 'text-red-600'
+              }`}
+            >
+              {notice.tone === 'ok' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+              <span>{notice.text}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-4">
+            <Card className="p-4">
+              <div className="text-xs app-text-faint mb-1">Assigned Skills</div>
+              <div className="text-2xl font-bold app-text-strong">{draft.size}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-xs app-text-faint mb-1">Catalog Skills</div>
+              <div className="text-2xl font-bold app-text-strong">{skills.length}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-xs app-text-faint mb-1">Assistant Runtime</div>
+              <div className="text-sm font-semibold app-text-strong capitalize">
+                {selectedAssistant?.agentRuntimeState ?? selectedAssistant?.terminalStatus ?? 'idle'}
+              </div>
+            </Card>
+          </div>
+
+          <Card className="p-4">
+            <div className="relative mb-4">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 app-text-faint"
+              />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search assignable skills..."
+                className="pl-9 h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              {filteredSkills.length === 0 ? (
+                <div className="py-8 text-center text-sm app-text-faint">No skills match this search.</div>
+              ) : (
+                filteredSkills.map((skill) => {
+                  const checked = draft.has(skill.name);
+                  return (
+                    <label
+                      key={skill.name}
+                      className="flex items-start gap-3 rounded border app-border-subtle p-3 hover:app-surface-strong cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(value) => setSkillEnabled(skill.name, value === true)}
+                        className="mt-0.5"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold app-text-strong">{skill.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {skill.category}
+                          </Badge>
+                        </div>
+                        <p className="text-sm app-text-muted mt-1">{skill.description}</p>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Page component ── */
 
 export const SkillsPage = () => {
   const { t } = useI18n();
   const { apiClient } = useAppShell();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'catalog' | 'library'>('catalog');
+  const [activeTab, setActiveTab] = useState<'catalog' | 'assignments' | 'library'>('catalog');
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [assignmentState, setAssignmentState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [assistantMembers, setAssistantMembers] = useState<MemberFixture[]>([]);
+  const [skillBindings, setSkillBindings] = useState<SkillBindingMap>({});
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<SkillsSnapshotV1 | null>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
-  const [selectedSkill, setSelectedSkill] = useState<SkillTreeNode | null>(null);
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   const loadCatalog = useCallback(async () => {
@@ -544,6 +756,35 @@ export const SkillsPage = () => {
   useEffect(() => {
     void loadCatalog();
   }, [loadCatalog]);
+
+  const loadAssignments = useCallback(async () => {
+    setAssignmentState('loading');
+    try {
+      const membersResponse = await apiClient.getMembers();
+      const assistants = (membersResponse.members ?? []).filter(isAssistantMember);
+      const entries = await Promise.all(
+        assistants.map(async (member) => {
+          try {
+            const response = await getMemberSkills(member.memberId);
+            return [member.memberId, response.skills ?? []] as const;
+          } catch {
+            return [member.memberId, []] as const;
+          }
+        }),
+      );
+      setAssistantMembers(assistants);
+      setSkillBindings(Object.fromEntries(entries));
+      setAssignmentState('idle');
+    } catch {
+      setAssistantMembers([]);
+      setSkillBindings({});
+      setAssignmentState('error');
+    }
+  }, [apiClient]);
+
+  useEffect(() => {
+    void loadAssignments();
+  }, [loadAssignments]);
 
   const handleExport = useCallback(async () => {
     setExporting(true);
@@ -619,13 +860,18 @@ export const SkillsPage = () => {
         setMessage({ tone: 'ok', text: t('skillsPage.applyDone') });
         setPreview(null);
         void loadCatalog();
+        void loadAssignments();
       }
     } finally {
       setImporting(false);
     }
-  }, [preview, loadCatalog, t]);
+  }, [preview, loadCatalog, loadAssignments, t]);
 
-  const skillTree = useMemo(() => buildTreeFromSkills(skills), [skills]);
+  const usageBySkill = useMemo(
+    () => buildUsageBySkill(assistantMembers, skillBindings),
+    [assistantMembers, skillBindings],
+  );
+  const skillTree = useMemo(() => buildTreeFromSkills(skills, usageBySkill), [skills, usageBySkill]);
 
   // Compute stats
   const getAllSkills = (nodes: SkillTreeNode[]): SkillTreeNode[] => {
@@ -638,9 +884,13 @@ export const SkillsPage = () => {
   };
 
   const allSkillNodes = getAllSkills(skillTree);
+  const selectedSkill = selectedSkillId
+    ? (allSkillNodes.find((skill) => skill.id === selectedSkillId) ?? null)
+    : null;
   const activeSkills = allSkillNodes.filter((s) =>
     s.usedBy?.some((u) => u.status === 'active'),
   ).length;
+  const assignedSkills = allSkillNodes.filter((s) => (s.usedBy?.length ?? 0) > 0).length;
 
   // Filter tree by search query
   const filteredTree = useMemo(() => {
@@ -689,6 +939,12 @@ export const SkillsPage = () => {
                 <span className="font-semibold text-green-600">{activeSkills}</span>
                 <span className="app-text-faint">active</span>
               </div>
+              <div className="w-px h-3 bg-gray-300 dark:bg-gray-700" />
+              <div className="flex items-center gap-1.5">
+                <Users size={14} className="app-text-muted" />
+                <span className="font-semibold app-text-strong">{assignedSkills}</span>
+                <span className="app-text-faint">assigned</span>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -723,7 +979,7 @@ export const SkillsPage = () => {
                 {importing ? 'Applying...' : 'Apply Import'}
               </Button>
             )}
-            <Button size="sm" className="h-8">
+            <Button size="sm" className="h-8" onClick={() => setActiveTab('library')}>
               <Plus size={14} className="mr-1" />
               New Skill
             </Button>
@@ -733,9 +989,10 @@ export const SkillsPage = () => {
 
       {/* Top-level tab switcher */}
       <div className="border-b app-border-subtle px-6 pt-2 app-surface-strong">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'catalog' | 'library')}>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'catalog' | 'assignments' | 'library')}>
           <TabsList className="h-9">
             <TabsTrigger value="catalog" className="text-xs">Skill Catalog</TabsTrigger>
+            <TabsTrigger value="assignments" className="text-xs">AI Assistant Assignments</TabsTrigger>
             <TabsTrigger value="library" className="text-xs">Skill Library</TabsTrigger>
           </TabsList>
         </Tabs>
@@ -744,6 +1001,15 @@ export const SkillsPage = () => {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {activeTab === 'library' && <SkillLibraryTab />}
+        {activeTab === 'assignments' && (
+          <SkillAssignmentsTab
+            skills={skills}
+            assistants={assistantMembers}
+            bindings={skillBindings}
+            loading={assignmentState === 'loading'}
+            onReload={loadAssignments}
+          />
+        )}
         {activeTab === 'catalog' && (
         <>
         {/* Left Sidebar - Tree */}
@@ -776,8 +1042,8 @@ export const SkillsPage = () => {
                   <TreeNode
                     key={node.id}
                     node={node}
-                    onSelectSkill={setSelectedSkill}
-                    selectedSkillId={selectedSkill?.id ?? null}
+                    onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
+                    selectedSkillId={selectedSkillId}
                   />
                 ))
               )}
@@ -820,20 +1086,10 @@ export const SkillsPage = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
-                      <Eye size={14} className="mr-1" />
-                      Preview
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      <Edit size={14} className="mr-1" />
-                      Edit
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      <Copy size={14} className="mr-1" />
-                      Duplicate
-                    </Button>
-                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab('assignments')}>
+                    <Users size={14} className="mr-1" />
+                    Manage Assignments
+                  </Button>
                 </div>
 
                 {/* Quick Stats */}
@@ -948,10 +1204,6 @@ export const SkillsPage = () => {
                           {selectedSkill.path || `${selectedSkill.name}.md`}
                         </span>
                       </div>
-                      <Button variant="ghost" size="sm" className="h-7">
-                        <Copy size={12} className="mr-1" />
-                        Copy
-                      </Button>
                     </div>
                     <pre className="p-4 text-xs font-mono app-text-strong overflow-x-auto bg-gray-50 dark:bg-gray-900/50">
                       {selectedSkill.code ??

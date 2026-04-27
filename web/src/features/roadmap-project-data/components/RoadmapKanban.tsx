@@ -8,13 +8,18 @@ const STATUS_OPTIONS: RoadmapTaskStatus[] = ['todo', 'in_progress', 'done', 'blo
 
 export type RoadmapKanbanProps = {
   tasks: RoadmapTaskItem[];
+  members: Array<{ memberId: string; displayName?: string }>;
   disableInputs: boolean;
   onTaskChange: (taskId: string, patch: Partial<RoadmapTaskItem>) => void;
   onDelete: (taskId: string) => void;
 };
 
-export const RoadmapKanban = ({ tasks, disableInputs, onTaskChange, onDelete }: RoadmapKanbanProps) => {
+export const RoadmapKanban = ({ tasks, members, disableInputs, onTaskChange, onDelete }: RoadmapKanbanProps) => {
   const { t } = useI18n();
+  const memberNames = useMemo(
+    () => new Map(members.map((member) => [member.memberId, member.displayName ?? member.memberId])),
+    [members],
+  );
 
   const columns = useMemo(() => {
     const grouped: Record<string, RoadmapTaskItem[]> = {};
@@ -42,7 +47,7 @@ export const RoadmapKanban = ({ tasks, disableInputs, onTaskChange, onDelete }: 
                 {task.title || t('roadmapPanel.taskTitle')}
               </div>
               <div className={styles['roadmap-kanban__card-meta']}>
-                <span>{task.assigneeId ?? t('roadmapPanel.unassigned')}</span>
+                <span>{task.assigneeId ? memberNames.get(task.assigneeId) ?? task.assigneeId : t('roadmapPanel.unassigned')}</span>
                 <div className={styles['roadmap-kanban__card-actions']}>
                   <select
                     className={styles['roadmap-task-card__status-select']}

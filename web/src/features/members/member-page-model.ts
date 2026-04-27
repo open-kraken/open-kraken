@@ -8,6 +8,10 @@ export type MemberFixture = {
   avatarUrl?: string;
   roleType?: RoleType;
   terminalStatus?: string;
+  terminalId?: string;
+  agentInstanceId?: string;
+  agentRuntimeState?: string;
+  runtimeReady?: boolean;
   manualStatus?: string;
   status?: string;
   statusLabel?: string;
@@ -51,6 +55,9 @@ export type MemberCardModel = {
   taskClassName: string;
   /** PTY + presence line for ops overview (distinct from collaboration status). */
   processSummary: string;
+  agentInstanceId: string | null;
+  runtimeReady: boolean;
+  runtimeState: string | null;
 };
 
 export type TeamRosterModel = {
@@ -58,6 +65,7 @@ export type TeamRosterModel = {
   name: string;
   metrics: {
     total: number;
+    aiAssistants: number;
     running: number;
     offline: number;
   };
@@ -69,6 +77,7 @@ export type MembersPageModel = {
   realtimeStatus: string;
   metrics: {
     total: number;
+    aiAssistants: number;
     running: number;
     offline: number;
   };
@@ -164,6 +173,9 @@ const buildProcessSummary = (member: MemberFixture): string => {
   const parts: string[] = [];
   if (member.terminalStatus) {
     parts.push(`PTY · ${member.terminalStatus}`);
+  }
+  if (member.agentRuntimeState) {
+    parts.push(`runtime · ${member.agentRuntimeState}`);
   }
   if (member.manualStatus) {
     parts.push(`presence · ${member.manualStatus}`);
@@ -292,7 +304,7 @@ const buildMemberCards = (workspaceId: string, members: MemberFixture[], roadmap
     return {
       agentId: member.memberId,
       memberId: member.memberId,
-      terminalId: `term_${member.memberId}`,
+      terminalId: member.terminalId ?? `term_${member.memberId}`,
       workspaceId: member.workspaceId ?? workspaceId,
       displayName,
       displayNameTitle: displayName,
@@ -308,13 +320,17 @@ const buildMemberCards = (workspaceId: string, members: MemberFixture[], roadmap
       cardClassName: 'member-card',
       nameClassName: displayName.length > 24 ? 'member-card__name member-card__name--truncate' : 'member-card__name',
       taskClassName: activeTask ? 'member-card__task' : 'member-card__task member-card__task--empty',
-      processSummary: buildProcessSummary(member)
+      processSummary: buildProcessSummary(member),
+      agentInstanceId: member.agentInstanceId ?? null,
+      runtimeReady: member.runtimeReady === true,
+      runtimeState: member.agentRuntimeState ?? null
     } satisfies MemberCardModel;
   });
 };
 
 const rosterMetrics = (cards: MemberCardModel[]) => ({
   total: cards.length,
+  aiAssistants: cards.filter((m) => m.role === 'assistant').length,
   running: cards.filter((m) => m.status === 'running').length,
   offline: cards.filter((m) => m.status === 'offline').length
 });

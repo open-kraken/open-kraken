@@ -23,6 +23,9 @@ export interface Node {
   labels: Record<string, string>;
   registeredAt: string;
   lastHeartbeatAt: string;
+  /** 0 means unlimited on the backend; the UI may still use a visual fallback. */
+  maxAgents: number;
+  agentCount: number;
   /** List of memberId values assigned to this node. */
   assignedAgents: string[];
 }

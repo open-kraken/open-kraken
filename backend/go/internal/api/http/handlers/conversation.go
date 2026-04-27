@@ -37,11 +37,14 @@ func (h *WorkspaceHandler) HandleConversations(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if len(parts) == 0 {
-		if r.Method != http.MethodGet {
+		switch r.Method {
+		case http.MethodGet:
+			h.HandleChatHome(w, r, workspaceID)
+		case http.MethodPost:
+			h.handleConversationCreate(w, r, workspaceID)
+		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
 		}
-		h.HandleChatHome(w, r, workspaceID)
 		return
 	}
 	conversationID := parts[0]
@@ -59,6 +62,94 @@ func (h *WorkspaceHandler) HandleConversations(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNotFound)
 }
 
+func (h *WorkspaceHandler) handleConversationCreate(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	var body struct {
+		Type     string `json:"type"`
+		MemberID string `json:"memberId"`
+		TeamID   string `json:"teamId"`
+	}
+	if !decodeJSON(r, &body, w) {
+		return
+	}
+	convType := strings.TrimSpace(body.Type)
+	if convType == "" {
+		convType = "direct"
+	}
+	if convType != "direct" && convType != "team" && convType != "channel" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "conversation type must be direct, team, or channel"})
+		return
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	var conversation map[string]any
+	switch convType {
+	case "direct":
+		memberID := strings.TrimSpace(body.MemberID)
+		if memberID == "" || !h.memberExistsLocked(memberID) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "memberId is required and must exist"})
+			return
+		}
+		currentID := h.defaultHumanMemberIDLocked(memberID)
+		ids := []string{currentID, memberID}
+		if existing := findDirectConversation(h.state.Conversations, ids); existing != nil {
+			conversation = existing
+			break
+		}
+		conversation = map[string]any{
+			"id":                 "conv_dm_" + sanitizeConversationID(currentID) + "_" + sanitizeConversationID(memberID),
+			"type":               "direct",
+			"memberIds":          ids,
+			"lastMessagePreview": "",
+			"lastMessageAt":      time.Now().UTC().UnixMilli(),
+			"unreadCount":        0,
+		}
+	case "team":
+		teamID := strings.TrimSpace(body.TeamID)
+		if teamID == "" || !h.teamExistsLocked(teamID) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "teamId is required and must exist"})
+			return
+		}
+		if existing := findTeamConversation(h.state.Conversations, teamID); existing != nil {
+			conversation = existing
+			break
+		}
+		conversation = map[string]any{
+			"id":                 "conv_team_" + sanitizeConversationID(teamID),
+			"type":               "team",
+			"teamId":             teamID,
+			"lastMessagePreview": "",
+			"lastMessageAt":      time.Now().UTC().UnixMilli(),
+			"unreadCount":        0,
+		}
+	default:
+		conversation = map[string]any{
+			"id":                 "conv_channel_" + time.Now().UTC().Format("20060102150405"),
+			"type":               "channel",
+			"customName":         "New Channel",
+			"lastMessagePreview": "",
+			"lastMessageAt":      time.Now().UTC().UnixMilli(),
+			"unreadCount":        0,
+		}
+	}
+
+	if !conversationExists(h.state.Conversations, asString(conversation["id"])) {
+		h.state.Conversations = append([]map[string]any{conversation}, h.state.Conversations...)
+		h.state.Messages[asString(conversation["id"])] = []map[string]any{}
+	}
+	h.hub.Publish(realtime.Event{
+		Name:        realtime.EventChatUpdated,
+		WorkspaceID: workspaceID,
+		ChannelID:   asString(conversation["id"]),
+		Payload: realtime.ChatUpdatedPayload{
+			ConversationID: asString(conversation["id"]),
+			Reason:         "conversation.created",
+		},
+	})
+	writeJSON(w, http.StatusCreated, map[string]any{"conversation": conversation})
+}
+
 func (h *WorkspaceHandler) handleMessagesList(w http.ResponseWriter, conversationID string) {
 	// Delegate to message service if available.
 	if h.msgSvc != nil {
@@ -69,7 +160,8 @@ func (h *WorkspaceHandler) handleMessagesList(w http.ResponseWriter, conversatio
 			return
 		}
 		items := make([]map[string]any, 0, len(msgs))
-		for _, m := range msgs {
+		for i := len(msgs) - 1; i >= 0; i-- {
+			m := msgs[i]
 			items = append(items, map[string]any{
 				"id":        m.ID,
 				"senderId":  m.SenderID,
@@ -82,7 +174,7 @@ func (h *WorkspaceHandler) handleMessagesList(w http.ResponseWriter, conversatio
 		writeJSON(w, http.StatusOK, map[string]any{
 			"conversationId": conversationID,
 			"items":          items,
-			"nextBefore":     nil,
+			"nextBeforeId":   nil,
 		})
 		return
 	}
@@ -92,7 +184,7 @@ func (h *WorkspaceHandler) handleMessagesList(w http.ResponseWriter, conversatio
 	writeJSON(w, http.StatusOK, map[string]any{
 		"conversationId": conversationID,
 		"items":          h.state.Messages[conversationID],
-		"nextBefore":     nil,
+		"nextBeforeId":   nil,
 	})
 }
 
@@ -131,22 +223,33 @@ func (h *WorkspaceHandler) handleMessagesCreate(w http.ResponseWriter, r *http.R
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{
-			"message": map[string]any{
-				"id":        saved.ID,
-				"senderId":  saved.SenderID,
-				"content":   map[string]string{"type": string(saved.ContentType), "text": saved.ContentText},
-				"createdAt": saved.CreatedAt.UnixMilli(),
-				"isAi":      saved.IsAI,
-				"status":    string(saved.Status),
+		messageJSON := map[string]any{
+			"id":        saved.ID,
+			"senderId":  saved.SenderID,
+			"content":   map[string]string{"type": string(saved.ContentType), "text": saved.ContentText},
+			"createdAt": saved.CreatedAt.UnixMilli(),
+			"isAi":      saved.IsAI,
+			"status":    string(saved.Status),
+		}
+		h.mu.Lock()
+		updateConversationPreview(h.state.Conversations, conversationID, messageJSON)
+		h.mu.Unlock()
+		h.hub.Publish(realtime.Event{
+			Name:        realtime.EventChatUpdated,
+			WorkspaceID: workspaceID,
+			ChannelID:   conversationID,
+			Payload: realtime.ChatUpdatedPayload{
+				ConversationID: conversationID,
+				Reason:         "message.created",
 			},
 		})
+		h.ingestRoadmapTasksFromChat(r.Context(), workspaceID, conversationID, saved.ID, saved.ContentText)
+		writeJSON(w, http.StatusCreated, map[string]any{"message": messageJSON})
 		return
 	}
 
 	// Fallback to fixture-based handling.
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	fixtureMsg := map[string]any{
 		"id":        "msg_" + time.Now().UTC().Format("150405.000"),
 		"senderId":  body["senderId"],
@@ -169,6 +272,7 @@ func (h *WorkspaceHandler) handleMessagesCreate(w http.ResponseWriter, r *http.R
 		Payload: realtime.ChatDeltaPayload{
 			ConversationID: conversationID,
 			MessageID:      fixtureMsg["id"].(string),
+			SenderID:       asString(fixtureMsg["senderId"]),
 			Sequence:       uint64(len(h.state.Messages[conversationID])),
 			Body:           readMessageText(fixtureMsg),
 		},
@@ -184,6 +288,8 @@ func (h *WorkspaceHandler) handleMessagesCreate(w http.ResponseWriter, r *http.R
 		},
 	})
 	h.publishChatSnapshotLocked(conversationID)
+	h.mu.Unlock()
+	h.ingestRoadmapTasksFromChat(r.Context(), workspaceID, conversationID, asString(fixtureMsg["id"]), readMessageText(fixtureMsg))
 	writeJSON(w, http.StatusCreated, map[string]any{"message": fixtureMsg})
 }
 
@@ -257,4 +363,124 @@ func totalUnreadCount(items []map[string]any) int {
 		}
 	}
 	return total
+}
+
+func (h *WorkspaceHandler) memberExistsLocked(memberID string) bool {
+	for _, member := range h.state.Members.Members {
+		if asString(member["memberId"]) == memberID {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *WorkspaceHandler) teamExistsLocked(teamID string) bool {
+	for _, team := range h.teams {
+		if team.TeamID == teamID {
+			return true
+		}
+	}
+	for _, team := range h.state.Teams {
+		if team.TeamID == teamID {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *WorkspaceHandler) defaultHumanMemberIDLocked(exclude string) string {
+	for _, member := range h.state.Members.Members {
+		id := asString(member["memberId"])
+		if id == "" || id == exclude {
+			continue
+		}
+		if asString(member["roleType"]) != "assistant" {
+			return id
+		}
+	}
+	for _, member := range h.state.Members.Members {
+		id := asString(member["memberId"])
+		if id != "" && id != exclude {
+			return id
+		}
+	}
+	return "owner_1"
+}
+
+func findDirectConversation(conversations []map[string]any, memberIDs []string) map[string]any {
+	for _, conversation := range conversations {
+		if asString(conversation["type"]) != "direct" {
+			continue
+		}
+		if sameStringSet(asStringSlice(conversation["memberIds"]), memberIDs) {
+			return conversation
+		}
+	}
+	return nil
+}
+
+func findTeamConversation(conversations []map[string]any, teamID string) map[string]any {
+	for _, conversation := range conversations {
+		if asString(conversation["type"]) == "team" && asString(conversation["teamId"]) == teamID {
+			return conversation
+		}
+	}
+	return nil
+}
+
+func conversationExists(conversations []map[string]any, id string) bool {
+	for _, conversation := range conversations {
+		if asString(conversation["id"]) == id {
+			return true
+		}
+	}
+	return false
+}
+
+func asStringSlice(value any) []string {
+	var result []string
+	switch raw := value.(type) {
+	case []string:
+		result = append(result, raw...)
+	case []any:
+		for _, item := range raw {
+			if text := asString(item); text != "" {
+				result = append(result, text)
+			}
+		}
+	}
+	return result
+}
+
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, item := range a {
+		seen[item]++
+	}
+	for _, item := range b {
+		seen[item]--
+		if seen[item] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func sanitizeConversationID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unknown"
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }

@@ -2,7 +2,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import type { RoadmapTaskStatus } from '../api-client';
 import styles from '../roadmap-feature.module.css';
 
-export type ViewMode = 'list' | 'kanban';
+export type ViewMode = 'map' | 'list' | 'kanban';
 export type StatusFilter = RoadmapTaskStatus | 'all';
 
 const FILTER_OPTIONS: StatusFilter[] = ['all', 'todo', 'in_progress', 'done', 'blocked'];
@@ -29,6 +29,14 @@ export const RoadmapToolbar = ({
   return (
     <div className={styles['roadmap-toolbar']}>
       <div className={styles['roadmap-toolbar__group']}>
+        <button
+          type="button"
+          className={`${styles['roadmap-toolbar__btn']}${viewMode === 'map' ? ` ${styles['roadmap-toolbar__btn--active']}` : ''}`}
+          onClick={() => onViewModeChange('map')}
+          aria-pressed={viewMode === 'map'}
+        >
+          {t('roadmapPanel.viewMap')}
+        </button>
         <button
           type="button"
           className={`${styles['roadmap-toolbar__btn']}${viewMode === 'list' ? ` ${styles['roadmap-toolbar__btn--active']}` : ''}`}

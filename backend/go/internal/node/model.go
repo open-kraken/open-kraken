@@ -13,6 +13,8 @@ var (
 	ErrNotFound = errors.New("node: not found")
 	// ErrInvalidID is returned when a node has a blank ID.
 	ErrInvalidID = errors.New("node: id is required")
+	// ErrInvalidAgentID is returned when an agent assignment has a blank ID.
+	ErrInvalidAgentID = errors.New("node: agent id is required")
 	// ErrInvalidHostname is returned when a node has a blank hostname.
 	ErrInvalidHostname = errors.New("node: hostname is required")
 	// ErrInvalidType is returned when NodeType is not a known value.
@@ -21,6 +23,10 @@ var (
 	ErrHostnameConflict = errors.New("node: hostname already registered")
 	// ErrMaxAgentsReached is returned when a node has reached its agent capacity.
 	ErrMaxAgentsReached = errors.New("node: maximum agent capacity reached")
+	// ErrAgentAlreadyAssigned is returned when an agent is assigned to another node.
+	ErrAgentAlreadyAssigned = errors.New("node: agent already assigned to a node")
+	// ErrNoAvailableNode is returned when no online node can host an agent.
+	ErrNoAvailableNode = errors.New("node: no available node")
 )
 
 // NodeStatus represents the operational state of a node.
@@ -55,10 +61,10 @@ type Node struct {
 	Labels   map[string]string
 	// WorkspaceID scopes this node to a workspace for event isolation.
 	// Defaults to the server's default workspace when omitted at registration.
-	WorkspaceID     string
+	WorkspaceID string
 	// MaxAgents is the maximum number of agents that can be assigned to this node.
 	// 0 means unlimited.
-	MaxAgents       int
+	MaxAgents int
 	// Agents tracks the IDs of agents currently assigned to this node.
 	Agents          []string
 	RegisteredAt    time.Time

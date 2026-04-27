@@ -10,10 +10,11 @@ import (
 
 // Service manages the task queue lifecycle: enqueue, claim, ack, nack, cancel.
 type Service struct {
-	repo Repository
-	hub  *realtime.Hub
-	now  func() time.Time
-	idGen func() string
+	repo          Repository
+	hub           *realtime.Hub
+	agentResolver func(ctx context.Context, nodeID string, busyAgents map[string]bool) (string, error)
+	now           func() time.Time
+	idGen         func() string
 }
 
 // NewService creates a task queue Service.
@@ -24,6 +25,13 @@ func NewService(repo Repository, hub *realtime.Hub) *Service {
 		now:   time.Now,
 		idGen: defaultTaskIDGen,
 	}
+}
+
+// SetAgentResolver wires queue claims to the node/agent registry. When set,
+// Claim refuses to take a task for a node that has no free AI Assistant and
+// stores the selected assistant id on the claimed task.
+func (s *Service) SetAgentResolver(fn func(ctx context.Context, nodeID string, busyAgents map[string]bool) (string, error)) {
+	s.agentResolver = fn
 }
 
 // Enqueue adds a new task to the queue. If an idempotency key is provided and
@@ -71,9 +79,30 @@ func (s *Service) Claim(ctx context.Context, queueName, nodeID string) (Task, er
 	if queueName == "" {
 		queueName = "default"
 	}
+	agentID := ""
+	if s.agentResolver != nil {
+		busy, err := s.busyAgents(ctx, nodeID)
+		if err != nil {
+			return Task{}, fmt.Errorf("taskqueue claim: %w", err)
+		}
+		agentID, err = s.agentResolver(ctx, nodeID, busy)
+		if err != nil {
+			return Task{}, fmt.Errorf("taskqueue claim: %w", err)
+		}
+		if agentID == "" {
+			return Task{}, ErrNoAvailableAgent
+		}
+	}
 	t, err := s.repo.ClaimNext(ctx, queueName, nodeID)
 	if err != nil {
 		return Task{}, fmt.Errorf("taskqueue claim: %w", err)
+	}
+	if agentID != "" {
+		t.AgentID = agentID
+		t.UpdatedAt = s.now()
+		if err := s.repo.Update(ctx, t); err != nil {
+			return Task{}, fmt.Errorf("taskqueue claim assign agent: %w", err)
+		}
 	}
 	s.publishEvent("task.claimed", t)
 	return t, nil
@@ -145,7 +174,7 @@ func (s *Service) Nack(ctx context.Context, taskID, nodeID, errMsg string) (Task
 	if t.ShouldRetry() || t.Attempts < t.MaxAttempts {
 		// Re-queue with backoff.
 		backoff := DefaultRetryPolicy.Backoff * time.Duration(t.Attempts)
-		t.Status = TaskStatusPending
+		t.Status = TaskStatusRetrying
 		t.NodeID = ""
 		t.AgentID = ""
 		t.NextRunAt = now.Add(backoff)
@@ -160,6 +189,33 @@ func (s *Service) Nack(ctx context.Context, taskID, nodeID, errMsg string) (Task
 		return Task{}, fmt.Errorf("taskqueue nack: %w", err)
 	}
 	return t, nil
+}
+
+// PromoteRetries moves retry-delayed tasks whose NextRunAt has elapsed back to
+// pending so workers can claim them again.
+func (s *Service) PromoteRetries(ctx context.Context) (int, error) {
+	tasks, err := s.repo.List(ctx, Query{Status: TaskStatusRetrying, Limit: 200})
+	if err != nil {
+		return 0, fmt.Errorf("taskqueue promote retries: %w", err)
+	}
+	now := s.now()
+	promoted := 0
+	for _, t := range tasks {
+		if t.NextRunAt.After(now) {
+			continue
+		}
+		if !t.CanTransitionTo(TaskStatusPending) {
+			continue
+		}
+		t.Status = TaskStatusPending
+		t.UpdatedAt = now
+		if err := s.repo.Update(ctx, t); err != nil {
+			return promoted, fmt.Errorf("taskqueue promote retry: %w", err)
+		}
+		promoted++
+		s.publishEvent("task.pending", t)
+	}
+	return promoted, nil
 }
 
 // Cancel moves a non-terminal task to cancelled.
@@ -206,9 +262,57 @@ func (s *Service) StartTimeoutScanner(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_, _ = s.repo.RequeueTimedOut(ctx, s.now())
+			_ = s.scanTimeouts(ctx)
+			_, _ = s.PromoteRetries(ctx)
 		}
 	}
+}
+
+func (s *Service) busyAgents(ctx context.Context, nodeID string) (map[string]bool, error) {
+	busy := map[string]bool{}
+	for _, status := range []TaskStatus{TaskStatusClaimed, TaskStatusRunning} {
+		tasks, err := s.repo.List(ctx, Query{NodeID: nodeID, Status: status, Limit: 200})
+		if err != nil {
+			return nil, err
+		}
+		for _, task := range tasks {
+			if task.AgentID != "" {
+				busy[task.AgentID] = true
+			}
+		}
+	}
+	return busy, nil
+}
+
+func (s *Service) scanTimeouts(ctx context.Context) error {
+	running, err := s.repo.List(ctx, Query{Status: TaskStatusRunning, Limit: 200})
+	if err != nil {
+		return fmt.Errorf("taskqueue timeout scan: %w", err)
+	}
+	now := s.now()
+	for _, t := range running {
+		if t.Timeout <= 0 || t.StartedAt.IsZero() || !t.StartedAt.Add(t.Timeout).Before(now) {
+			continue
+		}
+		t.Attempts++
+		t.LastError = "timeout"
+		t.UpdatedAt = now
+		if t.Attempts < t.MaxAttempts {
+			t.Status = TaskStatusRetrying
+			t.NodeID = ""
+			t.AgentID = ""
+			t.NextRunAt = now.Add(DefaultRetryPolicy.Backoff * time.Duration(t.Attempts))
+			s.publishEvent("task.retrying", t)
+		} else {
+			t.Status = TaskStatusFailed
+			t.CompletedAt = now
+			s.publishEvent("task.failed", t)
+		}
+		if err := s.repo.Update(ctx, t); err != nil {
+			return fmt.Errorf("taskqueue timeout update: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *Service) publishEvent(name string, t Task) {

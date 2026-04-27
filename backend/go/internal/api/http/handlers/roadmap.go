@@ -215,7 +215,11 @@ func (h *WorkspaceHandler) HandleProjectData(w http.ResponseWriter, r *http.Requ
 
 func (h *WorkspaceHandler) publishRoadmapLocked() {
 	itemIDs := make([]string, 0)
-	if tasks, ok := h.state.Roadmap["tasks"].([]any); ok {
+	if tasks, ok := h.state.Roadmap["tasks"].([]projectdata.RoadmapTask); ok {
+		for _, task := range tasks {
+			itemIDs = append(itemIDs, task.ID)
+		}
+	} else if tasks, ok := h.state.Roadmap["tasks"].([]any); ok {
 		for _, task := range tasks {
 			if row, ok := task.(map[string]any); ok {
 				itemIDs = append(itemIDs, asString(row["id"]))

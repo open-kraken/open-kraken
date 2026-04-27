@@ -7,6 +7,7 @@ import { RoadmapProgressSummary } from './RoadmapProgressSummary';
 import { RoadmapToolbar, type ViewMode, type StatusFilter } from './RoadmapToolbar';
 import { RoadmapTaskCard } from './RoadmapTaskCard';
 import { RoadmapKanban } from './RoadmapKanban';
+import { RoadmapDependencyMap } from './RoadmapDependencyMap';
 import styles from '../roadmap-feature.module.css';
 
 export type RoadmapPanelProps = {
@@ -39,7 +40,7 @@ export const RoadmapPanel = ({
   onMoveTask
 }: RoadmapPanelProps) => {
   const { t } = useI18n();
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>('map');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const detailText = feedback.detailKey ? t(feedback.detailKey) : translatePanelDetail(feedback.detail, t);
@@ -135,6 +136,14 @@ export const RoadmapPanel = ({
             </button>
           )}
         </div>
+      ) : viewMode === 'map' ? (
+        <RoadmapDependencyMap
+          tasks={filteredTasks}
+          allTasks={value.tasks}
+          members={members}
+          disableInputs={feedback.disableInputs}
+          onTaskChange={onTaskChange}
+        />
       ) : viewMode === 'list' ? (
         <div className={styles['roadmap-task-list']}>
           {filteredTasks.map((task, index) => (
@@ -155,6 +164,7 @@ export const RoadmapPanel = ({
       ) : (
         <RoadmapKanban
           tasks={filteredTasks}
+          members={members}
           disableInputs={feedback.disableInputs}
           onTaskChange={onTaskChange}
           onDelete={onDeleteTask}

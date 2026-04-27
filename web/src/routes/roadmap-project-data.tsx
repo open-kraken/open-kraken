@@ -6,8 +6,6 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useAppShell } from '@/state/app-shell-store';
-import { createApiClient } from '../api/create-client';
-import { appEnv, resolveBrowserApiBaseUrl, resolveBrowserWsBaseUrl } from '@/config/env';
 import { ProjectDataPanel } from '../features/roadmap-project-data/components/ProjectDataPanel';
 import { RoadmapPanel } from '../features/roadmap-project-data/components/RoadmapPanel';
 import type {
@@ -52,22 +50,30 @@ export type RoadmapProjectDataRouteProps = {
   onPageError?: (message: string | null) => void;
 };
 
-const createDefaultClient = (): RoadmapProjectDataClient =>
-  createApiClient({
-    env: {
-      OPEN_KRAKEN_API_BASE_URL: resolveBrowserApiBaseUrl(),
-      OPEN_KRAKEN_WS_BASE_URL: resolveBrowserWsBaseUrl(),
-      OPEN_KRAKEN_WORKSPACE_ID: appEnv.defaultWorkspaceId
-    }
-  }) as RoadmapProjectDataClient;
-
 const updateTaskList = (tasks: RoadmapTaskItem[], taskId: string, patch: Partial<RoadmapTaskItem>) =>
   tasks.map((task) => (task.id === taskId ? { ...task, ...patch } : task));
+
+const normalizeShellRoadmapResponse = (response: Awaited<ReturnType<ReturnType<typeof useAppShell>['apiClient']['getRoadmapDocument']>>): RoadmapResponse => ({
+  ...response,
+  readOnly: response.readOnly ?? false,
+  readOnlyReason: response.readOnlyReason ?? undefined
+});
 
 export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectDataRouteProps) => {
   const { t } = useI18n();
   const { apiClient } = useAppShell();
-  const resolvedClient = useMemo(() => client ?? createDefaultClient(), [client]);
+  const resolvedClient = useMemo<RoadmapProjectDataClient>(() => client ?? {
+    getRoadmap: async () => {
+      const response = await apiClient.getRoadmapDocument();
+      return normalizeShellRoadmapResponse(response);
+    },
+    updateRoadmap: async (roadmap) => {
+      const response = await apiClient.updateRoadmapDocument({ readOnly: false, roadmap });
+      return normalizeShellRoadmapResponse(response);
+    },
+    getProjectData: () => apiClient.getProjectDataDocument(),
+    updateProjectData: (payload) => apiClient.updateProjectDataDocument(payload)
+  }, [apiClient, client]);
   const [roadmapState, setRoadmapState] = useState(() => createRoadmapEditorState());
   const [projectDataState, setProjectDataState] = useState(() => createProjectDataEditorState());
   const [pageError, setPageError] = useState<string | null>(null);
@@ -75,7 +81,14 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
 
   useEffect(() => {
     void apiClient.getMembers().then((res) => {
-      setMembers((res.members ?? []).map((m) => ({ memberId: m.memberId, displayName: m.displayName })));
+      setMembers((res.members ?? [])
+        .filter((m) =>
+          m.roleType === 'assistant' ||
+          Boolean(m.agentInstanceId) ||
+          Boolean(m.runtimeReady) ||
+          Boolean(m.agentRuntimeState),
+        )
+        .map((m) => ({ memberId: m.memberId, displayName: m.displayName })));
     }).catch(() => {});
   }, [apiClient]);
 

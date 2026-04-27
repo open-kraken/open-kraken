@@ -1,13 +1,26 @@
+import { loadSession } from '@/auth/auth-store';
+import { appEnv } from '@/config/env';
+
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+
 /**
- * Returns a v2 base URL by replacing the `/api/v1` suffix with `/api/v2`.
- * Falls back to constructing it from window.location when on a dev server.
+ * Returns a v2 base URL from the configured v1 API base. In browser dev mode,
+ * local backend URLs are converted to same-origin `/api/v2` so Vite can proxy.
  */
 function resolveV2BaseUrl(): string {
   if (typeof window !== 'undefined') {
-    const origin = window.location.origin;
-    return `${origin}/api/v2`;
+    try {
+      const configured = new URL(appEnv.apiBaseUrl);
+      const localBackend =
+        (configured.hostname === '127.0.0.1' || configured.hostname === 'localhost') && configured.port === '8080';
+      if (localBackend) {
+        return `${window.location.origin}/api/v2`;
+      }
+    } catch {
+      return `${window.location.origin}/api/v2`;
+    }
   }
-  return 'http://127.0.0.1:8080/api/v2';
+  return trimTrailingSlash(appEnv.apiBaseUrl).replace(/\/api\/v1$/, '/api/v2');
 }
 
 /**
@@ -20,6 +33,7 @@ export async function v2Fetch<T>(
 ): Promise<T> {
   const base = resolveV2BaseUrl();
   const url = `${base}/${path.replace(/^\/+/, '')}`;
+  const token = loadSession()?.token;
 
   const response = await fetch(url, {
     method: opts.method,
@@ -27,6 +41,7 @@ export async function v2Fetch<T>(
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: token } : {}),
       ...opts.headers,
     },
   });

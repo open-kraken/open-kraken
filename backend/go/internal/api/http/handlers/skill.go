@@ -9,13 +9,21 @@ import (
 
 // SkillHandler handles HTTP requests for skill catalog and member binding APIs.
 type SkillHandler struct {
-	svc           *skill.Service
-	membersPrefix string // e.g. /api/v1/members/
+	svc                     *skill.Service
+	membersPrefix           string // e.g. /api/v1/members/
+	canAssignSkillsToMember func(memberID string) bool
 }
 
 // NewSkillHandler creates a SkillHandler backed by the given service.
 func NewSkillHandler(svc *skill.Service, membersPrefix string) *SkillHandler {
 	return &SkillHandler{svc: svc, membersPrefix: membersPrefix}
+}
+
+// SetMemberSkillEligibility configures the production roster check for member
+// skill writes. Tests and legacy callers can omit it to preserve standalone
+// skill-service behavior.
+func (h *SkillHandler) SetMemberSkillEligibility(resolver func(memberID string) bool) {
+	h.canAssignSkillsToMember = resolver
 }
 
 // HandleSkillImport handles POST /api/skills/import with conflict resolution.
@@ -25,7 +33,7 @@ func (h *SkillHandler) HandleSkillImport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var body struct {
-		Strategy string             `json:"strategy"` // "merge", "replace", "validate"
+		Strategy string              `json:"strategy"` // "merge", "replace", "validate"
 		Entries  []skill.ImportEntry `json:"entries"`
 	}
 	if !decodeJSON(r, &body, w) {
@@ -93,6 +101,11 @@ func (h *SkillHandler) HandleMemberSkills(w http.ResponseWriter, r *http.Request
 }
 
 func (h *SkillHandler) handleBindSkills(w http.ResponseWriter, r *http.Request, memberID string) {
+	if h.canAssignSkillsToMember != nil && !h.canAssignSkillsToMember(memberID) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "skills can only be assigned to AI Assistant members"})
+		return
+	}
+
 	var body struct {
 		Skills []string `json:"skills"`
 	}

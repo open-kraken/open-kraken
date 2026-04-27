@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"open-kraken/backend/go/internal/ael"
 	apihttp "open-kraken/backend/go/internal/api/http"
 	"open-kraken/backend/go/internal/api/http/handlers"
-	"open-kraken/backend/go/internal/ael"
 	"open-kraken/backend/go/internal/authz"
 	"open-kraken/backend/go/internal/cws"
 	"open-kraken/backend/go/internal/embedder"
@@ -26,15 +26,15 @@ import (
 	"open-kraken/backend/go/internal/observability"
 	okprometheus "open-kraken/backend/go/internal/observability/prometheus"
 	"open-kraken/backend/go/internal/orchestration"
-	"open-kraken/backend/go/internal/plugin"
-	"open-kraken/backend/go/internal/presence"
-	llmprovider "open-kraken/backend/go/internal/provider"
-	llmanthropic "open-kraken/backend/go/internal/provider/anthropic"
-	llmopenai "open-kraken/backend/go/internal/provider/openai"
 	platformhttp "open-kraken/backend/go/internal/platform/http"
 	"open-kraken/backend/go/internal/platform/logger"
 	runtimecfg "open-kraken/backend/go/internal/platform/runtime"
+	"open-kraken/backend/go/internal/plugin"
+	"open-kraken/backend/go/internal/presence"
 	"open-kraken/backend/go/internal/projectdata"
+	llmprovider "open-kraken/backend/go/internal/provider"
+	llmanthropic "open-kraken/backend/go/internal/provider/anthropic"
+	llmopenai "open-kraken/backend/go/internal/provider/openai"
 	"open-kraken/backend/go/internal/pty"
 	"open-kraken/backend/go/internal/realtime"
 	"open-kraken/backend/go/internal/runtime/instance"
@@ -498,6 +498,17 @@ func main() {
 	// Node registry (T04).
 	nodeRepo := node.NewJSONRepository(filepath.Join(cfg.AppDataRoot, "nodes"))
 	nodeSvc := node.NewService(nodeRepo, hub)
+	nodeSvc.SetAgentPlacementObserver(func(agentID string, placed node.Node) {
+		for _, inst := range instanceMgr.Snapshot() {
+			context := inst.SnapshotContext()
+			if memberID, _ := context["memberId"].(string); memberID != agentID {
+				continue
+			}
+			inst.SetContext("nodeId", placed.ID)
+			inst.SetContext("nodeHostname", placed.Hostname)
+			inst.SetContext("placementState", "placed")
+		}
+	})
 	go nodeSvc.Start(ctx)
 	seedNodes(ctx, nodeSvc)
 
@@ -539,6 +550,18 @@ func main() {
 		panic("init taskqueue repository: " + err.Error())
 	}
 	taskSvc := taskqueue.NewService(taskRepo, hub)
+	taskSvc.SetAgentResolver(func(resolveCtx context.Context, nodeID string, busyAgents map[string]bool) (string, error) {
+		placed, err := nodeSvc.GetByID(resolveCtx, nodeID)
+		if err != nil {
+			return "", err
+		}
+		for _, agentID := range placed.Agents {
+			if agentID != "" && !busyAgents[agentID] {
+				return agentID, nil
+			}
+		}
+		return "", taskqueue.ErrNoAvailableAgent
+	})
 	go taskSvc.StartTimeoutScanner(ctx)
 
 	pluginSvc := plugin.NewService()
@@ -597,8 +620,9 @@ func main() {
 		PresenceService:  presenceSvc,
 		PluginService:    pluginSvc,
 		SettingsService:  settingsSvc,
-		ProviderRegistry:  providerRegistry,
+		ProviderRegistry: providerRegistry,
 		TaskQueueService: taskSvc,
+		InstanceManager:  instanceMgr,
 		AELService:       aelSvc,
 		AuthAccounts:     seedAccounts,
 	}, platformhttp.WebSocketUpgrader(cfg))

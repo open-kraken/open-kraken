@@ -52,6 +52,7 @@ type ChatSnapshotPayload struct {
 type ChatDeltaPayload struct {
 	ConversationID string `json:"conversationId"`
 	MessageID      string `json:"messageId"`
+	SenderID       string `json:"senderId,omitempty"`
 	Sequence       uint64 `json:"sequence"`
 	Body           string `json:"body"`
 }

@@ -9,6 +9,14 @@ import type { Node, NodeStatus, NodeType } from '@/types/node';
 export type NodesListResponse = { nodes: Node[] };
 export type NodeResponse = { node: Node };
 export type AssignAgentInput = { memberId: string };
+export type RegisterNodeInput = {
+  id: string;
+  hostname: string;
+  nodeType: NodeType;
+  labels?: Record<string, string>;
+  workspaceId?: string;
+  maxAgents?: number;
+};
 
 function asNodeType(v: unknown): NodeType {
   return v === 'k8s_pod' || v === 'bare_metal' ? v : 'k8s_pod';
@@ -18,18 +26,33 @@ function asNodeStatus(v: unknown): NodeStatus {
   return v === 'online' || v === 'offline' || v === 'degraded' ? v : 'offline';
 }
 
+function asStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.map((item) => String(item)).filter(Boolean) : [];
+}
+
+function asNumber(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 function mapNode(raw: Record<string, unknown>): Node {
   const labels = (raw.labels as Record<string, string>) ?? {};
-  const agentId = labels.agent_id;
-  const assignedAgents = agentId ? [agentId] : [];
+  const capacity = (raw.capacity as Record<string, unknown>) ?? {};
+  const responseAgents = asStringArray(raw.agents);
+  const responseAgentIds = asStringArray(raw.agentIds);
+  const legacyAgent = labels.agent_id ? [labels.agent_id] : [];
+  const assignedAgents = Array.from(new Set([...responseAgents, ...responseAgentIds, ...legacyAgent]));
+  const maxAgents = asNumber(raw.maxAgents ?? capacity.maxAgents);
   return {
     id: String(raw.id ?? ''),
     hostname: String(raw.hostname ?? ''),
-    nodeType: asNodeType(raw.nodeType),
+    nodeType: asNodeType(raw.nodeType ?? raw.type),
     status: asNodeStatus(raw.status),
     labels,
     registeredAt: String(raw.registeredAt ?? ''),
     lastHeartbeatAt: String(raw.lastHeartbeatAt ?? ''),
+    maxAgents,
+    agentCount: asNumber(raw.agentCount) || assignedAgents.length,
     assignedAgents
   };
 }
@@ -47,6 +70,26 @@ export const getNode = async (nodeId: string): Promise<NodeResponse> => {
   const http = getHttpClient();
   const raw = await http.get<Record<string, unknown>>(`/nodes/${encodeURIComponent(nodeId)}`);
   return { node: mapNode(raw) };
+};
+
+/** POST /nodes/register */
+export const registerNode = async (input: RegisterNodeInput): Promise<NodeResponse> => {
+  const http = getHttpClient();
+  const raw = await http.post<Record<string, unknown>>('/nodes/register', {
+    id: input.id,
+    hostname: input.hostname,
+    nodeType: input.nodeType,
+    labels: input.labels ?? {},
+    workspaceId: input.workspaceId ?? '',
+    maxAgents: input.maxAgents ?? 0,
+  });
+  return { node: mapNode(raw) };
+};
+
+/** DELETE /nodes/{id} */
+export const deregisterNode = async (nodeId: string): Promise<void> => {
+  const http = getHttpClient();
+  await http.request<void>(`/nodes/${encodeURIComponent(nodeId)}`, { method: 'DELETE' });
 };
 
 /** POST /nodes/{id}/agents */

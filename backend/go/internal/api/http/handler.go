@@ -15,13 +15,14 @@ import (
 	"open-kraken/backend/go/internal/node"
 	"open-kraken/backend/go/internal/plugin"
 	"open-kraken/backend/go/internal/presence"
-	"open-kraken/backend/go/internal/settings"
-	"open-kraken/backend/go/internal/taskqueue"
-	"open-kraken/backend/go/internal/terminal/provider"
 	"open-kraken/backend/go/internal/projectdata"
 	"open-kraken/backend/go/internal/realtime"
+	"open-kraken/backend/go/internal/runtime/instance"
+	"open-kraken/backend/go/internal/settings"
 	"open-kraken/backend/go/internal/skill"
+	"open-kraken/backend/go/internal/taskqueue"
 	"open-kraken/backend/go/internal/terminal"
+	"open-kraken/backend/go/internal/terminal/provider"
 	"open-kraken/backend/go/internal/tokentrack"
 
 	plathttp "open-kraken/backend/go/internal/platform/http"
@@ -31,17 +32,18 @@ import (
 // in T04–T07 and the Phase 1 paper implementation. Fields may be nil; when
 // nil the corresponding routes are omitted.
 type ExtendedServices struct {
-	NodeService   *node.Service
-	SkillService  *skill.Service
-	TokenService  *tokentrack.Service
-	MemoryService *memory.Service
-	LedgerService   *ledger.Service
-	MessageService  *message.Service
-	PresenceService *presence.Service
-	PluginService   *plugin.Service
+	NodeService      *node.Service
+	SkillService     *skill.Service
+	TokenService     *tokentrack.Service
+	MemoryService    *memory.Service
+	LedgerService    *ledger.Service
+	MessageService   *message.Service
+	PresenceService  *presence.Service
+	PluginService    *plugin.Service
 	SettingsService  *settings.Service
 	ProviderRegistry *provider.Registry
 	TaskQueueService *taskqueue.Service
+	InstanceManager  *instance.Manager
 	AuthAccounts     []handlers.KnownAccount
 	// AELService is the Authoritative Execution Ledger (paper §3.2). Nil when
 	// OPEN_KRAKEN_POSTGRES_DSN is not configured.
@@ -74,6 +76,9 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	if ext.MessageService != nil {
 		workspaceHandler.SetMessageService(ext.MessageService)
 	}
+	if ext.InstanceManager != nil || ext.ProviderRegistry != nil {
+		workspaceHandler.SetAgentRuntime(ext.InstanceManager, ext.ProviderRegistry, ext.NodeService)
+	}
 
 	terminalBase := JoinAPI(apiBasePath, "terminal")
 	mux.HandleFunc(path.Join(terminalBase, "sessions"), terminalHandler.HandleSessions)
@@ -100,6 +105,7 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	// T05: Skill catalog and member binding routes.
 	if ext.SkillService != nil {
 		skillHandler := handlers.NewSkillHandler(ext.SkillService, JoinAPI(apiBasePath, "members")+"/")
+		skillHandler.SetMemberSkillEligibility(workspaceHandler.MemberCanUseSkills)
 		mux.HandleFunc(JoinAPI(apiBasePath, "skills"), skillHandler.HandleSkills)
 		mux.HandleFunc(JoinAPI(apiBasePath, "members")+"/", skillHandler.HandleMemberSkills)
 	}
@@ -180,13 +186,14 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	// Skill import route.
 	if ext.SkillService != nil {
 		skillHandler := handlers.NewSkillHandler(ext.SkillService, JoinAPI(apiBasePath, "members")+"/")
+		skillHandler.SetMemberSkillEligibility(workspaceHandler.MemberCanUseSkills)
 		mux.HandleFunc(JoinAPI(apiBasePath, "skills/import"), skillHandler.HandleSkillImport)
 	}
 
 	// Unified agent status route (P2).
 	if ext.PresenceService != nil {
 		agentHandler := handlers.NewAgentStatusHandler(
-			service, ext.NodeService, ext.PresenceService, ext.TokenService, ext.TaskQueueService,
+			service, ext.NodeService, ext.PresenceService, ext.TokenService, ext.TaskQueueService, ext.InstanceManager,
 		)
 		mux.HandleFunc(JoinAPI(apiBasePath, "agents/status"), agentHandler.HandleList)
 		mux.HandleFunc(JoinAPI(apiBasePath, "agents/status")+"/", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {

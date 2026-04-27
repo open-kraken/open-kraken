@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -236,11 +237,15 @@ func marshalTasks(tasks []taskqueue.Task) []map[string]any {
 
 func writeTaskError(w http.ResponseWriter, err error) {
 	switch err {
-	case taskqueue.ErrNotFound:
+	case nil:
+		return
+	}
+	switch {
+	case errors.Is(err, taskqueue.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": err.Error()})
-	case taskqueue.ErrInvalidTransition, taskqueue.ErrAlreadyClaimed:
+	case errors.Is(err, taskqueue.ErrInvalidTransition), errors.Is(err, taskqueue.ErrAlreadyClaimed), errors.Is(err, taskqueue.ErrNoAvailableAgent):
 		writeJSON(w, http.StatusConflict, map[string]any{"message": err.Error()})
-	case taskqueue.ErrAlreadyExists:
+	case errors.Is(err, taskqueue.ErrAlreadyExists):
 		writeJSON(w, http.StatusConflict, map[string]any{"message": err.Error()})
 	default:
 		writeError(w, http.StatusBadRequest, err)

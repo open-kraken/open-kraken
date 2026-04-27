@@ -5,9 +5,6 @@ import {
   CheckCircle,
   AlertCircle,
   XCircle,
-  Cpu,
-  HardDrive,
-  Network as NetworkIcon,
   Users,
   ListIcon,
   Network,
@@ -16,21 +13,14 @@ import {
   Terminal,
   X,
   Zap,
-  Shield,
-  Settings,
+  Plus,
+  Trash2,
+  Search,
 } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useAppShell } from '@/state/app-shell-store';
 import { useNodesStore } from '@/state/nodesStore';
+import { getAgentStatuses, type AgentStatus } from '@/api/agents';
 import { NodeTopology } from '@/features/nodes/NodeTopology';
 import type { Node } from '@/types/node';
 import type { AgentOption } from '@/features/nodes/NodeAgentAssign';
@@ -39,6 +29,8 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   Table,
   TableBody,
@@ -57,9 +49,29 @@ import {
 import { StatusDot } from '@/components/ui/status-dot';
 
 type ViewMode = 'list' | 'topology';
+type NodeStatusFilter = 'all' | 'online' | 'degraded' | 'offline';
+type NodeTypeFilter = 'all' | 'k8s_pod' | 'bare_metal';
+
+type RegisterNodeForm = {
+  id: string;
+  hostname: string;
+  nodeType: 'k8s_pod' | 'bare_metal';
+  maxAgents: string;
+  labels: string;
+};
+
+const emptyRegisterNodeForm: RegisterNodeForm = {
+  id: '',
+  hostname: '',
+  nodeType: 'k8s_pod',
+  maxAgents: '4',
+  labels: 'region=default',
+};
 
 const formatRelativeNodeTime = (iso: string) => {
+  if (!iso) return '-';
   const deltaMs = Math.max(0, Date.now() - new Date(iso).getTime());
+  if (!Number.isFinite(deltaMs)) return '-';
   const minutes = Math.floor(deltaMs / 60000);
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
@@ -68,19 +80,54 @@ const formatRelativeNodeTime = (iso: string) => {
   return `${Math.floor(hours / 24)}d ago`;
 };
 
+const parseLabels = (raw: string): Record<string, string> => {
+  const labels: Record<string, string> = {};
+  for (const part of raw.split('\n').flatMap((line) => line.split(','))) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const [key, ...valueParts] = trimmed.split('=');
+    const value = valueParts.join('=').trim();
+    if (key?.trim() && value) labels[key.trim()] = value;
+  }
+  return labels;
+};
+
 export const NodesPage = () => {
   const { t } = useI18n();
-  const { realtimeClient, apiClient } = useAppShell();
+  const { realtimeClient, apiClient, workspace } = useAppShell();
   const store = useNodesStore();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
+  const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatus>>({});
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
   const [assignmentNodeId, setAssignmentNodeId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<NodeStatusFilter>('all');
+  const [typeFilter, setTypeFilter] = useState<NodeTypeFilter>('all');
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerForm, setRegisterForm] = useState<RegisterNodeForm>(emptyRegisterNodeForm);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [registering, setRegistering] = useState(false);
+  const [nodeToDeregister, setNodeToDeregister] = useState<Node | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     void store.loadNodes();
   }, [store.loadNodes]);
+
+  const loadAgentStatuses = React.useCallback(async () => {
+    try {
+      const response = await getAgentStatuses(workspace.workspaceId);
+      setAgentStatuses(Object.fromEntries(response.agents.map((agent) => [agent.agentId, agent])));
+    } catch {
+      setAgentStatuses({});
+    }
+  }, [workspace.workspaceId]);
+
+  useEffect(() => {
+    void loadAgentStatuses();
+  }, [loadAgentStatuses]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +135,12 @@ export const NodesPage = () => {
       .getMembers()
       .then((response) => {
         if (cancelled) return;
-        const members = response.members ?? [];
+        const members = (response.members ?? []).filter((member) =>
+          member.roleType === 'assistant' ||
+          Boolean(member.agentInstanceId) ||
+          Boolean(member.runtimeReady) ||
+          Boolean(member.agentRuntimeState),
+        );
         setAgentOptions(
           members.map((m) => ({
             memberId: m.memberId,
@@ -107,19 +159,22 @@ export const NodesPage = () => {
   useEffect(() => {
     const snapshotSub = realtimeClient.subscribe<{ nodes: Node[] }>('node.snapshot', () => {
       void store.loadNodes();
+      void loadAgentStatuses();
     });
     const updatedSub = realtimeClient.subscribe<Node>('node.updated', () => {
       void store.loadNodes();
+      void loadAgentStatuses();
     });
     const offlineSub = realtimeClient.subscribe<{ nodeId: string }>('node.offline', () => {
       void store.loadNodes();
+      void loadAgentStatuses();
     });
     return () => {
       snapshotSub.unsubscribe();
       updatedSub.unsubscribe();
       offlineSub.unsubscribe();
     };
-  }, [realtimeClient, store.loadNodes]);
+  }, [loadAgentStatuses, realtimeClient, store.loadNodes]);
 
   const selectedNode = store.selectedNodeId
     ? store.nodes.find((n) => n.id === store.selectedNodeId) ?? null
@@ -131,67 +186,47 @@ export const NodesPage = () => {
 
   const onlineCount = store.nodes.filter((n) => n.status === 'online').length;
   const degradedCount = store.nodes.filter((n) => n.status === 'degraded').length;
+  const offlineCount = store.nodes.filter((n) => n.status === 'offline').length;
   const totalAssignedAgents = store.nodes.reduce((sum, n) => sum + n.assignedAgents.length, 0);
-  const totalCapacity = Math.max(store.nodes.length * 4, 1);
+  const getNodeCapacity = (node: Node) => (node.maxAgents > 0 ? node.maxAgents : 4);
+  const totalCapacity = Math.max(store.nodes.reduce((sum, n) => sum + getNodeCapacity(n), 0), 1);
+  const capacityPercent = Math.round((totalAssignedAgents / totalCapacity) * 100);
 
-  const avgCpu = useMemo(() => {
-    const online = store.nodes.filter((n) => n.status === 'online');
-    if (online.length === 0) return 0;
-    return Math.round(
-      online.reduce((sum, n) => sum + (28 + n.assignedAgents.length * 17), 0) / online.length,
-    );
-  }, [store.nodes]);
-
-  const avgMemory = useMemo(() => {
-    const online = store.nodes.filter((n) => n.status === 'online');
-    if (online.length === 0) return 0;
-    return Math.round(
-      online.reduce((sum, n) => sum + (34 + n.assignedAgents.length * 17), 0) / online.length,
-    );
-  }, [store.nodes]);
-
-  const selectedNodeMetrics = useMemo(() => {
-    if (!selectedNode) return null;
-    const tokenBase = selectedNode.assignedAgents.length * 17;
-    return {
-      cpu: Math.min(92, 28 + tokenBase),
-      memory: Math.min(94, 34 + tokenBase),
-      networkUp: (0.6 + selectedNode.assignedAgents.length * 0.8).toFixed(1),
-      networkDown: (0.4 + selectedNode.assignedAgents.length * 0.55).toFixed(1),
-    };
-  }, [selectedNode]);
+  const visibleNodes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return store.nodes.filter((node) => {
+      if (statusFilter !== 'all' && node.status !== statusFilter) return false;
+      if (typeFilter !== 'all' && node.nodeType !== typeFilter) return false;
+      if (!query) return true;
+      const labelText = Object.entries(node.labels)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(' ')
+        .toLowerCase();
+      return (
+        node.id.toLowerCase().includes(query) ||
+        node.hostname.toLowerCase().includes(query) ||
+        labelText.includes(query)
+      );
+    });
+  }, [searchQuery, statusFilter, store.nodes, typeFilter]);
 
   const selectedNodeAgentRows = useMemo(() => {
     if (!selectedNode) return [];
-    return selectedNode.assignedAgents.map((agentId, index) => ({
+    return selectedNode.assignedAgents.map((agentId) => ({
       memberId: agentId,
       displayName:
         agentOptions.find((o) => o.memberId === agentId)?.displayName ?? agentId,
-      tokens: 12400 + index * 6300,
-      cpu: 18 + index * 7,
-      memory: `${(0.6 + index * 0.2).toFixed(1)}G`,
-      status: (index % 2 === 0 ? 'working' : 'idle') as 'working' | 'idle',
+      tokens:
+        (agentStatuses[agentId]?.totalInputTokens ?? 0) +
+        (agentStatuses[agentId]?.totalOutputTokens ?? 0),
+      status: ((agentStatuses[agentId]?.activeTasks ?? 0) > 0
+        ? 'working'
+        : 'idle') as 'working' | 'idle',
+      presenceStatus: agentStatuses[agentId]?.presenceStatus ?? 'offline',
+      activeTasks: agentStatuses[agentId]?.activeTasks ?? 0,
+      terminalStatus: agentStatuses[agentId]?.terminalStatus ?? null,
     }));
-  }, [selectedNode, agentOptions]);
-
-  // Mock CPU/Memory timeline data for detail panel
-  const cpuTimelineData = useMemo(
-    () =>
-      Array.from({ length: 60 }, (_, i) => ({
-        time: `-${60 - i}m`,
-        value: Math.random() * 40 + 30,
-      })),
-    [store.selectedNodeId],
-  );
-
-  const memoryTimelineData = useMemo(
-    () =>
-      Array.from({ length: 60 }, (_, i) => ({
-        time: `-${60 - i}m`,
-        value: Math.random() * 40 + 40,
-      })),
-    [store.selectedNodeId],
-  );
+  }, [selectedNode, agentOptions, agentStatuses]);
 
   const toggleRowExpansion = (nodeId: string) => {
     setExpandedRows((prev) => {
@@ -214,25 +249,66 @@ export const NodesPage = () => {
     setAssignmentModalOpen(true);
   };
 
-  const getNodeMetrics = (node: Node) => {
-    const tokenBase = node.assignedAgents.length * 17;
-    return {
-      cpuPercent: node.status === 'online' ? Math.min(92, 28 + tokenBase) : 0,
-      memoryPercent: node.status === 'online' ? Math.min(94, 34 + tokenBase) : 0,
-      networkUp: node.status === 'online' ? (0.6 + node.assignedAgents.length * 0.8).toFixed(1) : '0.0',
-      networkDown: node.status === 'online' ? (0.4 + node.assignedAgents.length * 0.55).toFixed(1) : '0.0',
-      uptime: node.status === 'online' ? formatRelativeNodeTime(node.registeredAt) : '\u2014',
-    };
+  const handleRegisterNode = async () => {
+    setRegisterError(null);
+    const id = registerForm.id.trim();
+    const hostname = registerForm.hostname.trim();
+    const maxAgents = Number(registerForm.maxAgents);
+    if (!id || !hostname) {
+      setRegisterError('Node ID and hostname are required.');
+      return;
+    }
+    if (!Number.isFinite(maxAgents) || maxAgents < 0) {
+      setRegisterError('Max agents must be a non-negative number.');
+      return;
+    }
+    setRegistering(true);
+    try {
+      await store.createNode({
+        id,
+        hostname,
+        nodeType: registerForm.nodeType,
+        maxAgents,
+        workspaceId: workspace.workspaceId,
+        labels: parseLabels(registerForm.labels),
+      });
+      setRegisterOpen(false);
+      setRegisterForm(emptyRegisterNodeForm);
+    } catch (error) {
+      setRegisterError(error instanceof Error ? error.message : 'Node registration failed.');
+    } finally {
+      setRegistering(false);
+    }
   };
 
+  const handleDeregisterNode = async (node: Node) => {
+    setActionError(null);
+    try {
+      await store.removeNode(node.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Node deregistration failed.');
+    }
+  };
+
+  const getNodeMetrics = (node: Node) => ({
+    uptime: node.status === 'online' ? formatRelativeNodeTime(node.registeredAt) : '\u2014',
+    heartbeat: formatRelativeNodeTime(node.lastHeartbeatAt),
+    capacityPercent: Math.round((node.assignedAgents.length / getNodeCapacity(node)) * 100),
+  });
+
   const getNodeAgents = (node: Node) =>
-    node.assignedAgents.map((agentId, index) => ({
+    node.assignedAgents.map((agentId) => ({
       memberId: agentId,
       displayName: agentOptions.find((o) => o.memberId === agentId)?.displayName ?? agentId,
-      tokens: 12400 + index * 6300,
-      cpu: 18 + index * 7,
-      memory: `${(0.6 + index * 0.2).toFixed(1)}G`,
-      status: (index % 2 === 0 ? 'working' : 'idle') as 'working' | 'idle',
+      tokens:
+        (agentStatuses[agentId]?.totalInputTokens ?? 0) +
+        (agentStatuses[agentId]?.totalOutputTokens ?? 0),
+      status: ((agentStatuses[agentId]?.activeTasks ?? 0) > 0
+        ? 'working'
+        : 'idle') as 'working' | 'idle',
+      presenceStatus: agentStatuses[agentId]?.presenceStatus ?? 'offline',
+      activeTasks: agentStatuses[agentId]?.activeTasks ?? 0,
+      terminalStatus: agentStatuses[agentId]?.terminalStatus ?? null,
     }));
 
   return (
@@ -262,19 +338,10 @@ export const NodesPage = () => {
                 <span className="font-semibold app-text-strong">
                   {totalAssignedAgents}/{totalCapacity}
                 </span>
-                <span className="app-text-faint">agents</span>
+                <span className="app-text-faint">capacity</span>
               </div>
-              <div className="w-px h-3 bg-gray-300 dark:bg-gray-700" />
-              <div className="flex items-center gap-1.5">
-                <Cpu size={14} className="app-text-muted" />
-                <span className="font-semibold app-text-strong">{avgCpu}%</span>
-                <span className="app-text-faint">CPU</span>
-              </div>
-              <div className="w-px h-3 bg-gray-300 dark:bg-gray-700" />
-              <div className="flex items-center gap-1.5">
-                <HardDrive size={14} className="app-text-muted" />
-                <span className="font-semibold app-text-strong">{avgMemory}%</span>
-                <span className="app-text-faint">Mem</span>
+              <div className="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-full app-accent-bg" style={{ width: `${Math.min(100, capacityPercent)}%` }} />
               </div>
               {degradedCount > 0 && (
                 <>
@@ -286,6 +353,16 @@ export const NodesPage = () => {
                   </div>
                 </>
               )}
+              {offlineCount > 0 && (
+                <>
+                  <div className="w-px h-3 bg-gray-300 dark:bg-gray-700" />
+                  <div className="flex items-center gap-1.5">
+                    <XCircle size={14} className="text-red-500" />
+                    <span className="font-semibold text-red-500">{offlineCount}</span>
+                    <span className="app-text-faint">offline</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="flex gap-2">
@@ -293,15 +370,18 @@ export const NodesPage = () => {
               variant="outline"
               size="sm"
               className="h-8"
-              onClick={() => void store.loadNodes()}
+              onClick={() => {
+                void store.loadNodes();
+                void loadAgentStatuses();
+              }}
               disabled={store.loadState === 'loading'}
             >
               <RefreshCw size={14} className="mr-1" />
               {store.loadState === 'loading' ? 'Loading...' : 'Refresh'}
             </Button>
-            <Button variant="outline" size="sm" className="h-8">
-              <Settings size={14} className="mr-1" />
-              Configure
+            <Button variant="outline" size="sm" className="h-8" onClick={() => setRegisterOpen(true)}>
+              <Plus size={14} className="mr-1" />
+              Register Node
             </Button>
           </div>
         </div>
@@ -336,6 +416,49 @@ export const NodesPage = () => {
           {t('nodes.loadError', { message: store.errorMessage ?? '' })}
         </div>
       )}
+      {actionError && (
+        <div role="alert" className="px-6 py-2 text-sm text-red-600 bg-red-50 dark:bg-red-950">
+          {actionError}
+        </div>
+      )}
+
+      <div className="app-surface-strong border-b app-border-subtle px-6 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[260px] flex-1 max-w-md">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 app-text-faint" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search hostname, node ID, or labels"
+              className="h-8 pl-9 text-sm"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as NodeStatusFilter)}
+            className="h-8 rounded-md border app-border-subtle app-surface-strong px-2 text-sm app-text-strong"
+            aria-label="Filter by node status"
+          >
+            <option value="all">All statuses</option>
+            <option value="online">Online</option>
+            <option value="degraded">Degraded</option>
+            <option value="offline">Offline</option>
+          </select>
+          <select
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value as NodeTypeFilter)}
+            className="h-8 rounded-md border app-border-subtle app-surface-strong px-2 text-sm app-text-strong"
+            aria-label="Filter by node type"
+          >
+            <option value="all">All types</option>
+            <option value="k8s_pod">K8s Pod</option>
+            <option value="bare_metal">Bare Metal</option>
+          </select>
+          <div className="text-xs app-text-muted">
+            Showing {visibleNodes.length} of {store.nodes.length}
+          </div>
+        </div>
+      </div>
 
       {/* Content Area */}
       <div className="flex-1 flex overflow-hidden">
@@ -356,15 +479,14 @@ export const NodesPage = () => {
                     <TableHead>Region</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Agents</TableHead>
-                    <TableHead className="text-right">CPU</TableHead>
-                    <TableHead className="text-right">Memory</TableHead>
-                    <TableHead className="text-right">Network</TableHead>
+                    <TableHead className="text-right">Capacity</TableHead>
+                    <TableHead className="text-right">Heartbeat</TableHead>
                     <TableHead className="text-right">Uptime</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {store.nodes.map((node) => {
+                  {visibleNodes.map((node) => {
                     const nodeAgents = getNodeAgents(node);
                     const metrics = getNodeMetrics(node);
                     const isExpanded = expandedRows.has(node.id);
@@ -425,28 +547,26 @@ export const NodesPage = () => {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-medium">
-                            {nodeAgents.length}/4
+                            {nodeAgents.length}/{getNodeCapacity(node)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <span className="font-mono text-sm">{metrics.cpuPercent}%</span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className="font-mono text-sm">{metrics.memoryPercent}%</span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex flex-col items-end text-xs font-mono">
-                              <span className="text-green-600">
-                                &uarr; {metrics.networkUp}MB/s
-                              </span>
-                              <span className="text-blue-600">
-                                &darr; {metrics.networkDown}MB/s
-                              </span>
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full app-accent-bg"
+                                  style={{ width: `${Math.min(100, metrics.capacityPercent)}%` }}
+                                />
+                              </div>
+                              <span className="font-mono text-xs">{metrics.capacityPercent}%</span>
                             </div>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm app-text-faint">
+                            {metrics.heartbeat}
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm app-text-faint">
                             {metrics.uptime}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="flex gap-2">
                             <Button
                               variant="outline"
                               size="sm"
@@ -457,13 +577,24 @@ export const NodesPage = () => {
                             >
                               Assign
                             </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNodeToDeregister(node);
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </Button>
                           </TableCell>
                         </TableRow>
 
                         {/* Expanded Row - Agents */}
                         {isExpanded && nodeAgents.length > 0 && (
                           <TableRow key={`${node.id}-agents`}>
-                            <TableCell colSpan={11} className="bg-gray-50 dark:bg-gray-900/50">
+                            <TableCell colSpan={10} className="bg-gray-50 dark:bg-gray-900/50">
                               <div className="py-3 px-4">
                                 <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-3">
                                   Hosted Agents
@@ -494,14 +625,12 @@ export const NodesPage = () => {
                                             {agent.tokens.toLocaleString()} tokens
                                           </span>
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                          <Cpu size={12} className="app-text-muted" />
-                                          <span className="font-mono">{agent.cpu}%</span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                          <HardDrive size={12} className="app-text-muted" />
-                                          <span className="font-mono">{agent.memory}</span>
-                                        </div>
+                                        <Badge variant="outline" className="text-[10px]">
+                                          {agent.presenceStatus}
+                                        </Badge>
+                                        {agent.activeTasks > 0 && (
+                                          <span className="app-text-muted">{agent.activeTasks} active tasks</span>
+                                        )}
                                       </div>
                                     </div>
                                   ))}
@@ -513,15 +642,22 @@ export const NodesPage = () => {
                       </React.Fragment>
                     );
                   })}
+                  {visibleNodes.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center py-12 app-text-muted">
+                        No nodes match the current filters.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </Card>
-          ) : store.nodes.length === 0 ? (
+          ) : visibleNodes.length === 0 ? (
             <p className="text-center py-12 app-text-faint">{t('nodes.empty')}</p>
           ) : (
             <div className="h-full app-surface-strong rounded-lg border app-border-subtle overflow-hidden">
               <NodeTopology
-                nodes={store.nodes}
+                nodes={visibleNodes}
                 selectedNodeId={store.selectedNodeId}
                 onSelect={store.selectNode}
                 onAssignClick={handleAssignClick}
@@ -531,7 +667,7 @@ export const NodesPage = () => {
         </div>
 
         {/* Node Detail Panel */}
-        {selectedNode && selectedNodeMetrics && (
+        {selectedNode && (
           <div className="w-[480px] border-l app-border-subtle app-surface-strong overflow-y-auto">
             <div className="p-6">
               {/* Header */}
@@ -603,133 +739,37 @@ export const NodesPage = () => {
                 </div>
               </Card>
 
-              {/* Resource Metrics */}
+              {/* Runtime Facts */}
               <Card className="p-4 mb-4">
                 <div className="text-xs font-semibold app-text-faint uppercase tracking-wider mb-4">
-                  Resource Metrics (Real-time)
+                  Runtime Facts
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="text-center">
-                    <div className="mb-2">
-                      <Cpu size={20} className="mx-auto app-text-muted" />
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="rounded-lg border app-border-subtle p-3">
+                    <div className="text-xs app-text-faint mb-1">Assigned capacity</div>
+                    <div className="text-lg font-bold app-text-strong">
+                      {selectedNode.assignedAgents.length}/{getNodeCapacity(selectedNode)}
                     </div>
-                    <div className="text-2xl font-bold app-text-strong mb-1">
-                      {selectedNodeMetrics.cpu}%
-                    </div>
-                    <div className="text-xs app-text-faint">CPU Usage</div>
-                    <Progress value={selectedNodeMetrics.cpu} className="mt-2 h-1" />
+                    <Progress
+                      value={(selectedNode.assignedAgents.length / getNodeCapacity(selectedNode)) * 100}
+                      className="mt-2 h-1"
+                    />
                   </div>
-                  <div className="text-center">
-                    <div className="mb-2">
-                      <HardDrive size={20} className="mx-auto app-text-muted" />
+                  <div className="rounded-lg border app-border-subtle p-3">
+                    <div className="text-xs app-text-faint mb-1">Last heartbeat</div>
+                    <div className="text-lg font-bold app-text-strong">
+                      {formatRelativeNodeTime(selectedNode.lastHeartbeatAt)}
                     </div>
-                    <div className="text-2xl font-bold app-text-strong mb-1">
-                      {selectedNodeMetrics.memory}%
-                    </div>
-                    <div className="text-xs app-text-faint">Memory</div>
-                    <Progress value={selectedNodeMetrics.memory} className="mt-2 h-1" />
-                  </div>
-                  <div className="text-center">
-                    <div className="mb-2">
-                      <NetworkIcon size={20} className="mx-auto app-text-muted" />
-                    </div>
-                    <div className="text-sm font-mono font-bold app-text-strong mb-1">
-                      {selectedNodeMetrics.networkUp}MB/s
-                    </div>
-                    <div className="text-xs app-text-faint">Network I/O</div>
-                    <div className="mt-2 text-[10px] font-mono text-blue-600">
-                      &darr; {selectedNodeMetrics.networkDown}MB/s
+                    <div className="text-xs app-text-muted mt-2 font-mono">
+                      {selectedNode.lastHeartbeatAt || 'not reported'}
                     </div>
                   </div>
                 </div>
 
-                {/* CPU Timeline */}
-                <div className="mb-4">
-                  <div className="text-xs font-semibold app-text-muted mb-2">
-                    CPU Timeline (1h)
-                  </div>
-                  <div className="h-24">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={cpuTimelineData}>
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke="#e5e7eb"
-                          strokeOpacity={0.3}
-                        />
-                        <XAxis
-                          dataKey="time"
-                          tick={{ fontSize: 10, fill: '#9ca3af' }}
-                          interval={14}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 10, fill: '#9ca3af' }}
-                          domain={[0, 100]}
-                          ticks={[0, 50, 100]}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '8px',
-                            fontSize: '11px',
-                          }}
-                          formatter={(value) => [`${Math.round(Number(value))}%`, 'CPU']}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="value"
-                          stroke="#3b82f6"
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Memory Timeline */}
-                <div>
-                  <div className="text-xs font-semibold app-text-muted mb-2">
-                    Memory Timeline (1h)
-                  </div>
-                  <div className="h-24">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={memoryTimelineData}>
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke="#e5e7eb"
-                          strokeOpacity={0.3}
-                        />
-                        <XAxis
-                          dataKey="time"
-                          tick={{ fontSize: 10, fill: '#9ca3af' }}
-                          interval={14}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 10, fill: '#9ca3af' }}
-                          domain={[0, 100]}
-                          ticks={[0, 50, 100]}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '8px',
-                            fontSize: '11px',
-                          }}
-                          formatter={(value) => [`${Math.round(Number(value))}%`, 'Memory']}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="value"
-                          stroke="#a855f7"
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                <div className="rounded-lg border border-dashed app-border-subtle p-4 text-sm app-text-muted">
+                  CPU, memory, and network telemetry are not exposed by the backend node
+                  contract yet. This panel only shows server-authoritative state.
                 </div>
               </Card>
 
@@ -737,10 +777,10 @@ export const NodesPage = () => {
               <Card className="p-4 mb-4">
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-xs font-semibold app-text-faint uppercase tracking-wider">
-                    Hosted Agents ({selectedNodeAgentRows.length}/4)
+                    Hosted Agents ({selectedNodeAgentRows.length}/{getNodeCapacity(selectedNode)})
                   </div>
                   <Progress
-                    value={(selectedNodeAgentRows.length / 4) * 100}
+                    value={(selectedNodeAgentRows.length / getNodeCapacity(selectedNode)) * 100}
                     className="w-24 h-1"
                   />
                 </div>
@@ -767,8 +807,8 @@ export const NodesPage = () => {
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-4 app-text-faint">
                             <span>{agent.tokens.toLocaleString()} tokens</span>
-                            <span className="font-mono">CPU: {agent.cpu}%</span>
-                            <span className="font-mono">Mem: {agent.memory}</span>
+                            <span>{agent.presenceStatus}</span>
+                            {agent.activeTasks > 0 && <span>{agent.activeTasks} active tasks</span>}
                           </div>
                         </div>
                       </div>
@@ -797,16 +837,12 @@ export const NodesPage = () => {
                   Node Labels &amp; Metadata
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs">
-                  {Object.entries(selectedNode.labels).map(([key, value]) => (
+                  {Object.entries(selectedNode.labels).length > 0 ? Object.entries(selectedNode.labels).map(([key, value]) => (
                     <Badge key={key} variant="outline">
                       {key}: {value}
                     </Badge>
-                  ))}
-                  {selectedNode.nodeType === 'k8s_pod' && (
-                    <>
-                      <Badge variant="outline">k8s.namespace: kraken-prod</Badge>
-                      <Badge variant="outline">pool: default</Badge>
-                    </>
+                  )) : (
+                    <span className="app-text-muted">No labels reported.</span>
                   )}
                 </div>
               </Card>
@@ -817,19 +853,27 @@ export const NodesPage = () => {
                   Actions
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" disabled>
-                    <Shield size={14} className="mr-1" />
-                    Drain
+                  <Button variant="outline" size="sm" onClick={() => handleAssignClick(selectedNode.id)}>
+                    <Users size={14} className="mr-1" />
+                    Assign
                   </Button>
-                  <Button variant="outline" size="sm" disabled>
-                    <Settings size={14} className="mr-1" />
-                    Cordon
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void store.loadNodes();
+                      void loadAgentStatuses();
+                    }}
+                  >
+                    <RefreshCw size={14} className="mr-1" />
+                    Refresh
                   </Button>
-                  <Button variant="outline" size="sm" disabled>
-                    <Terminal size={14} className="mr-1" />
-                    Logs
-                  </Button>
-                  <Button variant="outline" size="sm" disabled className="text-red-600">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="col-span-2 text-red-600"
+                    onClick={() => setNodeToDeregister(selectedNode)}
+                  >
                     <X size={14} className="mr-1" />
                     Deregister
                   </Button>
@@ -851,6 +895,96 @@ export const NodesPage = () => {
         }}
         onUnassign={async (nodeId, memberId) => {
           await store.unassignAgent(nodeId, memberId);
+        }}
+      />
+
+      <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Register Execution Node</DialogTitle>
+            <DialogDescription>
+              Register a node with the backend scheduler. Agents can be assigned after the node is created.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <label className="space-y-2 text-sm">
+              <span className="font-medium app-text-strong">Node ID</span>
+              <Input
+                value={registerForm.id}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, id: event.target.value }))}
+                placeholder="node-us-east-01"
+              />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-medium app-text-strong">Hostname</span>
+              <Input
+                value={registerForm.hostname}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, hostname: event.target.value }))}
+                placeholder="worker-01.internal"
+              />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-medium app-text-strong">Node Type</span>
+              <select
+                value={registerForm.nodeType}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, nodeType: event.target.value as RegisterNodeForm['nodeType'] }))}
+                className="h-10 w-full rounded-md border app-border-subtle app-surface-strong px-3 text-sm app-text-strong"
+              >
+                <option value="k8s_pod">K8s Pod</option>
+                <option value="bare_metal">Bare Metal</option>
+              </select>
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="font-medium app-text-strong">Max Agents</span>
+              <Input
+                type="number"
+                min={0}
+                value={registerForm.maxAgents}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, maxAgents: event.target.value }))}
+              />
+            </label>
+            <label className="col-span-2 space-y-2 text-sm">
+              <span className="font-medium app-text-strong">Labels</span>
+              <textarea
+                value={registerForm.labels}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, labels: event.target.value }))}
+                placeholder="region=us-east, pool=default"
+                className="min-h-24 w-full rounded-md border app-border-subtle app-surface-strong px-3 py-2 text-sm app-text-strong"
+              />
+              <span className="text-xs app-text-muted">Use comma or newline separated key=value pairs.</span>
+            </label>
+          </div>
+          {registerError && (
+            <div role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              {registerError}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 border-t app-border-subtle pt-4">
+            <Button variant="outline" onClick={() => setRegisterOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleRegisterNode()} disabled={registering}>
+              {registering ? 'Registering...' : 'Register Node'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(nodeToDeregister)}
+        onOpenChange={(open) => {
+          if (!open) setNodeToDeregister(null);
+        }}
+        title="Deregister node"
+        description={
+          nodeToDeregister
+            ? `Deregister ${nodeToDeregister.hostname}? Assigned agents will be migrated by the backend placement service when possible.`
+            : ''
+        }
+        variant="destructive"
+        confirmLabel="Deregister"
+        onConfirm={() => {
+          if (nodeToDeregister) void handleDeregisterNode(nodeToDeregister);
         }}
       />
     </div>
@@ -877,16 +1011,21 @@ function NodeAssignmentDialog({
   onUnassign,
 }: NodeAssignmentDialogProps) {
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   if (!node) return null;
 
   const assignedAgents = allAgents.filter((a) => node.assignedAgents.includes(a.memberId));
   const availableAgents = allAgents.filter((a) => !node.assignedAgents.includes(a.memberId));
+  const atCapacity = node.maxAgents > 0 && assignedAgents.length >= node.maxAgents;
 
   const handleAssign = async (memberId: string) => {
     setPendingIds((prev) => new Set(prev).add(memberId));
+    setMutationError(null);
     try {
       await onAssign(node.id, memberId);
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Assign failed');
     } finally {
       setPendingIds((prev) => {
         const next = new Set(prev);
@@ -898,8 +1037,11 @@ function NodeAssignmentDialog({
 
   const handleUnassign = async (memberId: string) => {
     setPendingIds((prev) => new Set(prev).add(memberId));
+    setMutationError(null);
     try {
       await onUnassign(node.id, memberId);
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Remove failed');
     } finally {
       setPendingIds((prev) => {
         const next = new Set(prev);
@@ -938,7 +1080,7 @@ function NodeAssignmentDialog({
                 </h3>
                 {assignedAgents.length > 0 && (
                   <Badge variant="outline" className="text-xs">
-                    {assignedAgents.length}/4 capacity
+                    {assignedAgents.length}/{node.maxAgents > 0 ? node.maxAgents : 'unlimited'} capacity
                   </Badge>
                 )}
               </div>
@@ -989,6 +1131,11 @@ function NodeAssignmentDialog({
                 <h3 className="font-semibold text-sm app-text-strong">
                   Available ({availableAgents.length})
                 </h3>
+                {atCapacity && (
+                  <Badge variant="outline" className="text-xs text-orange-600 border-orange-500">
+                    At capacity
+                  </Badge>
+                )}
               </div>
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
                 {availableAgents.length === 0 ? (
@@ -1004,7 +1151,7 @@ function NodeAssignmentDialog({
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={pendingIds.has(agent.memberId)}
+                        disabled={pendingIds.has(agent.memberId) || atCapacity}
                         onClick={() => void handleAssign(agent.memberId)}
                         className="flex-shrink-0"
                       >
@@ -1027,6 +1174,12 @@ function NodeAssignmentDialog({
               </div>
             </div>
           </div>
+
+          {mutationError && (
+            <div role="alert" className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              {mutationError}
+            </div>
+          )}
 
           {/* Node Info */}
           <div className="mt-6 p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border app-border-subtle">
@@ -1054,7 +1207,7 @@ function NodeAssignmentDialog({
               <div>
                 <span className="app-text-faint">Capacity:</span>{' '}
                 <span className="app-text-strong font-medium">
-                  {node.assignedAgents.length}/4 agents
+                  {node.assignedAgents.length}/{node.maxAgents > 0 ? node.maxAgents : 'unlimited'} agents
                 </span>
               </div>
               <div>

@@ -19,6 +19,7 @@ export type TerminalSessionInfo = {
 export type TerminalSessionsResponse = { items: TerminalSessionInfo[] };
 
 type SessionApi = {
+  sessionId?: string;
   terminalId?: string;
   memberId?: string;
   workspaceId?: string;
@@ -30,8 +31,9 @@ type SessionApi = {
 };
 
 function mapSession(raw: SessionApi): TerminalSessionInfo {
+  const sessionId = String(raw.sessionId ?? raw.terminalId ?? '');
   return {
-    terminalId: String(raw.terminalId ?? ''),
+    terminalId: sessionId,
     memberId: String(raw.memberId ?? ''),
     workspaceId: String(raw.workspaceId ?? ''),
     terminalType: String(raw.terminalType ?? ''),
@@ -80,14 +82,14 @@ export const resolveOrCreateMemberSession = async (
     return result.sessionId;
   }
   // No session exists — create one with the requested provider/command
-  const created = await http.post<{ sessionId: string }>('terminal/sessions', {
+  const created = await http.post<{ sessionId?: string; terminalId?: string }>('terminal/sessions', {
     workspaceId,
     memberId,
     terminalType: options.terminalType ?? 'shell',
     command: options.command ?? '',
     cwd: options.cwd ?? ''
   });
-  return created.sessionId;
+  return String(created.sessionId ?? created.terminalId ?? '');
 };
 
 /** POST /terminal/sessions/{sessionId}/input — send input to terminal. */

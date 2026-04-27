@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   RefreshCw,
-  TrendingUp,
   AlertCircle,
   CheckCircle,
   Clock,
@@ -25,8 +24,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { useAppShell } from '@/state/app-shell-store';
-import { useDashboardStore } from '@/state/dashboardStore';
+import { getAgentStatuses, type AgentStatus } from '@/api/agents';
+import { getNodes } from '@/api/nodes';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -38,10 +37,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { normalizeTeamsAndMembers, type TeamGroupFixture } from '@/features/members/member-page-model';
+import { useAppShell } from '@/state/app-shell-store';
+import { useDashboardStore } from '@/state/dashboardStore';
+import type { Node } from '@/types/node';
 
 type PeriodOption = '24h' | '7d' | '30d';
 
@@ -52,116 +51,99 @@ type TeamCard = {
   queuedTasks: number;
   failedTasks: number;
   spend: number;
-  trend: string;
   health: 'healthy' | 'warning';
 };
 
-// ---------------------------------------------------------------------------
-// Fallback / mock data
-// ---------------------------------------------------------------------------
+const statusIsActive = (status: string) =>
+  ['running', 'working', 'busy', 'in_progress', 'online', 'idle', 'scheduled'].includes(status.toLowerCase());
 
-const fallbackTokenStats = [
-  { memberId: 'agent_claude_be', memberName: 'Claude BE', nodeId: 'k8s-alpha-01', inputTokens: 182300, outputTokens: 274489, totalTokens: 456789, cost: 12.45, period: '7d' },
-  { memberId: 'agent_gemini_fe', memberName: 'Gemini FE', nodeId: 'k8s-alpha-02', inputTokens: 102400, outputTokens: 132167, totalTokens: 234567, cost: 8.23, period: '7d' },
-  { memberId: 'agent_gpt4_qa', memberName: 'GPT-4 QA', nodeId: 'k8s-beta-01', inputTokens: 53412, outputTokens: 70044, totalTokens: 123456, cost: 5.67, period: '7d' },
-  { memberId: 'agent_claude_reviewer', memberName: 'Claude Reviewer', nodeId: 'k8s-alpha-01', inputTokens: 126000, outputTokens: 219678, totalTokens: 345678, cost: 9.87, period: '7d' },
-  { memberId: 'agent_qwen_api', memberName: 'Qwen API', nodeId: 'bare-metal-01', inputTokens: 231000, outputTokens: 336890, totalTokens: 567890, cost: 4.32, period: '7d' },
-  { memberId: 'agent_shell_ops', memberName: 'Shell Ops', nodeId: 'bare-metal-02', inputTokens: 35400, outputTokens: 63365, totalTokens: 98765, cost: 2.11, period: '7d' },
-];
+const agentStatusValue = (agent: AgentStatus) =>
+  agent.runtimeState ?? agent.terminalStatus ?? agent.presenceStatus ?? '';
 
-const fallbackActivities = fallbackTokenStats.map((item, index) => ({
-  memberId: item.memberId,
-  memberName: item.memberName,
-  status: index === 2 || index === 5 ? 'idle' : 'working',
-  currentTask: [
-    'Review auth middleware migration',
-    'Polish dashboard visual parity',
-    'Run E2E smoke suite',
-    'Code review analysis',
-    'Optimize API relay path',
-    'Prepare staging deploy checklist',
-  ][index],
-  tokenStats: item,
-}));
-
-const costChartData = [
-  { date: 'Day 1', backend: 12, frontend: 8, qa: 4, devops: 3 },
-  { date: 'Day 2', backend: 15, frontend: 10, qa: 5, devops: 4 },
-  { date: 'Day 3', backend: 18, frontend: 12, qa: 6, devops: 5 },
-  { date: 'Day 4', backend: 14, frontend: 11, qa: 5, devops: 4 },
-  { date: 'Day 5', backend: 20, frontend: 14, qa: 7, devops: 6 },
-  { date: 'Day 6', backend: 22, frontend: 15, qa: 8, devops: 7 },
-  { date: 'Day 7', backend: 25, frontend: 18, qa: 9, devops: 8 },
-];
-
-const mockAgents = [
-  { name: 'Claude BE', provider: 'Anthropic', team: 'Backend Squad', node: 'k8s-alpha-01', status: 'working' as const, uptime: '12h 34m', tokens: 456789, cost: '$12.45' },
-  { name: 'Gemini FE', provider: 'Google', team: 'Frontend Squad', node: 'k8s-alpha-02', status: 'working' as const, uptime: '8h 12m', tokens: 234567, cost: '$8.23' },
-  { name: 'GPT-4 QA', provider: 'OpenAI', team: 'QA Squad', node: 'k8s-beta-01', status: 'idle' as const, uptime: '15h 45m', tokens: 123456, cost: '$5.67' },
-  { name: 'Claude Reviewer', provider: 'Anthropic', team: 'Backend Squad', node: 'k8s-alpha-01', status: 'working' as const, uptime: '6h 23m', tokens: 345678, cost: '$9.87' },
-  { name: 'Qwen API', provider: 'Alibaba', team: 'Backend Squad', node: 'bare-metal-01', status: 'working' as const, uptime: '18h 56m', tokens: 567890, cost: '$4.32' },
-  { name: 'Shell Ops', provider: 'Gemini', team: 'DevOps Squad', node: 'bare-metal-02', status: 'idle' as const, uptime: '3h 12m', tokens: 98765, cost: '$2.11' },
-];
-
-const mockNodes = [
-  { hostname: 'k8s-alpha-01', type: 'K8s Pod', status: 'online' as const, agents: 2, cpu: '45%', memory: '62%', network: '12MB/s' },
-  { hostname: 'k8s-alpha-02', type: 'K8s Pod', status: 'online' as const, agents: 1, cpu: '32%', memory: '48%', network: '8MB/s' },
-  { hostname: 'k8s-beta-01', type: 'K8s Pod', status: 'online' as const, agents: 1, cpu: '28%', memory: '41%', network: '5MB/s' },
-  { hostname: 'bare-metal-01', type: 'Bare Metal', status: 'online' as const, agents: 1, cpu: '18%', memory: '35%', network: '15MB/s' },
-  { hostname: 'bare-metal-02', type: 'Bare Metal', status: 'degraded' as const, agents: 1, cpu: '78%', memory: '85%', network: '22MB/s' },
-];
-
-const mockRecentActivity = [
-  { time: '2m ago', agent: 'Claude BE', action: 'terminal.exec', detail: 'npm run build', status: 'success' as const },
-  { time: '5m ago', agent: 'Gemini FE', action: 'git.commit', detail: 'Update dashboard UI', status: 'success' as const },
-  { time: '8m ago', agent: 'GPT-4 QA', action: 'test.run', detail: 'E2E test suite', status: 'success' as const },
-  { time: '12m ago', agent: 'Claude Reviewer', action: 'llm.call', detail: 'Code review analysis', status: 'success' as const },
-  { time: '15m ago', agent: 'Qwen API', action: 'terminal.exec', detail: 'cargo test', status: 'warning' as const },
-  { time: '18m ago', agent: 'Shell Ops', action: 'deploy.staging', detail: 'Deploy v2.3.1', status: 'success' as const },
-];
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const inferredTeamName = (memberName: string) => {
-  const lower = memberName.toLowerCase();
-  if (lower.includes('frontend') || lower.includes('fe') || lower.includes('ui')) return 'Frontend Squad';
-  if (lower.includes('qa') || lower.includes('test')) return 'QA Squad';
-  if (lower.includes('ops') || lower.includes('infra') || lower.includes('devops')) return 'DevOps Squad';
-  return 'Backend Squad';
+const formatRelativeTime = (iso: string | null) => {
+  if (!iso) return '-';
+  const timestamp = new Date(iso).getTime();
+  if (!Number.isFinite(timestamp)) return '-';
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 };
 
-const statusIsActive = (status: string) =>
-  ['running', 'working', 'busy', 'in_progress', 'online'].includes(status.toLowerCase());
+const chartKeyForTeam = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'team';
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+const chartColors = ['#3b82f6', '#a855f7', '#22c55e', '#f97316', '#06b6d4', '#ef4444', '#14b8a6', '#eab308'];
 
 export const DashboardPage = () => {
-  const { navigate } = useAppShell();
+  const { navigate, workspace, apiClient } = useAppShell();
   const store = useDashboardStore();
   const [period, setPeriod] = useState<PeriodOption>('7d');
+  const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([]);
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [teamGroups, setTeamGroups] = useState<TeamGroupFixture[]>([]);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
 
   useEffect(() => {
     void store.loadDashboard();
   }, [store.loadDashboard]);
 
-  const tokenStats = store.tokenStats.length > 1 ? store.tokenStats : fallbackTokenStats;
-  const activities = store.activities.length > 1 ? store.activities : fallbackActivities;
+  const loadRuntime = useCallback(async () => {
+    setRuntimeError(null);
+    try {
+      const [agentsRes, nodesRes, membersRes] = await Promise.all([
+        getAgentStatuses(workspace.workspaceId),
+        getNodes(),
+        apiClient.getMembers(),
+      ]);
+      setAgentStatuses(agentsRes.agents);
+      setNodes(nodesRes.nodes);
+      setTeamGroups(normalizeTeamsAndMembers(membersRes as Record<string, unknown>).teamGroups);
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : 'Dashboard runtime data failed to load.');
+    }
+  }, [apiClient, workspace.workspaceId]);
 
-  // ── Derived summary ──
+  useEffect(() => {
+    void loadRuntime();
+  }, [loadRuntime]);
+
+  const teamByMemberId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const team of teamGroups) {
+      for (const member of team.members) {
+        map.set(member.memberId, team.name ?? team.teamId);
+      }
+    }
+    return map;
+  }, [teamGroups]);
+
+  const memberNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const team of teamGroups) {
+      for (const member of team.members) {
+        map.set(member.memberId, member.displayName ?? member.memberId);
+      }
+    }
+    return map;
+  }, [teamGroups]);
+
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   const summary = useMemo(() => {
-    const totalTokens = tokenStats.reduce((sum, item) => sum + item.totalTokens, 0);
-    const totalCost = tokenStats.reduce((sum, item) => sum + item.cost, 0);
-    const activeAgents = activities.filter((item) => statusIsActive(item.status)).length;
-    const totalAgents = Math.max(activities.length, tokenStats.length);
+    const totalTokens = agentStatuses.length > 0
+      ? agentStatuses.reduce((sum, item) => sum + item.totalInputTokens + item.totalOutputTokens, 0)
+      : store.tokenStats.reduce((sum, item) => sum + item.totalTokens, 0);
+    const totalCost = agentStatuses.length > 0
+      ? agentStatuses.reduce((sum, item) => sum + item.totalCost, 0)
+      : store.tokenStats.reduce((sum, item) => sum + item.cost, 0);
+    const activeAgents = agentStatuses.filter((agent) => statusIsActive(agentStatusValue(agent))).length;
+    const totalAgents = agentStatuses.length;
 
     const teamMap = new Map<string, TeamCard>();
-    for (const activity of activities) {
-      const teamName = inferredTeamName(activity.memberName);
+    for (const agent of agentStatuses) {
+      const teamName = teamByMemberId.get(agent.agentId) ?? 'Unassigned';
       const current = teamMap.get(teamName) ?? {
         name: teamName,
         activeAgents: 0,
@@ -169,14 +151,13 @@ export const DashboardPage = () => {
         queuedTasks: 0,
         failedTasks: 0,
         spend: 0,
-        trend: '+8%',
         health: 'healthy' as const,
       };
       current.totalAgents += 1;
-      if (statusIsActive(activity.status)) current.activeAgents += 1;
-      current.spend += activity.tokenStats.cost;
-      current.queuedTasks += Math.max(1, Math.round(activity.tokenStats.totalTokens / 120000));
-      if (activity.status.toLowerCase() === 'error') {
+      if (statusIsActive(agentStatusValue(agent))) current.activeAgents += 1;
+      current.spend += agent.totalCost;
+      current.queuedTasks += agent.activeTasks;
+      if (agent.runtimeState === 'crashed' || agent.terminalStatus === 'error') {
         current.failedTasks += 1;
         current.health = 'warning';
       }
@@ -186,37 +167,80 @@ export const DashboardPage = () => {
     const teams = [...teamMap.values()].sort((a, b) => b.spend - a.spend);
     const queuedTasks = teams.reduce((sum, team) => sum + team.queuedTasks, 0);
     const failedTasks = teams.reduce((sum, team) => sum + team.failedTasks, 0);
-    const onlineNodes = new Set(tokenStats.map((item) => item.nodeId).filter(Boolean)).size;
+    const onlineNodes = nodes.filter((node) => node.status === 'online').length;
 
-    return { totalTokens, totalCost, activeAgents, totalAgents, onlineNodes, totalNodes: Math.max(onlineNodes + 1, 3), queuedTasks, failedTasks, teams };
-  }, [activities, tokenStats]);
+    return {
+      totalTokens,
+      totalCost,
+      activeAgents,
+      totalAgents,
+      onlineNodes,
+      totalNodes: nodes.length,
+      queuedTasks,
+      failedTasks,
+      teams,
+    };
+  }, [agentStatuses, nodes, store.tokenStats, teamByMemberId]);
+
+  const costChartKeys = useMemo(
+    () => summary.teams.slice(0, chartColors.length).map((team) => ({ name: team.name, key: chartKeyForTeam(team.name) })),
+    [summary.teams],
+  );
+
+  const costChartData = useMemo(() => {
+    const row: Record<string, number | string> = { date: period };
+    for (const team of summary.teams) {
+      row[chartKeyForTeam(team.name)] = Number(team.spend.toFixed(2));
+    }
+    return [row];
+  }, [period, summary.teams]);
 
   const recentActivity = useMemo(() => {
-    if (activities === fallbackActivities) return mockRecentActivity;
-    return activities.slice(0, 6).map((activity, index) => ({
-      time: `${2 + index * 3}m ago`,
+    const fromStatuses = agentStatuses.map((agent) => ({
+      time: formatRelativeTime(agent.lastHeartbeat),
+      agent: memberNameById.get(agent.agentId) ?? agent.agentId,
+      action: agent.activeTasks > 0 ? 'task.running' : agent.terminalId ? 'terminal.ready' : 'agent.status',
+      detail:
+        agent.command ??
+        agent.runtimeState ??
+        `${(agent.totalInputTokens + agent.totalOutputTokens).toLocaleString()} tokens`,
+      status: (agent.runtimeState === 'crashed' || agent.terminalStatus === 'error' ? 'warning' : 'success') as 'success' | 'warning',
+    }));
+    if (fromStatuses.length > 0) return fromStatuses.slice(0, 6);
+    return store.activities.slice(0, 6).map((activity) => ({
+      time: '-',
       agent: activity.memberName,
-      action: activity.currentTask ? 'llm.call' : 'terminal.exec',
+      action: activity.currentTask ? 'llm.call' : 'token.event',
       detail: activity.currentTask ?? `Processed ${activity.tokenStats.totalTokens.toLocaleString()} tokens`,
       status: (activity.status.toLowerCase() === 'error' ? 'warning' : 'success') as 'success' | 'warning',
     }));
-  }, [activities]);
+  }, [agentStatuses, memberNameById, store.activities]);
 
-  const agents = useMemo(() => {
-    if (activities === fallbackActivities) return mockAgents;
-    return activities.map((a) => ({
-      name: a.memberName,
-      provider: 'Agent',
-      team: inferredTeamName(a.memberName),
-      node: a.tokenStats.nodeId ?? 'unassigned',
-      status: statusIsActive(a.status) ? ('working' as const) : ('idle' as const),
-      uptime: '-',
-      tokens: a.tokenStats.totalTokens,
-      cost: `$${a.tokenStats.cost.toFixed(2)}`,
-    }));
-  }, [activities]);
+  const agents = useMemo(() => agentStatuses.map((agent) => ({
+    id: agent.agentId,
+    name: memberNameById.get(agent.agentId) ?? agent.agentId,
+    provider: agent.provider ?? agent.agentType ?? 'agent',
+    team: teamByMemberId.get(agent.agentId) ?? 'Unassigned',
+    node: agent.nodeHostname || nodeById.get(agent.nodeId)?.hostname || agent.nodeId || 'unassigned',
+    status: statusIsActive(agentStatusValue(agent)) ? ('working' as const) : ('idle' as const),
+    uptime: formatRelativeTime(agent.lastHeartbeat),
+    tokens: agent.totalInputTokens + agent.totalOutputTokens,
+    cost: `$${agent.totalCost.toFixed(2)}`,
+  })), [agentStatuses, memberNameById, nodeById, teamByMemberId]);
 
-  const nodes = mockNodes;
+  const nodeRows = useMemo(() => nodes.map((node) => {
+    const load = node.assignedAgents.length || node.agentCount;
+    return {
+      id: node.id,
+      hostname: node.hostname,
+      type: node.nodeType === 'k8s_pod' ? 'K8s Pod' : 'Bare Metal',
+      status: node.status,
+      agents: node.maxAgents > 0 ? `${load}/${node.maxAgents}` : String(load),
+      cpu: '-',
+      memory: '-',
+      network: '-',
+    };
+  }), [nodes]);
 
   const totalTokens = summary.totalTokens;
   const totalCost = summary.totalCost;
@@ -230,14 +254,12 @@ export const DashboardPage = () => {
   return (
     <div className="h-full overflow-auto app-bg-canvas">
       <div className="p-6 max-w-[1600px] mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold app-text-strong mb-1">Dashboard</h1>
             <p className="text-sm app-text-muted">Operations monitoring and platform health</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Period Selector */}
             <div className="flex gap-1 p-1 app-surface-strong rounded-lg border app-border-subtle">
               {(['24h', '7d', '30d'] as const).map((p) => (
                 <button
@@ -256,7 +278,10 @@ export const DashboardPage = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void store.loadDashboard()}
+              onClick={() => {
+                void store.loadDashboard();
+                void loadRuntime();
+              }}
               disabled={store.loadState === 'loading'}
             >
               <RefreshCw size={14} className="mr-1" />
@@ -265,7 +290,6 @@ export const DashboardPage = () => {
           </div>
         </div>
 
-        {/* Quick Links */}
         <div className="flex gap-2 mb-6">
           <Button variant="ghost" size="sm" onClick={() => navigate('ledger')}>
             <ChevronRight size={14} className="mr-1" />
@@ -285,16 +309,18 @@ export const DashboardPage = () => {
           </Button>
         </div>
 
-        {/* Error state */}
         {store.loadState === 'error' && (
           <div role="alert" className="mb-6 p-3 text-sm text-red-500 bg-red-900/20 rounded-md border border-red-500/30">
             {store.errorMessage ?? 'Dashboard failed to load.'}
           </div>
         )}
+        {runtimeError && (
+          <div role="alert" className="mb-6 p-3 text-sm text-orange-500 bg-orange-900/20 rounded-md border border-orange-500/30">
+            {runtimeError}
+          </div>
+        )}
 
-        {/* Top Metrics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          {/* Tokens & Cost */}
           <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
@@ -307,14 +333,10 @@ export const DashboardPage = () => {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono app-text-strong">${totalCost.toFixed(2)}</span>
-              <div className="flex items-center gap-1 text-xs text-green-600">
-                <TrendingUp size={12} />
-                <span>+12%</span>
-              </div>
+              <span className="text-xs app-text-muted">{period}</span>
             </div>
           </Card>
 
-          {/* Active Agents */}
           <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
@@ -338,7 +360,6 @@ export const DashboardPage = () => {
             </div>
           </Card>
 
-          {/* Cluster Health */}
           <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
@@ -359,7 +380,6 @@ export const DashboardPage = () => {
             </div>
           </Card>
 
-          {/* Task Queue */}
           <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
@@ -379,7 +399,6 @@ export const DashboardPage = () => {
             </div>
           </Card>
 
-          {/* Approvals */}
           <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
@@ -387,101 +406,70 @@ export const DashboardPage = () => {
               </div>
               <Shield size={16} className="text-orange-500" />
             </div>
-            <div className="text-2xl font-bold app-text-strong mb-1">3</div>
+            <div className="text-2xl font-bold app-text-strong mb-1">0</div>
             <div className="text-xs app-text-muted">Pending review</div>
           </Card>
         </div>
 
-        {/* Cost Timeline Chart */}
         <Card className="p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold app-text-strong">Cost Timeline by Team</h3>
+            <h3 className="font-semibold app-text-strong">Cost by Team</h3>
             <div className="flex items-center gap-4 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                <span className="app-text-muted">Backend</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-purple-500" />
-                <span className="app-text-muted">Frontend</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="app-text-muted">QA</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-orange-500" />
-                <span className="app-text-muted">DevOps</span>
-              </div>
+              {costChartKeys.map((item, index) => (
+                <div key={item.key} className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: chartColors[index] }} />
+                  <span className="app-text-muted">{item.name}</span>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={costChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.3} />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickFormatter={(value) => `$${value}`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                  }}
-                  formatter={(value) => [`$${value}`, '']}
-                />
-                <Area
-                  key="backend-area"
-                  type="monotone"
-                  dataKey="backend"
-                  stackId="1"
-                  stroke="#3b82f6"
-                  fill="#3b82f6"
-                  fillOpacity={0.6}
-                />
-                <Area
-                  key="frontend-area"
-                  type="monotone"
-                  dataKey="frontend"
-                  stackId="1"
-                  stroke="#a855f7"
-                  fill="#a855f7"
-                  fillOpacity={0.6}
-                />
-                <Area
-                  key="qa-area"
-                  type="monotone"
-                  dataKey="qa"
-                  stackId="1"
-                  stroke="#22c55e"
-                  fill="#22c55e"
-                  fillOpacity={0.6}
-                />
-                <Area
-                  key="devops-area"
-                  type="monotone"
-                  dataKey="devops"
-                  stackId="1"
-                  stroke="#f97316"
-                  fill="#f97316"
-                  fillOpacity={0.6}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {costChartKeys.length > 0 ? (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={costChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.3} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                    formatter={(value, name) => [`$${Number(value).toFixed(2)}`, name]}
+                  />
+                  {costChartKeys.map((item, index) => (
+                    <Area
+                      key={item.key}
+                      type="monotone"
+                      dataKey={item.key}
+                      name={item.name}
+                      stackId="1"
+                      stroke={chartColors[index]}
+                      fill={chartColors[index]}
+                      fillOpacity={0.6}
+                    />
+                  ))}
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-sm app-text-muted">
+              No agent cost data yet.
+            </div>
+          )}
         </Card>
 
-        {/* Team Health & Agent Status */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Team Health Portfolio */}
           <Card className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold app-text-strong">Team Health Portfolio</h3>
@@ -491,7 +479,7 @@ export const DashboardPage = () => {
               </Button>
             </div>
             <div className="space-y-3">
-              {summary.teams.map((team) => (
+              {summary.teams.length > 0 ? summary.teams.map((team) => (
                 <div
                   key={team.name}
                   className="p-4 app-surface-strong rounded-lg border app-border-subtle hover:app-border-accent transition-colors cursor-pointer"
@@ -512,7 +500,6 @@ export const DashboardPage = () => {
                       <span className="font-mono font-semibold app-text-strong">
                         ${team.spend.toFixed(2)}
                       </span>
-                      <span className="text-green-600">{team.trend}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-4 text-xs app-text-faint">
@@ -528,11 +515,14 @@ export const DashboardPage = () => {
                     )}
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div className="p-4 app-surface-strong rounded-lg border app-border-subtle text-sm app-text-muted">
+                  No AI Assistant team data yet.
+                </div>
+              )}
             </div>
           </Card>
 
-          {/* Agent Status List */}
           <Card className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold app-text-strong">Agent Status</h3>
@@ -542,9 +532,9 @@ export const DashboardPage = () => {
               </Button>
             </div>
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {agents.map((agent) => (
+              {agents.length > 0 ? agents.map((agent) => (
                 <div
-                  key={agent.name}
+                  key={agent.id}
                   className="p-3 app-surface-strong rounded-lg border app-border-subtle hover:app-border-accent transition-colors cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-1">
@@ -582,12 +572,15 @@ export const DashboardPage = () => {
                     </div>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div className="p-4 app-surface-strong rounded-lg border app-border-subtle text-sm app-text-muted">
+                  No AI Assistant runtimes registered.
+                </div>
+              )}
             </div>
           </Card>
         </div>
 
-        {/* Node Fleet Summary */}
         <Card className="p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold app-text-strong">Node Fleet Summary</h3>
@@ -609,8 +602,8 @@ export const DashboardPage = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {nodes.map((node) => (
-                <TableRow key={node.hostname} className="cursor-pointer hover:app-surface-hover">
+              {nodeRows.length > 0 ? nodeRows.map((node) => (
+                <TableRow key={node.id} className="cursor-pointer hover:app-surface-hover">
                   <TableCell className="font-medium font-mono text-sm">
                     {node.hostname}
                   </TableCell>
@@ -656,12 +649,17 @@ export const DashboardPage = () => {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-sm app-text-muted py-8">
+                    No execution nodes registered.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </Card>
 
-        {/* Recent Agent Activity */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold app-text-strong">Recent Agent Activity</h3>
@@ -681,18 +679,18 @@ export const DashboardPage = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recentActivity.map((activity, idx) => (
-                <TableRow key={idx} className="cursor-pointer hover:app-surface-hover">
+              {recentActivity.length > 0 ? recentActivity.map((activityItem) => (
+                <TableRow key={`${activityItem.time}-${activityItem.agent}-${activityItem.action}`} className="cursor-pointer hover:app-surface-hover">
                   <TableCell className="font-mono text-sm app-text-faint">
-                    {activity.time}
+                    {activityItem.time}
                   </TableCell>
-                  <TableCell className="font-medium">{activity.agent}</TableCell>
+                  <TableCell className="font-medium">{activityItem.agent}</TableCell>
                   <TableCell className="font-mono text-sm app-text-muted">
-                    {activity.action}
+                    {activityItem.action}
                   </TableCell>
-                  <TableCell className="app-text-muted text-sm">{activity.detail}</TableCell>
+                  <TableCell className="app-text-muted text-sm">{activityItem.detail}</TableCell>
                   <TableCell>
-                    {activity.status === 'success' ? (
+                    {activityItem.status === 'success' ? (
                       <Badge variant="outline" className="text-green-600 border-green-600">
                         <CheckCircle size={12} className="mr-1" />
                         Success
@@ -705,7 +703,13 @@ export const DashboardPage = () => {
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-sm app-text-muted py-8">
+                    No recent agent activity.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </Card>

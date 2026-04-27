@@ -7,7 +7,7 @@
 
 import { useState, useCallback } from 'react';
 import type { Node } from '@/types/node';
-import { getNodes, assignAgentToNode, unassignAgentFromNode } from '@/api/nodes';
+import { getNodes, assignAgentToNode, unassignAgentFromNode, registerNode, deregisterNode, type RegisterNodeInput } from '@/api/nodes';
 import { useAsyncStore, type AsyncLoadState } from './useAsyncStore';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +57,17 @@ export const useNodesStore = () => {
     void store.load();
   }, [store.load]);
 
+  const createNode = useCallback(async (input: RegisterNodeInput) => {
+    await registerNode(input);
+    void store.load();
+  }, [store.load]);
+
+  const removeNode = useCallback(async (nodeId: string) => {
+    await deregisterNode(nodeId);
+    setSelectedNodeId((current) => (current === nodeId ? null : current));
+    void store.load();
+  }, [store.load]);
+
   return {
     nodes: store.data,
     loadState: store.loadState,
@@ -65,6 +76,8 @@ export const useNodesStore = () => {
     loadNodes: store.load,
     selectNode,
     assignAgent,
-    unassignAgent
+    unassignAgent,
+    createNode,
+    removeNode
   };
 };
