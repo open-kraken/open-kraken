@@ -17,6 +17,7 @@ import (
 	"open-kraken/backend/go/internal/presence"
 	"open-kraken/backend/go/internal/projectdata"
 	"open-kraken/backend/go/internal/realtime"
+	"open-kraken/backend/go/internal/roster"
 	"open-kraken/backend/go/internal/runtime/instance"
 	"open-kraken/backend/go/internal/settings"
 	"open-kraken/backend/go/internal/skill"
@@ -45,6 +46,7 @@ type ExtendedServices struct {
 	TaskQueueService *taskqueue.Service
 	InstanceManager  *instance.Manager
 	AuthAccounts     []handlers.KnownAccount
+	RosterStore      roster.Store
 	// AELService is the Authoritative Execution Ledger (paper §3.2). Nil when
 	// OPEN_KRAKEN_POSTGRES_DSN is not configured.
 	AELService *ael.Service
@@ -72,7 +74,16 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 		terminalHandler.SetProviderRegistry(ext.ProviderRegistry)
 	}
 	realtimeHandler := handlers.NewRealtimeHandler(service, hub, wsUpgrader)
-	workspaceHandler := handlers.NewWorkspaceHandler(service, hub, projectRepo, workspaceRoot)
+	var workspaceHandler *handlers.WorkspaceHandler
+	if ext.RosterStore != nil {
+		var err error
+		workspaceHandler, err = handlers.NewWorkspaceHandlerWithRosterStore(service, hub, projectRepo, workspaceRoot, ext.RosterStore)
+		if err != nil {
+			panic("init roster store: " + err.Error())
+		}
+	} else {
+		workspaceHandler = handlers.NewWorkspaceHandler(service, hub, projectRepo, workspaceRoot)
+	}
 	if ext.MessageService != nil {
 		workspaceHandler.SetMessageService(ext.MessageService)
 	}

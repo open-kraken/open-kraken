@@ -18,11 +18,31 @@ import (
 	"open-kraken/backend/go/internal/projectdata"
 	"open-kraken/backend/go/internal/pty"
 	"open-kraken/backend/go/internal/realtime"
+	"open-kraken/backend/go/internal/roster"
 	"open-kraken/backend/go/internal/runtime/instance"
 	"open-kraken/backend/go/internal/session"
 	"open-kraken/backend/go/internal/terminal"
 	"open-kraken/backend/go/internal/terminal/provider"
 )
+
+type fakeRosterStore struct {
+	doc   roster.Document
+	found bool
+}
+
+func (s *fakeRosterStore) Read(_ context.Context, workspaceID string) (roster.Document, bool, error) {
+	if !s.found || s.doc.Meta.WorkspaceID != workspaceID {
+		return roster.Document{}, false, nil
+	}
+	return s.doc, true, nil
+}
+
+func (s *fakeRosterStore) Write(_ context.Context, doc roster.Document) error {
+	doc.Meta.Storage = "postgres"
+	s.doc = doc
+	s.found = true
+	return nil
+}
 
 func TestWorkspaceRoadmapAndProjectDataAuthzViaBearerAdapter(t *testing.T) {
 	workspaceRoot := t.TempDir()
@@ -128,6 +148,45 @@ func TestWorkspaceMembersPersistRosterToDisk(t *testing.T) {
 	path := filepath.Join(workspaceRoot, ".open-kraken", "roster.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("roster.json missing: %v", err)
+	}
+}
+
+func TestWorkspaceMembersPersistRosterToStore(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	appRoot := t.TempDir()
+	store := &fakeRosterStore{}
+	repo := projectdata.NewRepository(appRoot)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), realtime.NewHub(64))
+	handler := apihttp.NewHandlerWithDependencies(service, realtime.NewHub(64), repo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{
+		RosterStore: store,
+	}, plathttp.PermissiveWebSocketUpgrader())
+
+	ownerToken := mustToken(t, authz.Principal{
+		MemberID:    "owner-1",
+		WorkspaceID: "ws_open_kraken",
+		Role:        authz.RoleOwner,
+	})
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/ws_open_kraken/members", bytes.NewBufferString(`{"memberId":"roster_store_1","displayName":"Store RT","roleType":"member"}`))
+	create.Header.Set("Authorization", ownerToken)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, create)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if store.doc.Meta.Storage != "postgres" {
+		t.Fatalf("expected postgres storage metadata, got %+v", store.doc.Meta)
+	}
+	found := false
+	for _, member := range store.doc.Members {
+		if member["memberId"] == "roster_store_1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("created member missing from roster store: %+v", store.doc.Members)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceRoot, ".open-kraken", "roster.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no local roster.json when roster store is configured, err=%v", err)
 	}
 }
 

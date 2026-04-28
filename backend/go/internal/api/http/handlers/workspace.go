@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -65,9 +66,31 @@ type WorkspaceHandler struct {
 	// teams mirrors roster.json (memberIds); expanded in API responses.
 	teams         []roster.Team
 	rosterVersion int64
+	rosterStore   roster.Store
+	rosterStorage string
 }
 
 func NewWorkspaceHandler(service *terminal.Service, hub *realtime.Hub, projectRepo projectdata.ProjectDataRepository, workspaceRoot string) *WorkspaceHandler {
+	handler := newWorkspaceHandlerBase(service, hub, projectRepo, workspaceRoot)
+	handler.initRosterFromDisk()
+	handler.publishSnapshots()
+	return handler
+}
+
+func NewWorkspaceHandlerWithRosterStore(service *terminal.Service, hub *realtime.Hub, projectRepo projectdata.ProjectDataRepository, workspaceRoot string, store roster.Store) (*WorkspaceHandler, error) {
+	handler := newWorkspaceHandlerBase(service, hub, projectRepo, workspaceRoot)
+	if store != nil {
+		if err := handler.SetRosterStore(context.Background(), store); err != nil {
+			return nil, err
+		}
+	} else {
+		handler.initRosterFromDisk()
+	}
+	handler.publishSnapshots()
+	return handler, nil
+}
+
+func newWorkspaceHandlerBase(service *terminal.Service, hub *realtime.Hub, projectRepo projectdata.ProjectDataRepository, workspaceRoot string) *WorkspaceHandler {
 	handler := &WorkspaceHandler{
 		hub:           hub,
 		service:       service,
@@ -76,12 +99,39 @@ func NewWorkspaceHandler(service *terminal.Service, hub *realtime.Hub, projectRe
 		projectRepo:   projectRepo,
 		projectWriter: projectdata.NewGuardedService(projectRepo),
 		workspaceRoot: strings.TrimSpace(workspaceRoot),
+		rosterStorage: "workspace",
 	}
 	handler.teams = teamsFromFixtureTeams(handler.state.Teams)
 	handler.ensureDefaultTeam()
-	handler.initRosterFromDisk()
-	handler.publishSnapshots()
 	return handler
+}
+
+// SetRosterStore switches team/member roster persistence to the supplied
+// durable store. When the store is empty, the current fixture/file roster is
+// seeded into it so a cluster deployment starts with the same baseline data.
+func (h *WorkspaceHandler) SetRosterStore(ctx context.Context, store roster.Store) error {
+	if store == nil {
+		return nil
+	}
+	doc, found, err := store.Read(ctx, h.state.Workspace.ID)
+	if err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.rosterStore = store
+	h.rosterStorage = "postgres"
+	if found {
+		h.state.Members.Members = doc.Members
+		h.teams = doc.Teams
+		h.ensureDefaultTeam()
+		h.rosterVersion = doc.Meta.Version
+		if h.rosterVersion < 1 {
+			h.rosterVersion = 1
+		}
+		return nil
+	}
+	return h.persistRosterLocked()
 }
 
 // SetMessageService injects the message service for persistent message handling.

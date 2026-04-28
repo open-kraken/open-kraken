@@ -1,6 +1,7 @@
 package roster
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,6 +12,15 @@ import (
 )
 
 var mu sync.Mutex
+
+// Store is the durable roster persistence boundary used by clustered
+// deployments. Implementations may store the document in Postgres, files, or
+// another backend while preserving the API shape consumed by the workspace
+// handler.
+type Store interface {
+	Read(ctx context.Context, workspaceID string) (Document, bool, error)
+	Write(ctx context.Context, doc Document) error
+}
 
 func filePath(workspaceRoot string) string {
 	return filepath.Join(strings.TrimSpace(workspaceRoot), ".open-kraken", "roster.json")

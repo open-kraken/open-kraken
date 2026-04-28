@@ -123,6 +123,7 @@ Capability split:
   - any host-path resolution that would reveal raw machine-local filesystem layout
 - Allow through backend service proxy:
   - chat, member roster, role matrix, roadmap, project data
+  - clustered team/member roster writes require `OPEN_KRAKEN_POSTGRES_DSN`; without PostgreSQL the roster falls back to single-process workspace-file storage for local development only
   - terminal attach, snapshot, delta, status, and transcript reads after a backend-managed session already exists
   - healthz/readiness and degraded capability reporting
 - Forbid exposing through browser or generic API passthrough:

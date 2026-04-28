@@ -2,7 +2,9 @@ package roster
 
 import "time"
 
-// Document is persisted at <workspaceRoot>/.open-kraken/roster.json
+// Document is the canonical team/member roster payload. Local development can
+// persist it as <workspaceRoot>/.open-kraken/roster.json; clustered deployments
+// persist the same payload in PostgreSQL via workspace_rosters.
 type Document struct {
 	Meta    Meta             `json:"meta"`
 	Members []map[string]any `json:"members"`

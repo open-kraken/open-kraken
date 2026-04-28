@@ -648,7 +648,7 @@ export function TaskMapPage() {
   );
 
   const onPaneContextMenu = useCallback(
-    (event: MouseEvent) => {
+    (event: React.MouseEvent | MouseEvent) => {
       if (selection?.kind !== "node" || !nodes.some((node) => node.id === selection.id)) {
         return;
       }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -90,7 +91,7 @@ func (h *WorkspaceHandler) membersAndTeamsPayload() map[string]any {
 		"meta": map[string]any{
 			"version":     h.rosterVersion,
 			"workspaceId": h.state.Workspace.ID,
-			"storage":     "workspace",
+			"storage":     h.rosterStorage,
 		},
 	}
 }
@@ -141,19 +142,26 @@ func (h *WorkspaceHandler) expandTeamsResponse(sourceMembers []map[string]any) [
 }
 
 func (h *WorkspaceHandler) persistRosterLocked() error {
-	if h.workspaceRoot == "" {
+	if h.rosterStore == nil && h.workspaceRoot == "" {
 		return nil
 	}
 	h.rosterVersion++
+	storage := h.rosterStorage
+	if storage == "" {
+		storage = "workspace"
+	}
 	doc := roster.Document{
 		Meta: roster.Meta{
 			WorkspaceID: h.state.Workspace.ID,
 			Version:     h.rosterVersion,
 			UpdatedAt:   time.Now().UTC(),
-			Storage:     "workspace",
+			Storage:     storage,
 		},
 		Members: append([]map[string]any(nil), h.state.Members.Members...),
 		Teams:   append([]roster.Team(nil), h.teams...),
+	}
+	if h.rosterStore != nil {
+		return h.rosterStore.Write(context.Background(), doc)
 	}
 	return roster.Write(h.workspaceRoot, doc)
 }
@@ -261,7 +269,10 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 			}
 			h.state.Members.Members = append(h.state.Members.Members, row)
 			h.addMemberToTeam(targetTeamID, memberID)
-			_ = h.persistRosterLocked()
+			if err := h.persistRosterLocked(); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
 			h.publishPresenceLocked()
 			writeJSON(w, http.StatusCreated, h.membersAndTeamsPayload())
 		default:
@@ -285,7 +296,10 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 				if terminalStatus, ok := body["terminalStatus"].(string); ok {
 					member["terminalStatus"] = terminalStatus
 				}
-				_ = h.persistRosterLocked()
+				if err := h.persistRosterLocked(); err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
 				h.publishPresenceLocked()
 				writeJSON(w, http.StatusOK, h.membersAndTeamsPayload())
 				return
@@ -326,7 +340,10 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 				if v, ok := body["terminalStatus"].(string); ok {
 					member["terminalStatus"] = v
 				}
-				_ = h.persistRosterLocked()
+				if err := h.persistRosterLocked(); err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
 				h.publishPresenceLocked()
 				writeJSON(w, http.StatusOK, h.membersAndTeamsPayload())
 				return
@@ -344,7 +361,10 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 				}
 				h.state.Members.Members = append(h.state.Members.Members[:i], h.state.Members.Members[i+1:]...)
 				h.stripMemberFromTeams(memberID)
-				_ = h.persistRosterLocked()
+				if err := h.persistRosterLocked(); err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
 				h.publishPresenceLocked()
 				writeJSON(w, http.StatusOK, h.membersAndTeamsPayload())
 				return
@@ -651,7 +671,10 @@ func (h *WorkspaceHandler) HandleTeams(w http.ResponseWriter, r *http.Request, w
 				}
 			}
 			h.teams = append(h.teams, roster.Team{TeamID: teamID, Name: strings.TrimSpace(body.Name), MemberIDs: append([]string(nil), body.MemberIDs...)})
-			_ = h.persistRosterLocked()
+			if err := h.persistRosterLocked(); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
 			writeJSON(w, http.StatusCreated, h.membersAndTeamsPayload())
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -684,7 +707,10 @@ func (h *WorkspaceHandler) HandleTeams(w http.ResponseWriter, r *http.Request, w
 				if body.MemberIDs != nil {
 					h.teams[i].MemberIDs = append([]string(nil), body.MemberIDs...)
 				}
-				_ = h.persistRosterLocked()
+				if err := h.persistRosterLocked(); err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
 				writeJSON(w, http.StatusOK, h.membersAndTeamsPayload())
 				return
 			}
@@ -700,7 +726,10 @@ func (h *WorkspaceHandler) HandleTeams(w http.ResponseWriter, r *http.Request, w
 					continue
 				}
 				h.teams = append(h.teams[:i], h.teams[i+1:]...)
-				_ = h.persistRosterLocked()
+				if err := h.persistRosterLocked(); err != nil {
+					writeError(w, http.StatusInternalServerError, err)
+					return
+				}
 				writeJSON(w, http.StatusOK, h.membersAndTeamsPayload())
 				return
 			}

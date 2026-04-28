@@ -37,6 +37,7 @@ import (
 	llmopenai "open-kraken/backend/go/internal/provider/openai"
 	"open-kraken/backend/go/internal/pty"
 	"open-kraken/backend/go/internal/realtime"
+	"open-kraken/backend/go/internal/roster"
 	"open-kraken/backend/go/internal/runtime/instance"
 	"open-kraken/backend/go/internal/sem"
 	"open-kraken/backend/go/internal/session"
@@ -566,6 +567,13 @@ func main() {
 
 	pluginSvc := plugin.NewService()
 	settingsSvc := settings.NewService(filepath.Join(cfg.AppDataRoot, "settings"))
+	var rosterStore roster.Store
+	if aelSvc != nil {
+		rosterStore = roster.NewPGStore(aelSvc.Repo().Pool())
+		log.Info("workspace roster store: postgres")
+	} else {
+		log.Info("workspace roster store: workspace file")
+	}
 
 	// Seed accounts for development login.
 	seedAccounts := []handlers.KnownAccount{
@@ -623,6 +631,7 @@ func main() {
 		ProviderRegistry: providerRegistry,
 		TaskQueueService: taskSvc,
 		InstanceManager:  instanceMgr,
+		RosterStore:      rosterStore,
 		AELService:       aelSvc,
 		AuthAccounts:     seedAccounts,
 	}, platformhttp.WebSocketUpgrader(cfg))
