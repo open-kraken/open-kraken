@@ -40,6 +40,7 @@ export const XtermRenderer = ({
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const lastWrittenLength = useRef(0);
+  const lastOutputText = useRef('');
   const onInputRef = useRef(onInput);
   const onResizeRef = useRef(onResize);
 
@@ -131,10 +132,21 @@ export const XtermRenderer = ({
     const term = termRef.current;
     if (!term) return;
 
+    const previousOutput = lastOutputText.current;
+    const outputReplaced =
+      outputText.length < lastWrittenLength.current ||
+      (previousOutput.length > 0 && !outputText.startsWith(previousOutput));
+
+    if (outputReplaced) {
+      term.reset();
+      lastWrittenLength.current = 0;
+    }
+
     const newData = outputText.slice(lastWrittenLength.current);
     if (newData.length > 0) {
       term.write(newData);
       lastWrittenLength.current = outputText.length;
+      lastOutputText.current = outputText;
 
       // ACK bytes for flow control.
       onAckBytes?.(newData.length);
@@ -143,6 +155,8 @@ export const XtermRenderer = ({
       if (followOutput) {
         term.scrollToBottom();
       }
+    } else if (outputReplaced) {
+      lastOutputText.current = outputText;
     }
   }, [outputText, followOutput, onAckBytes]);
 

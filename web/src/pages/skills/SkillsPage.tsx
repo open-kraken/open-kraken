@@ -18,16 +18,16 @@ import {
   Users,
   Code,
   Terminal,
-  Activity,
   Clock,
   CheckCircle,
   AlertCircle,
   FileCode,
+  RotateCcw,
 } from 'lucide-react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useAppShell } from '@/state/app-shell-store';
 import { appEnv } from '@/config/env';
-import { getSkills, getMemberSkills, updateMemberSkills } from '@/api/skills';
+import { getSkills, getMemberSkills, reloadSkills, updateMemberSkills } from '@/api/skills';
 import {
   buildSkillsSnapshot,
   downloadJson,
@@ -244,7 +244,7 @@ function TreeNode({
   );
 }
 
-/* ── Skill Library Tab (v2) ── */
+/* ── AEL Skill Definitions Tab (v2) ── */
 
 const NEW_SKILL_DEFAULT: CreateSkillInput = {
   name: '',
@@ -256,7 +256,7 @@ const NEW_SKILL_DEFAULT: CreateSkillInput = {
   workload_class_tags: [],
 };
 
-function SkillLibraryTab() {
+function AelSkillDefinitionsTab() {
   const [defs, setDefs] = useState<SkillDefinitionDTO[]>([]);
   const [libState, setLibState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [showForm, setShowForm] = useState(false);
@@ -307,10 +307,10 @@ function SkillLibraryTab() {
       <div className="w-[320px] app-surface-strong border-r app-border-subtle flex flex-col">
         <div className="p-3 border-b app-border-subtle flex items-center justify-between">
           <span className="text-xs font-semibold app-text-faint uppercase tracking-wider">
-            {defs.length} skill{defs.length !== 1 ? 's' : ''}
+            {defs.length} definition{defs.length !== 1 ? 's' : ''}
           </span>
           <Button size="sm" className="h-7" onClick={() => { setShowForm(true); setSelected(null); }}>
-            <Plus size={12} className="mr-1" /> New Skill
+            <Plus size={12} className="mr-1" /> New Definition
           </Button>
         </div>
         <ScrollArea className="flex-1">
@@ -320,14 +320,14 @@ function SkillLibraryTab() {
             )}
             {libState === 'error' && (
               <div className="text-center py-8 text-red-500 text-sm">
-                Failed to load skill library.
+                Failed to load AEL definitions.
                 <Button variant="ghost" size="sm" className="block mx-auto mt-2" onClick={() => void loadDefs()}>
                   Retry
                 </Button>
               </div>
             )}
             {defs.length === 0 && libState === 'idle' && (
-              <div className="text-center py-8 app-text-faint text-sm">No skills in library yet.</div>
+              <div className="text-center py-8 app-text-faint text-sm">No AEL skill definitions yet.</div>
             )}
             {defs.map((def) => (
               <button
@@ -358,7 +358,10 @@ function SkillLibraryTab() {
       <div className="flex-1 overflow-auto p-6">
         {showForm && (
           <div className="max-w-xl">
-            <h2 className="text-base font-bold app-text-strong mb-4">New Skill Definition</h2>
+            <h2 className="text-base font-bold app-text-strong mb-1">New AEL Skill Definition</h2>
+            <p className="text-sm app-text-muted mb-4">
+              These definitions are used by the AEL runtime matcher. They do not become assignable catalog skills until backend promotion is implemented.
+            </p>
             <form onSubmit={(e) => void handleCreate(e)} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="lib-name">Name</Label>
@@ -399,7 +402,7 @@ function SkillLibraryTab() {
               {formError && <p className="text-xs text-red-500">{formError}</p>}
               <div className="flex items-center gap-2 pt-1">
                 <Button type="submit" disabled={saving}>
-                  {saving ? 'Saving…' : 'Create Skill'}
+                  {saving ? 'Saving…' : 'Create Definition'}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setShowForm(false)} disabled={saving}>
                   Cancel
@@ -466,10 +469,10 @@ function SkillLibraryTab() {
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
               <FileCode size={48} className="app-text-faint mx-auto mb-4" />
-              <h3 className="text-lg font-semibold app-text-strong mb-2">Select a skill definition</h3>
-              <p className="text-sm app-text-muted">Choose a skill from the list or create a new one.</p>
+              <h3 className="text-lg font-semibold app-text-strong mb-2">Select an AEL definition</h3>
+              <p className="text-sm app-text-muted">Choose a runtime definition from the list or create a new one.</p>
               <Button size="sm" className="mt-4" onClick={() => setShowForm(true)}>
-                <Plus size={14} className="mr-1" /> New Skill
+                <Plus size={14} className="mr-1" /> New Definition
               </Button>
             </div>
           </div>
@@ -585,7 +588,7 @@ function SkillAssignmentsTab({
           <Package size={32} className="app-text-faint mx-auto mb-3" />
           <h2 className="text-base font-semibold app-text-strong mb-2">No Assignable Skills</h2>
           <p className="text-sm app-text-muted">
-            Add markdown skills to the catalog or create skill definitions before assigning them to AI Assistants.
+            Add markdown skills to the skills directory and reload the assignable catalog before assigning them to AI Assistants.
           </p>
         </Card>
       </div>
@@ -766,6 +769,7 @@ export const SkillsPage = () => {
   const [skillBindings, setSkillBindings] = useState<SkillBindingMap>({});
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [reloadingCatalog, setReloadingCatalog] = useState(false);
   const [preview, setPreview] = useState<SkillsSnapshotV1 | null>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
@@ -785,6 +789,25 @@ export const SkillsPage = () => {
 
   useEffect(() => {
     void loadCatalog();
+  }, [loadCatalog]);
+
+  const handleReloadCatalog = useCallback(async () => {
+    setReloadingCatalog(true);
+    setMessage(null);
+    try {
+      const result = await reloadSkills();
+      await loadCatalog();
+      setSelectedSkillId(null);
+      const loadedText = typeof result.loaded === 'number' ? `${result.loaded} skills loaded.` : 'Catalog reloaded.';
+      setMessage({ tone: 'ok', text: loadedText });
+    } catch (e) {
+      setMessage({
+        tone: 'err',
+        text: e instanceof Error ? e.message : 'Failed to reload assignable skill catalog.',
+      });
+    } finally {
+      setReloadingCatalog(false);
+    }
   }, [loadCatalog]);
 
   const loadAssignments = useCallback(async () => {
@@ -955,6 +978,7 @@ export const SkillsPage = () => {
           <div className="flex items-center gap-4">
             <div>
               <h1 className="text-base font-bold app-text-strong">Skills</h1>
+              <p className="text-xs app-text-faint">Assignable catalog and AI Assistant bindings</p>
             </div>
             {/* Inline Metrics */}
             <div className="flex items-center gap-3 text-xs">
@@ -997,6 +1021,16 @@ export const SkillsPage = () => {
               variant="outline"
               size="sm"
               className="h-8"
+              onClick={() => void handleReloadCatalog()}
+              disabled={reloadingCatalog || loadState === 'loading'}
+            >
+              <RotateCcw size={14} className="mr-1" />
+              {reloadingCatalog ? 'Reloading...' : 'Reload Catalog'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
               onClick={() => void handleExport()}
               disabled={exporting || loadState === 'loading'}
             >
@@ -1018,10 +1052,6 @@ export const SkillsPage = () => {
                 {importing ? 'Applying...' : 'Apply Import'}
               </Button>
             )}
-            <Button variant="outline" size="sm" className="h-8" onClick={() => setActiveTab('library')}>
-              <Plus size={14} className="mr-1" />
-              New Skill
-            </Button>
           </div>
         </div>
       </div>
@@ -1030,16 +1060,16 @@ export const SkillsPage = () => {
       <div className="border-b app-border-subtle px-6 pt-2 app-surface-strong">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'catalog' | 'assignments' | 'library')}>
           <TabsList className="h-9">
-            <TabsTrigger value="catalog" className="text-xs">Skill Catalog</TabsTrigger>
+            <TabsTrigger value="catalog" className="text-xs">Assignable Catalog</TabsTrigger>
             <TabsTrigger value="assignments" className="text-xs">AI Assistant Assignments</TabsTrigger>
-            <TabsTrigger value="library" className="text-xs">Skill Library</TabsTrigger>
+            <TabsTrigger value="library" className="text-xs">AEL Definitions</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {activeTab === 'library' && <SkillLibraryTab />}
+        {activeTab === 'library' && <AelSkillDefinitionsTab />}
         {activeTab === 'assignments' && (
           <SkillAssignmentsTab
             skills={skills}
@@ -1132,43 +1162,33 @@ export const SkillsPage = () => {
                 </div>
 
                 {/* Quick Stats */}
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <Card className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Users size={16} className="app-accent-text" />
-                      <span className="text-xs app-text-faint">Used By</span>
+                      <span className="text-xs app-text-faint">Assigned To</span>
                     </div>
                     <div className="text-2xl font-bold app-text-strong">
                       {selectedSkill.usedBy?.length ?? 0}
                     </div>
-                    <div className="text-xs app-text-faint">agents</div>
-                  </Card>
-                  <Card className="p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Activity size={16} className="text-green-600" />
-                      <span className="text-xs app-text-faint">Total Calls</span>
-                    </div>
-                    <div className="text-2xl font-bold text-green-600">
-                      {selectedSkill.usedBy?.reduce((sum, u) => sum + u.usageCount, 0) ?? 0}
-                    </div>
-                    <div className="text-xs app-text-faint">executions</div>
-                  </Card>
-                  <Card className="p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock size={16} className="app-text-muted" />
-                      <span className="text-xs app-text-faint">Last Used</span>
-                    </div>
-                    <div className="text-sm font-semibold app-text-strong">
-                      {selectedSkill.usedBy?.[0]?.lastUsed ?? 'Never'}
-                    </div>
+                    <div className="text-xs app-text-faint">AI Assistants</div>
                   </Card>
                   <Card className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Package size={16} className="app-text-muted" />
-                      <span className="text-xs app-text-faint">Dependencies</span>
+                      <span className="text-xs app-text-faint">Category</span>
                     </div>
-                    <div className="text-2xl font-bold app-text-strong">
-                      {selectedSkill.dependencies?.length ?? 0}
+                    <div className="text-sm font-semibold app-text-strong">
+                      {selectedSkill.category ?? 'other'}
+                    </div>
+                  </Card>
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Terminal size={16} className="app-text-muted" />
+                      <span className="text-xs app-text-faint">Source</span>
+                    </div>
+                    <div className="text-sm font-semibold app-text-strong truncate">
+                      {selectedSkill.path ? 'Markdown file' : 'Catalog entry'}
                     </div>
                   </Card>
                 </div>
@@ -1179,8 +1199,6 @@ export const SkillsPage = () => {
                 <TabsList>
                   <TabsTrigger value="agents">Agents Using This</TabsTrigger>
                   <TabsTrigger value="code">Source Code</TabsTrigger>
-                  <TabsTrigger value="dependencies">Dependencies</TabsTrigger>
-                  <TabsTrigger value="activity">Activity Log</TabsTrigger>
                 </TabsList>
 
                 {/* Agents Tab */}
@@ -1216,12 +1234,6 @@ export const SkillsPage = () => {
                               </div>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold app-accent-text">
-                              {usage.usageCount.toLocaleString()}
-                            </div>
-                            <div className="text-xs app-text-faint">total calls</div>
-                          </div>
                         </div>
                       </Card>
                     ))
@@ -1251,41 +1263,6 @@ export const SkillsPage = () => {
                   </Card>
                 </TabsContent>
 
-                {/* Dependencies Tab */}
-                <TabsContent value="dependencies">
-                  <Card className="p-4">
-                    {selectedSkill.dependencies && selectedSkill.dependencies.length > 0 ? (
-                      <div className="space-y-2">
-                        {selectedSkill.dependencies.map((dep, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 py-2 px-3 rounded app-surface-strong"
-                          >
-                            <Package size={14} className="app-accent-text" />
-                            <span className="font-mono text-sm app-text-strong">{dep}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Package size={32} className="app-text-faint mx-auto mb-2" />
-                        <p className="text-sm app-text-faint">No dependencies</p>
-                      </div>
-                    )}
-                  </Card>
-                </TabsContent>
-
-                {/* Activity Tab */}
-                <TabsContent value="activity">
-                  <div className="space-y-3">
-                    <Card className="p-8 text-center">
-                      <Activity size={32} className="app-text-faint mx-auto mb-2" />
-                      <p className="text-sm app-text-faint">
-                        No activity recorded for this skill yet
-                      </p>
-                    </Card>
-                  </div>
-                </TabsContent>
               </Tabs>
             </div>
           ) : (

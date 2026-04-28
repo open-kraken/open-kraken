@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { TerminalPanel } from '@/features/terminal/TerminalPanel';
-import { normalizeMembersEnvelope, type MemberFixture } from '@/features/members/member-page-model';
+import {
+  normalizeTeamsAndMembers,
+  type MemberFixture,
+  type TeamGroupFixture,
+} from '@/features/members/member-page-model';
 import { useAppShell } from '@/state/app-shell-store';
 import { useAuth } from '@/auth/AuthProvider';
 import {
@@ -93,11 +97,21 @@ type SessionRow = {
   key: string;
   member: MemberFixture | null;
   session: TerminalSessionInfo | null;
+  teamId: string;
+  teamName: string;
   terminalId: string;
   status: string;
   command: string;
   node: string;
   restartSummary: string;
+};
+
+type SessionTeamGroup = {
+  teamId: string;
+  teamName: string;
+  activeCount: number;
+  totalSessions: number;
+  rows: SessionRow[];
 };
 
 export const TerminalPage = () => {
@@ -122,6 +136,7 @@ export const TerminalPage = () => {
   });
 
   const [roster, setRoster] = useState<MemberFixture[]>([]);
+  const [teamGroups, setTeamGroups] = useState<TeamGroupFixture[]>([]);
   const [sessions, setSessions] = useState<TerminalSessionInfo[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [refreshingSessions, setRefreshingSessions] = useState(false);
@@ -134,6 +149,7 @@ export const TerminalPage = () => {
     provider: 'claude-code',
     workingDir: '~/workspace',
   });
+  const inputResyncTimer = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,11 +157,14 @@ export const TerminalPage = () => {
       .getMembers()
       .then((response) => {
         if (cancelled) return;
-        setRoster(normalizeMembersEnvelope(response));
+        const normalized = normalizeTeamsAndMembers(response as Record<string, unknown>);
+        setRoster(normalized.members);
+        setTeamGroups(normalized.teamGroups);
       })
       .catch(() => {
         if (cancelled) return;
         setRoster([]);
+        setTeamGroups([]);
       });
     return () => { cancelled = true; };
   }, [apiClient]);
@@ -173,6 +192,14 @@ export const TerminalPage = () => {
   useEffect(() => {
     void refreshSessions();
   }, [refreshSessions]);
+
+  useEffect(() => {
+    return () => {
+      if (inputResyncTimer.current !== null) {
+        window.clearTimeout(inputResyncTimer.current);
+      }
+    };
+  }, []);
 
   const setHashForTerminal = useCallback((terminalId: string) => {
     window.history.replaceState({}, '', `${window.location.pathname}#${terminalId}`);
@@ -202,8 +229,29 @@ export const TerminalPage = () => {
 
   const sessionRows = useMemo<SessionRow[]>(() => {
     const memberById = new Map(roster.map((member) => [member.memberId, member]));
+    const teamByMemberId = new Map<string, { teamId: string; teamName: string }>();
+    const teamNameById = new Map<string, string>();
+    for (const team of teamGroups) {
+      teamNameById.set(team.teamId, team.name ?? team.teamId);
+      for (const member of team.members) {
+        teamByMemberId.set(member.memberId, {
+          teamId: team.teamId,
+          teamName: team.name ?? team.teamId,
+        });
+      }
+    }
+    const teamForMember = (member: MemberFixture | null, fallbackMemberId: string) => {
+      const fromGroup = teamByMemberId.get(member?.memberId ?? fallbackMemberId);
+      if (fromGroup) return fromGroup;
+      const teamId = member?.teamId ?? 'team_default';
+      return {
+        teamId,
+        teamName: teamNameById.get(teamId) ?? (teamId === 'team_default' ? 'Workspace team' : teamId),
+      };
+    };
     const rows = sessions.map((session) => {
       const member = memberById.get(session.memberId) ?? null;
+      const team = teamForMember(member, session.memberId);
       const node = metadataText(session.metadata, ['currentNode', 'nodeId', 'nodeName', 'podName'], 'unassigned');
       const previousNode = metadataText(session.metadata, ['previousNode', 'lastNode', 'failedNode']);
       const restartCount = Number(session.metadata.restartCount ?? session.metadata.restarts ?? 0);
@@ -217,6 +265,8 @@ export const TerminalPage = () => {
         key: `session:${session.terminalId}`,
         member,
         session,
+        teamId: team.teamId,
+        teamName: team.teamName,
         terminalId: session.terminalId,
         status: session.status,
         command: session.command || session.terminalType || 'shell',
@@ -229,6 +279,7 @@ export const TerminalPage = () => {
     const emptyMemberRows = roster
       .filter((member) => !sessionMemberIds.has(member.memberId))
       .map((member) => ({
+        ...teamForMember(member, member.memberId),
         key: `member:${member.memberId}`,
         member,
         session: null,
@@ -240,7 +291,40 @@ export const TerminalPage = () => {
       }));
 
     return [...rows, ...emptyMemberRows];
-  }, [roster, sessions]);
+  }, [roster, sessions, teamGroups]);
+
+  const sessionTeamGroups = useMemo<SessionTeamGroup[]>(() => {
+    const grouped = new Map<string, SessionTeamGroup>();
+    for (const team of teamGroups) {
+      grouped.set(team.teamId, {
+        teamId: team.teamId,
+        teamName: team.name ?? team.teamId,
+        activeCount: 0,
+        totalSessions: 0,
+        rows: [],
+      });
+    }
+    for (const row of sessionRows) {
+      if (!grouped.has(row.teamId)) {
+        grouped.set(row.teamId, {
+          teamId: row.teamId,
+          teamName: row.teamName,
+          activeCount: 0,
+          totalSessions: 0,
+          rows: [],
+        });
+      }
+      const group = grouped.get(row.teamId)!;
+      group.rows.push(row);
+      if (row.session) {
+        group.totalSessions += 1;
+      }
+      if (row.session && statusIsLive(row.status)) {
+        group.activeCount += 1;
+      }
+    }
+    return Array.from(grouped.values()).filter((group) => group.rows.length > 0);
+  }, [sessionRows, teamGroups]);
 
   const totalSessions = sessions.length;
   const activeSessions = sessions.filter((session) => statusIsLive(session.status)).length;
@@ -268,14 +352,28 @@ export const TerminalPage = () => {
   const handleSendInput = useCallback((data: string) => {
     const sessionId = terminalRuntime.state.session?.terminalId;
     if (!sessionId) return;
-    void sendTerminalInput(sessionId, data).catch((err) => {
-      pushNotification({
-        tone: 'error',
-        title: t('terminal.inputError'),
-        detail: err instanceof Error ? err.message : 'Input send failed'
+    void sendTerminalInput(sessionId, data)
+      .then(() => {
+        if (!data.includes('\r') && !data.includes('\n')) {
+          return;
+        }
+        if (inputResyncTimer.current !== null) {
+          window.clearTimeout(inputResyncTimer.current);
+        }
+        inputResyncTimer.current = window.setTimeout(() => {
+          inputResyncTimer.current = null;
+          void refreshSessions();
+          void terminalRuntime.attachTo(sessionId);
+        }, 350);
+      })
+      .catch((err) => {
+        pushNotification({
+          tone: 'error',
+          title: t('terminal.inputError'),
+          detail: err instanceof Error ? err.message : 'Input send failed'
+        });
       });
-    });
-  }, [terminalRuntime.state.session?.terminalId, pushNotification, t]);
+  }, [terminalRuntime, refreshSessions, pushNotification, t]);
 
   /** Close the active terminal session. */
   const handleCloseSession = useCallback(async (sessionId = terminalRuntime.state.session?.terminalId) => {
@@ -458,77 +556,94 @@ export const TerminalPage = () => {
 
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-4">
-              {sessionRows.length === 0 ? (
+              {sessionTeamGroups.length === 0 ? (
                 <p className="px-3 py-6 text-center text-xs app-text-faint">{t('terminal.loadingRoster')}</p>
               ) : (
-                sessionRows.map((row) => {
-                  const isActive = row.terminalId === activeTerminalId;
-                  const hasSession = Boolean(row.session);
-                  const displayName = row.member?.displayName ?? row.member?.memberId ?? row.session?.memberId ?? 'Unassigned agent';
-                  const normalizedStatus = row.status.toLowerCase();
-
-                  return (
-                    <div key={row.key}>
-                      {/* Member Header */}
-                      <div className="px-2 py-1.5 flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center text-white text-xs font-bold">
-                          {displayName.charAt(0).toUpperCase()}
+                sessionTeamGroups.map((team) => (
+                  <section key={team.teamId} className="space-y-2">
+                    <div className="px-2 py-1 flex items-center justify-between">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold uppercase tracking-normal app-text-strong truncate">
+                          {team.teamName}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-medium app-text-strong truncate">
-                            {displayName}
-                          </div>
-                          <div className="text-[10px] app-text-faint">
-                            {hasSession ? `${row.session?.terminalType || 'shell'} shell` : 'No shell session'}
-                          </div>
-                        </div>
+                        <div className="text-[10px] app-text-faint truncate">{team.teamId}</div>
                       </div>
-
-                      {/* Session button */}
-                      {hasSession && (
-                        <div
-                          className={`w-full text-left p-2.5 rounded-lg transition-all ${
-                            isActive
-                              ? 'bg-gradient-to-r from-cyan-500/10 to-teal-500/10 border-l-2 border-l-cyan-500'
-                              : 'hover:bg-gray-100 dark:hover:bg-gray-800 ml-0.5'
-                          }`}
-                        >
-                          <button type="button" onClick={() => selectSession(row.terminalId)} className="w-full text-left">
-                            <div className="flex items-center gap-2 mb-1">
-                              <StatusDot status={statusDotValue(normalizedStatus)} />
-                              <span className="text-xs font-medium app-text-strong flex-1 truncate">
-                                {row.terminalId}
-                              </span>
-                              {statusIsAbnormal(row.status) && <AlertTriangle size={13} className="text-red-600" />}
-                            </div>
-                            <div className="text-[10px] app-text-muted font-mono truncate ml-4">
-                              {row.command}
-                            </div>
-                            <div className="mt-1 grid grid-cols-[14px_1fr] gap-x-1 gap-y-0.5 text-[10px] app-text-faint">
-                              <Server size={11} className="mt-0.5" />
-                              <span className="truncate">{row.node}</span>
-                              <Activity size={11} className="mt-0.5" />
-                              <span className="truncate">{row.restartSummary}</span>
-                            </div>
-                          </button>
-                          <div className="mt-2 flex items-center justify-between text-[10px] app-text-faint">
-                            <span>seq {row.session?.seq ?? 0} · {row.session?.subscriberCount ?? 0} viewers</span>
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 text-red-600 disabled:opacity-50"
-                              onClick={() => void handleCloseSession(row.terminalId)}
-                              disabled={closingSessionId === row.terminalId}
-                              aria-label={`Terminate ${row.terminalId}`}
-                            >
-                              <Square size={10} />
-                              {closingSessionId === row.terminalId ? 'Stopping' : 'Stop'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      <div className="text-[10px] app-text-faint">
+                        {team.activeCount} active · {team.totalSessions} shells · {team.rows.length} agents
+                      </div>
                     </div>
-                  );
-                })
+                    <div className="space-y-2">
+                      {team.rows.map((row) => {
+                        const isActive = row.terminalId === activeTerminalId;
+                        const hasSession = Boolean(row.session);
+                        const displayName = row.member?.displayName ?? row.member?.memberId ?? row.session?.memberId ?? 'Unassigned agent';
+                        const normalizedStatus = row.status.toLowerCase();
+
+                        return (
+                          <div key={row.key}>
+                            {/* Member Header */}
+                            <div className="px-2 py-1.5 flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center text-white text-xs font-bold">
+                                {displayName.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium app-text-strong truncate">
+                                  {displayName}
+                                </div>
+                                <div className="text-[10px] app-text-faint">
+                                  {hasSession ? `${row.session?.terminalType || 'shell'} shell` : 'No shell session'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Session button */}
+                            {hasSession && (
+                              <div
+                                className={`w-full text-left p-2.5 rounded-lg transition-all ${
+                                  isActive
+                                    ? 'bg-gradient-to-r from-cyan-500/10 to-teal-500/10 border-l-2 border-l-cyan-500'
+                                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 ml-0.5'
+                                }`}
+                              >
+                                <button type="button" onClick={() => selectSession(row.terminalId)} className="w-full text-left">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <StatusDot status={statusDotValue(normalizedStatus)} />
+                                    <span className="text-xs font-medium app-text-strong flex-1 truncate">
+                                      {row.terminalId}
+                                    </span>
+                                    {statusIsAbnormal(row.status) && <AlertTriangle size={13} className="text-red-600" />}
+                                  </div>
+                                  <div className="text-[10px] app-text-muted font-mono truncate ml-4">
+                                    {row.command}
+                                  </div>
+                                  <div className="mt-1 grid grid-cols-[14px_1fr] gap-x-1 gap-y-0.5 text-[10px] app-text-faint">
+                                    <Server size={11} className="mt-0.5" />
+                                    <span className="truncate">{row.node}</span>
+                                    <Activity size={11} className="mt-0.5" />
+                                    <span className="truncate">{row.restartSummary}</span>
+                                  </div>
+                                </button>
+                                <div className="mt-2 flex items-center justify-between text-[10px] app-text-faint">
+                                  <span>seq {row.session?.seq ?? 0} · {row.session?.subscriberCount ?? 0} viewers</span>
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 text-red-600 disabled:opacity-50"
+                                    onClick={() => void handleCloseSession(row.terminalId)}
+                                    disabled={closingSessionId === row.terminalId}
+                                    aria-label={`Terminate ${row.terminalId}`}
+                                  >
+                                    <Square size={10} />
+                                    {closingSessionId === row.terminalId ? 'Stopping' : 'Stop'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))
               )}
             </div>
           </ScrollArea>

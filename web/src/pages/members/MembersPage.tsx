@@ -73,6 +73,111 @@ interface Provider {
   description: string;
 }
 
+type ProviderAuthDraft = {
+  mode: 'api_key' | 'account' | 'none';
+  account?: string;
+  apiKey?: string;
+  updatedAt?: string;
+};
+
+const agentGivenNames = [
+  'Avery',
+  'Blake',
+  'Cameron',
+  'Dakota',
+  'Emerson',
+  'Finley',
+  'Harper',
+  'Jordan',
+  'Kendall',
+  'Logan',
+  'Morgan',
+  'Parker',
+  'Quinn',
+  'Reese',
+  'Riley',
+  'Rowan',
+  'Sawyer',
+  'Taylor',
+  'Skyler',
+  'Casey',
+];
+
+const agentFamilyNames = [
+  'Atlas',
+  'Beacon',
+  'Cipher',
+  'Delta',
+  'Echo',
+  'Forge',
+  'Harbor',
+  'Ion',
+  'Juno',
+  'Keystone',
+  'Lumen',
+  'Matrix',
+  'Nova',
+  'Orbit',
+  'Pulse',
+  'Quartz',
+  'Relay',
+  'Summit',
+  'Vector',
+  'Zenith',
+];
+
+const randomInt = (max: number) => {
+  if (max <= 0) return 0;
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.getRandomValues) {
+    const value = new Uint32Array(1);
+    cryptoApi.getRandomValues(value);
+    return value[0] % max;
+  }
+  return Math.floor(Math.random() * max);
+};
+
+const memberIdFromName = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const buildUniqueAgentIdentities = (
+  count: number,
+  existingMemberIds: string[],
+  existingDisplayNames: string[],
+) => {
+  const usedIds = new Set(existingMemberIds.map((id) => id.toLowerCase()));
+  const usedNames = new Set(existingDisplayNames.map((name) => name.trim().toLowerCase()).filter(Boolean));
+  const identities: Array<{ memberId: string; displayName: string }> = [];
+  const totalCombinations = agentGivenNames.length * agentFamilyNames.length;
+  let offset = randomInt(totalCombinations);
+  let attempts = 0;
+
+  while (identities.length < count && attempts < totalCombinations + count * 10) {
+    const index = (offset + attempts) % totalCombinations;
+    const given = agentGivenNames[index % agentGivenNames.length];
+    const family = agentFamilyNames[Math.floor(index / agentGivenNames.length) % agentFamilyNames.length];
+    let displayName = `${given} ${family}`;
+    let memberId = `ai_${memberIdFromName(displayName)}`;
+    let suffix = 2;
+    while (usedNames.has(displayName.toLowerCase()) || usedIds.has(memberId.toLowerCase())) {
+      displayName = `${given} ${family} ${suffix}`;
+      memberId = `ai_${memberIdFromName(displayName)}`;
+      suffix += 1;
+    }
+    usedNames.add(displayName.toLowerCase());
+    usedIds.add(memberId.toLowerCase());
+    identities.push({ memberId, displayName });
+    attempts += 1;
+    offset += 1;
+  }
+
+  return identities;
+};
+
 const providers: Provider[] = [
   {
     id: 'claude-code',
@@ -123,6 +228,8 @@ function InviteAIAssistantModal({
   onOpenChange,
   teams = [],
   selectedTeam = '',
+  existingMemberIds = [],
+  existingDisplayNames = [],
   onCreate,
   providerAuth = {},
 }: {
@@ -130,9 +237,10 @@ function InviteAIAssistantModal({
   onOpenChange: (open: boolean) => void;
   teams?: Array<{ teamId: string; name: string }>;
   selectedTeam?: string;
+  existingMemberIds?: string[];
+  existingDisplayNames?: string[];
   onCreate: (config: {
-    memberId: string;
-    displayName: string;
+    agents: Array<{ memberId: string; displayName: string }>;
     /** Frontend provider id (e.g. "claude-code"). */
     providerId: string;
     /** Backend terminalType key (e.g. "claude"). */
@@ -140,12 +248,16 @@ function InviteAIAssistantModal({
     command: string;
     workingDir: string;
     teamId: string;
+    providerAuth?: ProviderAuthDraft;
   }) => Promise<void>;
   providerAuth?: Record<string, { hasApiKey?: boolean; account?: string; mode?: string }>;
 }) {
   const [step, setStep] = useState(1);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
-  const [displayName, setDisplayName] = useState('');
+  const [agentCount, setAgentCount] = useState('1');
+  const [authMode, setAuthMode] = useState<ProviderAuthDraft['mode']>('api_key');
+  const [authAccount, setAuthAccount] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [command, setCommand] = useState('');
   const [workingDir, setWorkingDir] = useState('/');
   const [teamId, setTeamId] = useState(selectedTeam);
@@ -160,6 +272,10 @@ function InviteAIAssistantModal({
 
   const handleProviderSelect = (provider: Provider) => {
     setSelectedProvider(provider);
+    const existingAuth = providerAuth[provider.id];
+    setAuthMode((existingAuth?.mode as ProviderAuthDraft['mode'] | undefined) ?? 'api_key');
+    setAuthAccount(existingAuth?.account ?? '');
+    setApiKey('');
     setCommand(
       provider.unlimitedFlag
         ? `${provider.command} ${provider.unlimitedFlag}`
@@ -167,20 +283,28 @@ function InviteAIAssistantModal({
     );
   };
 
+  const resolvedCount = Math.max(1, Math.min(50, Number.parseInt(agentCount, 10) || 1));
+  const selectedProviderAuth = selectedProvider ? providerAuth[selectedProvider.id] : undefined;
+  const needsAuth = Boolean(
+    selectedProvider &&
+      selectedProvider.id !== 'shell' &&
+      ((authMode === 'api_key' && !selectedProviderAuth?.hasApiKey && !apiKey.trim()) ||
+        (authMode === 'account' && !selectedProviderAuth?.account && !authAccount.trim())),
+  );
+
   const handleNextStep = () => {
     if (step === 1 && selectedProvider) setStep(2);
-    else if (step === 2) setStep(3);
+    else if (step === 2 && !needsAuth) setStep(3);
   };
 
   const handleCreate = async () => {
-    if (!selectedProvider || !displayName.trim()) return;
+    if (!selectedProvider || needsAuth) return;
     setLoading(true);
     setError(null);
     try {
-      const memberId = displayName.trim().toLowerCase().replace(/\s+/g, '_');
+      const agents = buildUniqueAgentIdentities(resolvedCount, existingMemberIds, existingDisplayNames);
       await onCreate({
-        memberId,
-        displayName: displayName.trim(),
+        agents,
         providerId: selectedProvider.id,
         terminalType: selectedProvider.terminalType,
         // Empty command lets the backend apply the provider's default — only override
@@ -188,6 +312,15 @@ function InviteAIAssistantModal({
         command: command && command !== selectedProvider.command ? command : '',
         workingDir,
         teamId,
+        providerAuth:
+          selectedProvider.id === 'shell'
+            ? undefined
+            : {
+                mode: authMode,
+                account: authAccount.trim(),
+                apiKey: apiKey.trim(),
+                updatedAt: new Date().toISOString(),
+              },
       });
       handleClose();
     } catch (err) {
@@ -200,7 +333,10 @@ function InviteAIAssistantModal({
   const handleClose = () => {
     setStep(1);
     setSelectedProvider(null);
-    setDisplayName('');
+    setAgentCount('1');
+    setAuthMode('api_key');
+    setAuthAccount('');
+    setApiKey('');
     setCommand('');
     setWorkingDir('/');
     setTeamId(selectedTeam);
@@ -221,7 +357,7 @@ function InviteAIAssistantModal({
           </DialogTitle>
           <DialogDescription>
             {step === 1 && 'Select the AI provider for your new assistant'}
-            {step === 2 && 'Configure the AI assistant settings'}
+            {step === 2 && 'Choose how many agents to create and provide CLI authorization'}
             {step === 3 && 'Review and confirm the configuration'}
           </DialogDescription>
         </DialogHeader>
@@ -290,17 +426,71 @@ function InviteAIAssistantModal({
           {step === 2 && selectedProvider && (
             <div className="space-y-4">
               <div>
-                <Label htmlFor="displayName">Display Name *</Label>
+                <Label htmlFor="agentCount">AI Agent Count</Label>
                 <Input
-                  id="displayName"
-                  placeholder={`e.g., ${selectedProvider.name} Backend`}
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  id="agentCount"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={agentCount}
+                  onChange={(e) => setAgentCount(e.target.value)}
                   className="mt-1"
                 />
-                <p className="text-xs app-text-faint mt-1">
-                  This name will appear in the team roster and chat
-                </p>
+                  <p className="text-xs app-text-faint mt-1">
+                    Names are generated automatically as unique English names.
+                  </p>
+              </div>
+              {selectedProvider.id !== 'shell' && (
+                <div className="rounded-lg border app-border-subtle p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label htmlFor="authMode">AI CLI Authorization</Label>
+                      <p className="text-xs app-text-faint mt-1">
+                        API keys are saved to your settings and injected into new CLI sessions automatically.
+                      </p>
+                    </div>
+                    {(selectedProviderAuth?.hasApiKey || selectedProviderAuth?.account) && (
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        Saved
+                      </Badge>
+                    )}
+                  </div>
+                  <Select value={authMode} onValueChange={(value) => setAuthMode(value as ProviderAuthDraft['mode'])}>
+                    <SelectTrigger id="authMode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="api_key">API key</SelectItem>
+                      <SelectItem value="account">Existing CLI login</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={authAccount}
+                    onChange={(event) => setAuthAccount(event.target.value)}
+                    placeholder="Account or login note"
+                  />
+                  <Input
+                    type="password"
+                    value={apiKey}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    placeholder={selectedProviderAuth?.hasApiKey ? 'API key already saved' : 'Paste API key for automatic CLI authorization'}
+                    disabled={authMode !== 'api_key'}
+                  />
+                  {needsAuth && (
+                    <p className="text-xs text-yellow-600">
+                      Provide an API key or confirm the host already has a CLI login.
+                    </p>
+                  )}
+                </div>
+              )}
+              <div>
+                <Label htmlFor="workingDir">Working Directory</Label>
+                <Input
+                  id="workingDir"
+                  value={workingDir}
+                  onChange={(e) => setWorkingDir(e.target.value)}
+                  className="mt-1 font-mono text-sm"
+                />
               </div>
               <div>
                 <Label htmlFor="command">Custom Command</Label>
@@ -311,17 +501,8 @@ function InviteAIAssistantModal({
                   className="mt-1 font-mono text-sm"
                 />
                 <p className="text-xs app-text-faint mt-1">
-                  Override the default command. Leave blank to use defaults.
+                  Optional. Leave unchanged to use the provider default.
                 </p>
-              </div>
-              <div>
-                <Label htmlFor="workingDir">Working Directory</Label>
-                <Input
-                  id="workingDir"
-                  value={workingDir}
-                  onChange={(e) => setWorkingDir(e.target.value)}
-                  className="mt-1 font-mono text-sm"
-                />
               </div>
             </div>
           )}
@@ -355,8 +536,12 @@ function InviteAIAssistantModal({
                     <span className="app-text-strong font-medium">{selectedProvider.name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="app-text-faint">Display Name:</span>
-                    <span className="app-text-strong font-medium">{displayName || '(not set)'}</span>
+                    <span className="app-text-faint">Agents:</span>
+                    <span className="app-text-strong font-medium">{resolvedCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="app-text-faint">Name mode:</span>
+                    <span className="app-text-strong font-medium">Random unique English names</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="app-text-faint">Command:</span>
@@ -370,6 +555,20 @@ function InviteAIAssistantModal({
                     <span className="app-text-faint">Working Dir:</span>
                     <code className="text-xs app-text-strong">{workingDir}</code>
                   </div>
+                  {selectedProvider.id !== 'shell' && (
+                    <div className="flex justify-between">
+                      <span className="app-text-faint">Authorization:</span>
+                      <span className="app-text-strong font-medium">
+                        {authMode === 'api_key'
+                          ? apiKey.trim() || selectedProviderAuth?.hasApiKey
+                            ? 'API key'
+                            : 'Missing'
+                          : authMode === 'account'
+                            ? 'Existing CLI login'
+                            : 'None'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -412,10 +611,10 @@ function InviteAIAssistantModal({
             ) : (
               <Button
                 onClick={() => void handleCreate()}
-                disabled={!displayName || loading}
+                disabled={needsAuth || loading}
                 className="app-accent-bg hover:opacity-90 text-white"
               >
-                {loading ? 'Creating...' : 'Create Agent'}
+                {loading ? 'Creating...' : `Create ${resolvedCount} Agent${resolvedCount === 1 ? '' : 's'}`}
               </Button>
             )}
           </div>
@@ -1148,23 +1347,67 @@ export const MembersPage = () => {
         onOpenChange={setInviteAIModalOpen}
         teams={teamOptions}
         selectedTeam={activeTeam?.teamId ?? 'team_default'}
+        existingMemberIds={model.members.map((member) => member.memberId)}
+        existingDisplayNames={model.members.map((member) => member.displayName)}
         providerAuth={providerAuth}
         onCreate={async (config) => {
-          await apiClient.createMember({
-            memberId: config.memberId,
-            displayName: config.displayName,
-            roleType: 'assistant',
-            manualStatus: 'online',
-            terminalStatus: 'starting',
-            createRuntime: true,
-            providerId: config.providerId,
-            terminalType: config.terminalType,
-            agentType: 'assistant',
-            command: config.command,
-            workingDir: config.workingDir,
-            teamId: config.teamId,
-          });
-          await load();
+          if (config.providerAuth && account?.memberId) {
+            const http = getHttpClient();
+            const current: Record<string, unknown> & { providerAuth?: Record<string, ProviderAuthDraft> } = await http
+              .get<Record<string, unknown> & { providerAuth?: Record<string, ProviderAuthDraft> }>(
+                `settings?memberId=${encodeURIComponent(account.memberId)}`,
+              )
+              .catch(() => ({ providerAuth: {} as Record<string, ProviderAuthDraft> }));
+            await http.request('settings', {
+              method: 'PUT',
+              body: {
+                ...current,
+                memberId: account.memberId,
+                providerAuth: {
+                  ...(current.providerAuth ?? {}),
+                  [config.providerId]: {
+                    ...(current.providerAuth?.[config.providerId] ?? {}),
+                    ...config.providerAuth,
+                  },
+                },
+              },
+            });
+            setProviderAuth((prev) => ({
+              ...prev,
+              [config.providerId]: {
+                ...prev[config.providerId],
+                mode: config.providerAuth?.mode,
+                account: config.providerAuth?.account,
+                hasApiKey: Boolean(config.providerAuth?.apiKey) || prev[config.providerId]?.hasApiKey,
+              },
+            }));
+          }
+          let createError: unknown;
+          try {
+            for (const agent of config.agents) {
+              await apiClient.createMember({
+                memberId: agent.memberId,
+                displayName: agent.displayName,
+                roleType: 'assistant',
+                manualStatus: 'online',
+                terminalStatus: 'starting',
+                createRuntime: true,
+                providerId: config.providerId,
+                terminalType: config.terminalType,
+                agentType: 'assistant',
+                command: config.command,
+                workingDir: config.workingDir,
+                teamId: config.teamId,
+              });
+            }
+          } catch (err) {
+            createError = err;
+          } finally {
+            await load();
+          }
+          if (createError) {
+            throw createError;
+          }
         }}
       />
       <NewTeamModal

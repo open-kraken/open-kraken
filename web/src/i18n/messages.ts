@@ -64,6 +64,8 @@ const en: Record<string, string> = {
   'routes.ledger.label': 'Ledger',
   'routes.ledger.description':
     'Central audit stream: teams, members, commands, and context — for review, compliance, and incidents.',
+  'routes.runs.label': 'Runs',
+  'routes.runs.description': 'AEL execution runs — monitor flows, steps, and token usage in real time.',
   'routes.account.label': 'Account',
   'routes.account.description': 'Profile, role, connected providers, and personal preferences.',
 
@@ -781,6 +783,8 @@ const zh: Record<string, string> = {
   'routes.dashboard.description': '可观测性：Token/成本、节点执行与智能体活动。',
   'routes.ledger.label': '账本',
   'routes.ledger.description': '中心化可审计事件流：团队、成员、命令与上下文 — 合规与事件响应。',
+  'routes.runs.label': '执行记录',
+  'routes.runs.description': 'AEL 执行记录：查看 run、flow、step 和 Token 使用情况。',
   'routes.account.label': '账户',
   'routes.account.description': '个人资料、角色、已连接提供方与个人偏好。',
 
@@ -1470,7 +1474,7 @@ const ja: Record<string, string> = {
     '中央の監査イベントストリーム：チーム、メンバー、コマンド、コンテキスト — レビューとインシデント対応。',
   'routes.account.label': 'アカウント',
   'routes.account.description': 'プロフィール、ロール、接続済みプロバイダ、個人設定。',
-  'routes.runs.label': 'ランズ',
+  'routes.runs.label': '実行記録',
   'routes.runs.description': 'AEL 実行ランの監視 — フロー、ステップ、トークン消費をリアルタイムに確認。',
 
   'navGroups.collaboration': 'コラボレーション',

@@ -6,9 +6,9 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { listRuns, createRun, listRunFlows } from '@/api/v2/runs';
-import { getFlowSteps } from '@/api/v2/steps';
-import type { RunDTO, FlowDTO, StepDTO, RunState, CreateRunInput } from '@/api/v2/types';
+import { listRuns, createRun, listRunFlows, updateRunState } from '@/api/v2/runs';
+import { createFlow, createStep, getFlowSteps } from '@/api/v2/steps';
+import type { RunDTO, FlowDTO, StepDTO, RunState, CreateRunInput, CreateFlowInput, CreateStepInput } from '@/api/v2/types';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   ChevronDown,
   ChevronRight,
@@ -93,6 +100,8 @@ function StateBadge({ state }: { state: string }) {
     </Badge>
   );
 }
+
+const RUN_STATES: RunState[] = ['pending', 'running', 'succeeded', 'failed', 'cancelled'];
 
 /* ── New Run Dialog ── */
 
@@ -199,13 +208,181 @@ function NewRunDialog({
   );
 }
 
+const DEFAULT_FLOW_FORM = {
+  agent_role: 'assistant',
+};
+
+function AddFlowDialog({
+  open,
+  run,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  run: RunDTO;
+  onClose: () => void;
+  onCreate: (input: CreateFlowInput) => Promise<void>;
+}) {
+  const [agentRole, setAgentRole] = useState(DEFAULT_FLOW_FORM.agent_role);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!agentRole.trim()) {
+      setError('Agent role is required.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onCreate({
+        run_id: run.id,
+        tenant_id: run.tenant_id || 'default',
+        agent_role: agentRole.trim(),
+      });
+      setAgentRole(DEFAULT_FLOW_FORM.agent_role);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create flow.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Flow</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={(event) => void submit(event)} className="space-y-4 mt-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="flow_agent_role">Agent Role</Label>
+            <Input
+              id="flow_agent_role"
+              value={agentRole}
+              onChange={(event) => setAgentRole(event.target.value)}
+              placeholder="assistant"
+            />
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? <RefreshCw size={14} className="animate-spin mr-1" /> : <Plus size={14} className="mr-1" />}
+              Add Flow
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddStepDialog({
+  open,
+  flow,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  flow: FlowDTO;
+  onClose: () => void;
+  onCreate: (input: CreateStepInput) => Promise<void>;
+}) {
+  const [workloadClass, setWorkloadClass] = useState('general');
+  const [regime, setRegime] = useState('OPAQUE');
+  const [agentType, setAgentType] = useState('assistant');
+  const [provider, setProvider] = useState('codex');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!workloadClass.trim() || !agentType.trim() || !provider.trim()) {
+      setError('Workload, agent type, and provider are required.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onCreate({
+        flow_id: flow.id,
+        run_id: flow.run_id,
+        tenant_id: flow.tenant_id || 'default',
+        workload_class: workloadClass.trim(),
+        regime,
+        agent_type: agentType.trim(),
+        provider: provider.trim(),
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create step.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Step</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={(event) => void submit(event)} className="space-y-4 mt-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="step_workload">Workload Class</Label>
+            <Input id="step_workload" value={workloadClass} onChange={(event) => setWorkloadClass(event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="step_regime">Regime</Label>
+            <Select value={regime} onValueChange={setRegime}>
+              <SelectTrigger id="step_regime">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="OPAQUE">OPAQUE</SelectItem>
+                <SelectItem value="VERIFIABLE">VERIFIABLE</SelectItem>
+                <SelectItem value="PROXIED">PROXIED</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="step_agent">Agent Type</Label>
+            <Input id="step_agent" value={agentType} onChange={(event) => setAgentType(event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="step_provider">Provider</Label>
+            <Input id="step_provider" value={provider} onChange={(event) => setProvider(event.target.value)} />
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? <RefreshCw size={14} className="animate-spin mr-1" /> : <Plus size={14} className="mr-1" />}
+              Add Step
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ── Expanded run detail: flows → steps ── */
 
-function RunDetail({ run }: { run: RunDTO }) {
+function RunDetail({ run, onRefresh }: { run: RunDTO; onRefresh: () => Promise<void> }) {
   const [flows, setFlows] = useState<FlowDTO[]>(run.flows ?? []);
   const [stepsByFlow, setStepsByFlow] = useState<Record<string, StepDTO[]>>({});
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set());
   const [loadingFlows, setLoadingFlows] = useState(false);
+  const [flowDialogOpen, setFlowDialogOpen] = useState(false);
+  const [stepFlow, setStepFlow] = useState<FlowDTO | null>(null);
 
   useEffect(() => {
     if (run.flows && run.flows.length > 0) {
@@ -242,6 +419,22 @@ function RunDetail({ run }: { run: RunDTO }) {
     [stepsByFlow]
   );
 
+  const handleCreateFlow = async (input: CreateFlowInput) => {
+    await createFlow(input);
+    const next = await listRunFlows(run.id);
+    setFlows(next);
+    await onRefresh();
+  };
+
+  const handleCreateStep = async (input: CreateStepInput) => {
+    const saved = await createStep(input);
+    setStepsByFlow((prev) => ({
+      ...prev,
+      [input.flow_id]: [...(prev[input.flow_id] ?? []), saved],
+    }));
+    setExpandedFlows((prev) => new Set(prev).add(input.flow_id));
+  };
+
   if (loadingFlows) {
     return (
       <div className="px-6 py-4 text-xs app-text-faint flex items-center gap-2">
@@ -252,12 +445,24 @@ function RunDetail({ run }: { run: RunDTO }) {
 
   if (flows.length === 0) {
     return (
-      <div className="px-6 py-4 text-xs app-text-faint">No flows recorded for this run.</div>
+      <div className="px-6 py-4 flex items-center justify-between gap-3">
+        <span className="text-xs app-text-faint">No flows recorded for this run.</span>
+        <Button variant="outline" size="sm" onClick={() => setFlowDialogOpen(true)}>
+          <Plus size={14} className="mr-1" /> Add Flow
+        </Button>
+        <AddFlowDialog open={flowDialogOpen} run={run} onClose={() => setFlowDialogOpen(false)} onCreate={handleCreateFlow} />
+      </div>
     );
   }
 
   return (
     <div className="px-6 py-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs app-text-faint">Flows define execution branches under this run. Steps are the schedulable work records.</p>
+        <Button variant="outline" size="sm" onClick={() => setFlowDialogOpen(true)}>
+          <Plus size={14} className="mr-1" /> Add Flow
+        </Button>
+      </div>
       {flows.map((flow) => {
         const isExpanded = expandedFlows.has(flow.id);
         const steps = stepsByFlow[flow.id] ?? [];
@@ -277,6 +482,12 @@ function RunDetail({ run }: { run: RunDTO }) {
 
             {isExpanded && (
               <div className="border-t app-border-subtle">
+                <div className="flex items-center justify-between px-4 py-2">
+                  <span className="text-xs app-text-faint">{steps.length} steps</span>
+                  <Button variant="outline" size="sm" onClick={() => setStepFlow(flow)}>
+                    <Plus size={14} className="mr-1" /> Add Step
+                  </Button>
+                </div>
                 {steps.length === 0 ? (
                   <div className="px-8 py-3 text-xs app-text-faint">No steps recorded.</div>
                 ) : (
@@ -310,6 +521,15 @@ function RunDetail({ run }: { run: RunDTO }) {
           </Card>
         );
       })}
+      <AddFlowDialog open={flowDialogOpen} run={run} onClose={() => setFlowDialogOpen(false)} onCreate={handleCreateFlow} />
+      {stepFlow && (
+        <AddStepDialog
+          open={Boolean(stepFlow)}
+          flow={stepFlow}
+          onClose={() => setStepFlow(null)}
+          onCreate={handleCreateStep}
+        />
+      )}
     </div>
   );
 }
@@ -321,19 +541,29 @@ export const RunsPage = () => {
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error' | 'unavailable'>('idle');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [tenantFilter, setTenantFilter] = useState('default');
+  const [stateFilter, setStateFilter] = useState<'all' | RunState>('all');
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
+    setLoadState((current) => (runs.length === 0 && current !== 'unavailable' ? 'loading' : current));
     try {
-      const data = await listRuns({ limit: 100 });
+      const data = await listRuns({
+        tenant_id: tenantFilter.trim() || undefined,
+        state: stateFilter === 'all' ? undefined : stateFilter,
+        limit: 100,
+      });
       setRuns(Array.isArray(data) ? data : []);
       setLoadState('idle');
     } catch (err) {
       const isUnavailable =
-        err instanceof Error && (err.message.includes('503') || err.message.toLowerCase().includes('unavailable'));
+        err instanceof Error &&
+        (err.message.includes('503') ||
+          err.message.toLowerCase().includes('unavailable') ||
+          err.message.toLowerCase().includes('ael not configured'));
       setLoadState(isUnavailable ? 'unavailable' : 'error');
     }
-  }, []);
+  }, [runs.length, stateFilter, tenantFilter]);
 
   // Initial load + 5-second polling
   useEffect(() => {
@@ -355,6 +585,23 @@ export const RunsPage = () => {
   const toggleExpand = (id: string) =>
     setExpandedId((prev) => (prev === id ? null : id));
 
+  const handleRunState = async (event: React.MouseEvent, run: RunDTO, state: RunState) => {
+    event.stopPropagation();
+    await updateRunState(run.id, state);
+    await load();
+  };
+
+  const nextRunActions = (run: RunDTO): RunState[] => {
+    switch (run.state) {
+      case 'pending':
+        return ['running', 'cancelled'];
+      case 'running':
+        return ['succeeded', 'failed', 'cancelled'];
+      default:
+        return [];
+    }
+  };
+
   /* ── Empty / error states ── */
   if (loadState === 'unavailable') {
     return (
@@ -363,7 +610,7 @@ export const RunsPage = () => {
         <div className="text-center">
           <p className="text-sm font-semibold app-text-strong">AEL not configured</p>
           <p className="text-xs app-text-faint mt-1">
-            The execution engine returned a 503. Check that the AEL service is running.
+            Runs are backed by the AEL PostgreSQL service. Configure OPEN_KRAKEN_POSTGRES_DSN and run the AEL migrations.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()}>
@@ -384,7 +631,12 @@ export const RunsPage = () => {
       <div className="app-surface-strong border-b app-border-subtle px-6 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h1 className="text-base font-bold app-text-strong">Execution Runs</h1>
+            <div>
+              <h1 className="text-base font-bold app-text-strong">Execution Runs</h1>
+              <p className="text-xs app-text-faint">
+                AEL state ledger: run lifecycle, execution flows, schedulable steps, and token budget.
+              </p>
+            </div>
             <div className="flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1.5">
                 <Activity size={14} className="app-text-muted" />
@@ -414,6 +666,25 @@ export const RunsPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Input
+              value={tenantFilter}
+              onChange={(event) => setTenantFilter(event.target.value)}
+              placeholder="tenant"
+              className="h-8 w-28 text-xs"
+            />
+            <Select value={stateFilter} onValueChange={(value) => setStateFilter(value as 'all' | RunState)}>
+              <SelectTrigger className="h-8 w-32 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All states</SelectItem>
+                {RUN_STATES.map((state) => (
+                  <SelectItem key={state} value={state}>
+                    {state}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="sm" className="h-8" onClick={() => void load()}>
               <RefreshCw size={14} className="mr-1" />
               Refresh
@@ -478,6 +749,7 @@ export const RunsPage = () => {
                   <TableHead className="w-[110px]">State</TableHead>
                   <TableHead className="w-[110px] text-right">Tokens</TableHead>
                   <TableHead className="w-[100px] text-right">Created</TableHead>
+                  <TableHead className="w-[210px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -512,12 +784,27 @@ export const RunsPage = () => {
                         <TableCell className="text-right text-xs app-text-faint">
                           {relativeTime(run.created_at)}
                         </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {nextRunActions(run).map((state) => (
+                              <Button
+                                key={state}
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={(event) => void handleRunState(event, run, state)}
+                              >
+                                {state}
+                              </Button>
+                            ))}
+                          </div>
+                        </TableCell>
                       </TableRow>
 
                       {isExpanded && (
                         <TableRow>
-                          <TableCell colSpan={7} className="p-0 bg-gray-50 dark:bg-gray-900/40">
-                            <RunDetail run={run} />
+                          <TableCell colSpan={8} className="p-0 bg-gray-50 dark:bg-gray-900/40">
+                            <RunDetail run={run} onRefresh={load} />
                           </TableCell>
                         </TableRow>
                       )}

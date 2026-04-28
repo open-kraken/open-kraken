@@ -9,6 +9,7 @@ import type { Skill, SkillCategory, MemberSkills } from '@/types/skill';
 export type SkillsListResponse = { skills: Skill[] };
 export type MemberSkillsResponse = MemberSkills;
 export type UpdateMemberSkillsInput = { skills: Skill[] };
+export type SkillsReloadResponse = { loaded?: number; skipped?: number; reloadedAt?: string };
 
 const CATEGORIES: SkillCategory[] = ['tech-lead', 'golang', 'react', 'qa', 'devops', 'other'];
 
@@ -29,6 +30,12 @@ export const getSkills = async (): Promise<SkillsListResponse> => {
   const body = await http.get<{ items?: Record<string, unknown>[] }>('/skills');
   const items = body.items ?? [];
   return { skills: items.map((row) => mapSkill(row)) };
+};
+
+/** POST /skills/reload */
+export const reloadSkills = async (): Promise<SkillsReloadResponse> => {
+  const http = getHttpClient();
+  return http.post<SkillsReloadResponse>('/skills/reload', {});
 };
 
 /** GET /members/{id}/skills */

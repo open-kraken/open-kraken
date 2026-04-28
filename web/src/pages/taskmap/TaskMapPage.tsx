@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -14,6 +14,7 @@ import {
   reconnectEdge,
   type Connection,
   type NodeTypes,
+  type NodeProps,
   Panel,
   MarkerType,
 } from "@xyflow/react";
@@ -89,7 +90,12 @@ import {
 
 const handleStyle = { width: 8, height: 8, background: '#94a3b8', border: '2px solid #fff' };
 
-function AgentNode({ data }: { data: Record<string, any> }) {
+type TaskMapNodeProps = NodeProps<Node<Record<string, any>>>;
+
+const selectedNodeClass = (selected: boolean) =>
+  selected ? " ring-4 ring-cyan-400/70 shadow-xl shadow-cyan-500/20 scale-[1.02]" : "";
+
+function AgentNode({ data, selected }: TaskMapNodeProps) {
   const getStatusColor = () => {
     switch (data.status) {
       case "running":
@@ -119,7 +125,7 @@ function AgentNode({ data }: { data: Record<string, any> }) {
   };
 
   return (
-    <div className={`px-4 py-3 rounded-lg border-2 ${getStatusColor()} min-w-[180px] shadow-sm relative`}>
+    <div className={`px-4 py-3 rounded-lg border-2 ${getStatusColor()} min-w-[180px] shadow-sm relative transition-all ${selectedNodeClass(selected)}`}>
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <div className="flex items-center gap-2 mb-2">
         <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
@@ -151,9 +157,9 @@ function AgentNode({ data }: { data: Record<string, any> }) {
   );
 }
 
-function ActionNode({ data }: { data: Record<string, any> }) {
+function ActionNode({ data, selected }: TaskMapNodeProps) {
   return (
-    <div className="px-3 py-2 rounded-md border border-cyan-400 bg-cyan-50 dark:bg-cyan-950/20 min-w-[140px] relative">
+    <div className={`px-3 py-2 rounded-md border border-cyan-400 bg-cyan-50 dark:bg-cyan-950/20 min-w-[140px] relative transition-all ${selectedNodeClass(selected)}`}>
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <div className="flex items-center gap-2">
         <Code size={12} className="text-cyan-600" />
@@ -169,9 +175,9 @@ function ActionNode({ data }: { data: Record<string, any> }) {
   );
 }
 
-function DecisionNode({ data }: { data: Record<string, any> }) {
+function DecisionNode({ data, selected }: TaskMapNodeProps) {
   return (
-    <div className="w-28 h-28 rotate-45 border-2 border-orange-400 bg-orange-50 dark:bg-orange-950/20 flex items-center justify-center relative">
+    <div className={`w-28 h-28 rotate-45 border-2 border-orange-400 bg-orange-50 dark:bg-orange-950/20 flex items-center justify-center relative transition-all ${selectedNodeClass(selected)}`}>
       <Handle type="target" position={Position.Top} style={{ ...handleStyle, transform: 'rotate(-45deg)' }} />
       <div className="-rotate-45 text-center">
         <GitBranch size={16} className="text-orange-600 mx-auto mb-1" />
@@ -186,7 +192,7 @@ function DecisionNode({ data }: { data: Record<string, any> }) {
   );
 }
 
-function RoadmapNode({ data }: { data: Record<string, any> }) {
+function RoadmapNode({ data, selected }: TaskMapNodeProps) {
   const statusTone =
     data.status === "success"
       ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/25"
@@ -197,7 +203,7 @@ function RoadmapNode({ data }: { data: Record<string, any> }) {
           : "border-slate-300 bg-white dark:bg-slate-950";
 
   return (
-    <div className={`px-4 py-3 rounded-md border-2 ${statusTone} min-w-[220px] max-w-[260px] shadow-sm relative`}>
+    <div className={`px-4 py-3 rounded-md border-2 ${statusTone} min-w-[220px] max-w-[260px] shadow-sm relative transition-all ${selectedNodeClass(selected)}`}>
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <div className="flex items-start gap-2">
         <Map size={14} className="app-accent-text mt-0.5 shrink-0" />
@@ -729,6 +735,42 @@ export function TaskMapPage() {
           status: node.status,
         }))
       : [];
+  const renderedNodes = useMemo(
+    () =>
+      nodes.map((node) => {
+        const selected = selection?.kind === "node" && selection.id === node.id;
+        return {
+          ...node,
+          selected,
+          zIndex: selected ? 20 : node.zIndex,
+        };
+      }),
+    [nodes, selection],
+  );
+  const renderedEdges = useMemo(
+    () =>
+      edges.map((edge) => {
+        const selected = selection?.kind === "edge" && selection.id === edge.id;
+        const baseStyle = edge.style ?? {};
+        return {
+          ...edge,
+          selected,
+          style: selected
+            ? {
+                ...baseStyle,
+                stroke: "#06b6d4",
+                strokeWidth: 3,
+                filter: "drop-shadow(0 0 5px rgba(6, 182, 212, 0.55))",
+              }
+            : baseStyle,
+          markerEnd: selected
+            ? { type: MarkerType.ArrowClosed, color: "#06b6d4", width: 22, height: 22 }
+            : edge.markerEnd,
+          animated: selected ? true : edge.animated,
+        };
+      }),
+    [edges, selection],
+  );
 
   const onConnect = useCallback(
     (params: Connection) =>
@@ -1124,8 +1166,8 @@ export function TaskMapPage() {
         {/* Flow Graph */}
         <div className="flex-1 relative" onContextMenu={onFlowContextMenu}>
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={renderedNodes}
+            edges={renderedEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
