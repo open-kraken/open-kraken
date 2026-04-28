@@ -86,31 +86,33 @@ function ProviderCredentialRow({
 
   return (
     <div className="rounded-lg border app-border-subtle p-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <div className="flex h-10 w-24 shrink-0 items-center justify-center p-1">
-            <img src={provider.logoSrc} alt="" className={`object-contain ${provider.logoClassName ?? 'h-8 w-8'}`} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-semibold app-text-strong">{provider.name}</h4>
-              <Badge
-                variant="outline"
-                className={configured ? 'text-green-600 border-green-600' : 'app-text-faint'}
-              >
-                {configured ? 'Configured' : 'Missing'}
-              </Badge>
+      <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-24 shrink-0 items-center justify-center p-1">
+              <img src={provider.logoSrc} alt="" className={`object-contain ${provider.logoClassName ?? 'h-8 w-8'}`} />
             </div>
-            <p className="text-xs app-text-muted mt-1">{provider.authLabel}</p>
-            {auth.updatedAt && (
-              <p className="text-[11px] app-text-faint mt-1">
-                Updated {new Date(auth.updatedAt).toLocaleString()}
-              </p>
-            )}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-semibold app-text-strong">{provider.name}</h4>
+              </div>
+              <p className="text-xs app-text-muted mt-1">{provider.authLabel}</p>
+              {auth.updatedAt && (
+                <p className="text-[11px] app-text-faint mt-1">
+                  Updated {new Date(auth.updatedAt).toLocaleString()}
+                </p>
+              )}
+            </div>
           </div>
+          <Badge
+            variant="outline"
+            className={`shrink-0 ${configured ? 'text-green-600 border-green-600' : 'app-text-faint'}`}
+          >
+            {configured ? 'Configured' : 'Missing'}
+          </Badge>
         </div>
 
-        <div className="grid flex-1 gap-3 md:grid-cols-[140px_1fr_1fr_auto]">
+        <div className="grid gap-3 md:grid-cols-[140px_minmax(180px,1fr)_minmax(260px,1.5fr)_auto]">
           <Select value={mode ?? 'api_key'} onValueChange={(value) => setMode(value as ProviderAuthSetting['mode'])}>
             <SelectTrigger aria-label={`${provider.name} auth mode`}>
               <SelectValue />

@@ -55,11 +55,12 @@ import {
   Server,
   Square,
 } from 'lucide-react';
+import { acceptsTerminalHash, decodeTerminalHash } from './terminal-route-utils';
 
 const fallbackTerminalIdForMember = (memberId: string) => `term_${memberId}`;
 const terminalIdForMember = (member: Pick<MemberFixture, 'memberId' | 'terminalId'>) =>
   member.terminalId?.trim() || fallbackTerminalIdForMember(member.memberId);
-const acceptsTerminalHash = (raw: string) => raw.startsWith('term_') || raw.startsWith('session-');
+const readTerminalHash = () => decodeTerminalHash(window.location.hash);
 const statusIsLive = (status: string) => ['online', 'working', 'running', 'attached'].includes(status.toLowerCase());
 const statusIsWorking = (status: string) => ['working', 'running'].includes(status.toLowerCase());
 const statusIsAbnormal = (status: string) => ['error', 'failed', 'exited'].includes(status.toLowerCase());
@@ -124,7 +125,7 @@ export const TerminalPage = () => {
     if (typeof window === 'undefined') {
       return defaultTerminalId;
     }
-    const raw = window.location.hash.replace(/^#/, '').trim();
+    const raw = readTerminalHash();
     return acceptsTerminalHash(raw) ? raw : defaultTerminalId;
   }, []);
 
@@ -202,7 +203,7 @@ export const TerminalPage = () => {
   }, []);
 
   const setHashForTerminal = useCallback((terminalId: string) => {
-    window.history.replaceState({}, '', `${window.location.pathname}#${terminalId}`);
+    window.history.replaceState({}, '', `${window.location.pathname}#${encodeURIComponent(terminalId)}`);
   }, []);
 
   const selectSession = useCallback(
@@ -215,7 +216,7 @@ export const TerminalPage = () => {
 
   useEffect(() => {
     const onHash = () => {
-      const raw = window.location.hash.replace(/^#/, '').trim();
+      const raw = readTerminalHash();
       if (acceptsTerminalHash(raw)) {
         void terminalRuntime.attachTo(raw);
       }
