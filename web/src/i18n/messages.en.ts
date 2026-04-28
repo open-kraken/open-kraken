@@ -72,7 +72,7 @@ export const en = {
   'chat.notice.idle': 'Realtime is idle. Sending is unavailable until the connection starts.',
   'chat.notice.connecting': 'Connecting to realtime. Sending is temporarily unavailable.',
   'chat.notice.reconnecting': 'Realtime is reconnecting. Browsing stays available, but sending is paused.',
-  'chat.notice.degraded': 'Realtime is degraded. Browsing stays available, but sending is temporarily unavailable.',
+  'chat.notice.degraded': 'Realtime updates are delayed. Sending remains available.',
   'chat.notice.live': 'Chat is live.',
   'chat.conversations': 'Conversations',
   'chat.unread': 'Unread: {{count}}',

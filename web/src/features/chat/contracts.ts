@@ -39,10 +39,10 @@ export const REALTIME_STATE_META: Record<RealtimeStateKey, RealtimeStateMeta> = 
   },
   degraded: {
     label: 'Degraded',
-    tone: 'danger',
+    tone: 'warning',
     affectsComposer: true,
-    blocksComposer: true,
-    pageNotice: 'Realtime is degraded. Browsing stays available, but sending is temporarily unavailable.'
+    blocksComposer: false,
+    pageNotice: null
   }
 };
 

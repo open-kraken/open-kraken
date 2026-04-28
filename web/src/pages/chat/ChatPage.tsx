@@ -249,8 +249,8 @@ const buildPageNotice = ({
       };
     case 'degraded':
       return {
-        code: 'degraded',
-        tone: 'danger'
+        code: 'live',
+        tone: 'live'
       };
     case 'live':
     default:

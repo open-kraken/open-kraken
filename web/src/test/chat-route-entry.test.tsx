@@ -94,7 +94,7 @@ const createShellContext = (
   markChatConversationRead: () => undefined
 });
 
-test('chat route model keeps a single page-level notice precedence across switching, composer failure, and realtime degradation', () => {
+test('chat route model keeps blocking notices above non-blocking realtime degradation', () => {
   const switching = buildChatPageRouteModel({
     workspaceId: 'ws_open_kraken',
     realtimeStatus: 'disconnected',
@@ -124,7 +124,8 @@ test('chat route model keeps a single page-level notice precedence across switch
 
   assert.equal(switching.pageNotice.code, 'switching');
   assert.equal(failed.pageNotice.code, 'composer-failed');
-  assert.equal(degraded.pageNotice.code, 'degraded');
+  assert.equal(degraded.pageNotice.code, 'live');
+  assert.equal(degraded.composer.disabled, false);
 });
 
 test('chat route loader pulls conversation items and message page from the formal api client boundary', async () => {
@@ -134,7 +135,7 @@ test('chat route loader pulls conversation items and message page from the forma
   assert.equal(data.messagePage.items[0]?.id, 'msg_1');
 });
 
-test('Chat page maps shell realtime state into the page-level chat notice', () => {
+test('Chat page keeps degraded realtime out of the blocking page notice', () => {
   /** Render `ChatPage` directly: `AppShell` uses `lazy()` for routes, which `renderToStaticMarkup` does not resolve. */
   const markup = renderToStaticMarkup(
     <AppShellContext.Provider value={createShellContext('/chat', 'disconnected', 'Realtime disconnected')}>
@@ -145,8 +146,8 @@ test('Chat page maps shell realtime state into the page-level chat notice', () =
   );
 
   assert.match(markup, /data-route-page="chat"/);
-  assert.match(markup, /data-page-notice="degraded"/);
-  assert.match(markup, /Realtime is degraded\. Browsing stays available, but sending is temporarily unavailable\./);
+  assert.match(markup, /data-page-notice="live"/);
+  assert.doesNotMatch(markup, /Realtime is degraded|sending is temporarily unavailable|暂时无法发送/);
   assert.match(markup, /data-chat-slot="messages"/);
   /** Static render runs before `useEffect`; counts stay at zero until data loads in the browser. */
   assert.match(markup, /Loaded conversations: 0 \| Loaded messages: 0/);

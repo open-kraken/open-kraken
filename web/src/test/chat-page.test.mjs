@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildChatPageView, renderChatPage } from '../pages/chat/chat-page-view.mjs';
+import { buildChatPageView, renderChatPage } from '../pages/chat/chat-page-view.ts';
 
 const baseConversations = [
   {
@@ -71,7 +71,7 @@ test('chat page blocks repeated conversation switching and promotes a single pag
   assert.doesNotMatch(rendered, /Reconnecting|Degraded/);
 });
 
-test('chat page keeps realtime degraded as a page-level notice while leaving message history readable', () => {
+test('chat page keeps realtime degraded non-blocking while leaving message history readable', () => {
   const view = buildChatPageView({
     workspaceId: 'ws_open_kraken',
     conversationItems: baseConversations,
@@ -82,12 +82,12 @@ test('chat page keeps realtime degraded as a page-level notice while leaving mes
   });
   const rendered = renderChatPage(view);
 
-  assert.equal(view.pageNotice.code, 'degraded');
+  assert.equal(view.pageNotice.code, 'live');
   assert.equal(view.messageList.state, 'ready');
-  assert.equal(view.composer.disabled, true);
-  assert.equal(view.composer.disabledReason, 'degraded');
+  assert.equal(view.composer.disabled, false);
+  assert.equal(view.composer.disabledReason, null);
   assert.match(rendered, /data-realtime-state="degraded"/);
-  assert.match(rendered, /page-notice=degraded/);
+  assert.match(rendered, /page-notice=live/);
   assert.match(rendered, /message-list-state=ready/);
 });
 
