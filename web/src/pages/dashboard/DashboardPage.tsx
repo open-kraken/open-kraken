@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import {
   RefreshCw,
   AlertCircle,
@@ -75,6 +75,16 @@ const formatRelativeTime = (iso: string | null) => {
 const chartKeyForTeam = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'team';
 
 const chartColors = ['#3b82f6', '#a855f7', '#22c55e', '#f97316', '#06b6d4', '#ef4444', '#14b8a6', '#eab308'];
+
+const handleActionKey = (event: KeyboardEvent<HTMLElement>, action: () => void) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    action();
+  }
+};
+
+const terminalHashForAgent = (agentId: string, terminalId?: string | null) =>
+  terminalId || `term_${agentId}`;
 
 export const DashboardPage = () => {
   const { navigate, workspace, apiClient } = useAppShell();
@@ -197,6 +207,8 @@ export const DashboardPage = () => {
 
   const recentActivity = useMemo(() => {
     const fromStatuses = agentStatuses.map((agent) => ({
+      agentId: agent.agentId,
+      terminalId: agent.terminalId,
       time: formatRelativeTime(agent.lastHeartbeat),
       agent: memberNameById.get(agent.agentId) ?? agent.agentId,
       action: agent.activeTasks > 0 ? 'task.running' : agent.terminalId ? 'terminal.ready' : 'agent.status',
@@ -208,6 +220,8 @@ export const DashboardPage = () => {
     }));
     if (fromStatuses.length > 0) return fromStatuses.slice(0, 6);
     return store.activities.slice(0, 6).map((activity) => ({
+      agentId: activity.memberId,
+      terminalId: `term_${activity.memberId}`,
       time: '-',
       agent: activity.memberName,
       action: activity.currentTask ? 'llm.call' : 'token.event',
@@ -218,6 +232,7 @@ export const DashboardPage = () => {
 
   const agents = useMemo(() => agentStatuses.map((agent) => ({
     id: agent.agentId,
+    terminalId: agent.terminalId,
     name: memberNameById.get(agent.agentId) ?? agent.agentId,
     provider: agent.provider ?? agent.agentType ?? 'agent',
     team: teamByMemberId.get(agent.agentId) ?? 'Unassigned',
@@ -250,6 +265,21 @@ export const DashboardPage = () => {
   const totalNodes = summary.totalNodes;
   const queuedTasks = summary.queuedTasks;
   const failedTasks = summary.failedTasks;
+  const openTokens = () => navigate('ledger');
+  const openAgents = () => navigate('members');
+  const openNodes = () => navigate('nodes');
+  const openTaskMap = () => navigate('taskmap');
+  const openApprovals = () => navigate('approvals');
+  const openTeam = () => navigate('members');
+  const openAgent = (agentId: string, terminalId?: string | null) =>
+    navigate('terminal', { hash: terminalHashForAgent(agentId, terminalId) });
+  const openActivity = (activityItem: { agentId?: string; terminalId?: string | null; action: string }) => {
+    if (activityItem.action.startsWith('terminal') || activityItem.action.startsWith('task') || activityItem.action === 'llm.call') {
+      openAgent(activityItem.agentId ?? 'owner_1', activityItem.terminalId);
+      return;
+    }
+    navigate('ledger');
+  };
 
   return (
     <div className="h-full overflow-auto app-bg-canvas">
@@ -322,7 +352,14 @@ export const DashboardPage = () => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
+          <Card
+            className="p-4 hover:app-border-accent transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            role="button"
+            tabIndex={0}
+            aria-label="Open ledger token and cost events"
+            onClick={openTokens}
+            onKeyDown={(event) => handleActionKey(event, openTokens)}
+          >
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
                 Tokens &amp; Cost
@@ -338,7 +375,14 @@ export const DashboardPage = () => {
             </div>
           </Card>
 
-          <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
+          <Card
+            className="p-4 hover:app-border-accent transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            role="button"
+            tabIndex={0}
+            aria-label="Open team members and agent roster"
+            onClick={openAgents}
+            onKeyDown={(event) => handleActionKey(event, openAgents)}
+          >
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
                 Active Agents
@@ -361,7 +405,14 @@ export const DashboardPage = () => {
             </div>
           </Card>
 
-          <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
+          <Card
+            className="p-4 hover:app-border-accent transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            role="button"
+            tabIndex={0}
+            aria-label="Open execution nodes"
+            onClick={openNodes}
+            onKeyDown={(event) => handleActionKey(event, openNodes)}
+          >
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
                 Cluster Health
@@ -381,7 +432,14 @@ export const DashboardPage = () => {
             </div>
           </Card>
 
-          <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
+          <Card
+            className="p-4 hover:app-border-accent transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            role="button"
+            tabIndex={0}
+            aria-label="Open task map queue"
+            onClick={openTaskMap}
+            onKeyDown={(event) => handleActionKey(event, openTaskMap)}
+          >
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
                 Task Queue
@@ -400,7 +458,14 @@ export const DashboardPage = () => {
             </div>
           </Card>
 
-          <Card className="p-4 hover:app-border-accent transition-colors cursor-pointer">
+          <Card
+            className="p-4 hover:app-border-accent transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            role="button"
+            tabIndex={0}
+            aria-label="Open approvals"
+            onClick={openApprovals}
+            onKeyDown={(event) => handleActionKey(event, openApprovals)}
+          >
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs app-text-faint font-semibold uppercase tracking-wider">
                 Approvals
@@ -483,7 +548,12 @@ export const DashboardPage = () => {
               {summary.teams.length > 0 ? summary.teams.map((team) => (
                 <div
                   key={team.name}
-                  className="p-4 app-surface-strong rounded-lg border app-border-subtle hover:app-border-accent transition-colors cursor-pointer"
+                  className="p-4 app-surface-strong rounded-lg border app-border-subtle hover:app-border-accent transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open team roster for ${team.name}`}
+                  onClick={openTeam}
+                  onKeyDown={(event) => handleActionKey(event, openTeam)}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -536,7 +606,12 @@ export const DashboardPage = () => {
               {agents.length > 0 ? agents.map((agent) => (
                 <div
                   key={agent.id}
-                  className="p-3 app-surface-strong rounded-lg border app-border-subtle hover:app-border-accent transition-colors cursor-pointer"
+                  className="p-3 app-surface-strong rounded-lg border app-border-subtle hover:app-border-accent transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open terminal session for ${agent.name}`}
+                  onClick={() => openAgent(agent.id, agent.terminalId)}
+                  onKeyDown={(event) => handleActionKey(event, () => openAgent(agent.id, agent.terminalId))}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
@@ -604,7 +679,15 @@ export const DashboardPage = () => {
             </TableHeader>
             <TableBody>
               {nodeRows.length > 0 ? nodeRows.map((node) => (
-                <TableRow key={node.id} className="cursor-pointer hover:app-surface-hover">
+                <TableRow
+                  key={node.id}
+                  className="cursor-pointer hover:app-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open node ${node.hostname}`}
+                  onClick={openNodes}
+                  onKeyDown={(event) => handleActionKey(event, openNodes)}
+                >
                   <TableCell className="font-medium font-mono text-sm">
                     {node.hostname}
                   </TableCell>
@@ -681,7 +764,15 @@ export const DashboardPage = () => {
             </TableHeader>
             <TableBody>
               {recentActivity.length > 0 ? recentActivity.map((activityItem) => (
-                <TableRow key={`${activityItem.time}-${activityItem.agent}-${activityItem.action}`} className="cursor-pointer hover:app-surface-hover">
+                <TableRow
+                  key={`${activityItem.time}-${activityItem.agent}-${activityItem.action}`}
+                  className="cursor-pointer hover:app-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${activityItem.agent} activity`}
+                  onClick={() => openActivity(activityItem)}
+                  onKeyDown={(event) => handleActionKey(event, () => openActivity(activityItem))}
+                >
                   <TableCell className="font-mono text-sm app-text-faint">
                     {activityItem.time}
                   </TableCell>

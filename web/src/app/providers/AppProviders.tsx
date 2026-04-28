@@ -20,7 +20,7 @@ const tr = (key: string) => {
   return MESSAGES[loc][key] ?? MESSAGES.en[key] ?? key;
 };
 
-const defaultPath = '/chat';
+const defaultPath = '/dashboard';
 
 const normalizePathname = (pathname: string) => {
   const resolvedRoute = resolveAppRoute(pathname);

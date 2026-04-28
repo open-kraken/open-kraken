@@ -126,7 +126,9 @@ export const AppShell = () => {
   const ActivePage = pageByRoute[route.id];
 
   // ── Theme ──
-  const [isDark, setIsDark] = useState(() => document.documentElement.getAttribute('data-theme') === 'dark');
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark'
+  );
   const toggleTheme = useCallback(() => {
     const next = isDark ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
@@ -160,7 +162,7 @@ export const AppShell = () => {
   }, [toggleTheme]);
 
   // ── Offline detection ──
-  const [offline, setOffline] = useState(!navigator.onLine);
+  const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   useEffect(() => {
     const onOff = () => setOffline(true);
     const onOn = () => setOffline(false);
@@ -267,6 +269,7 @@ export const AppShell = () => {
                     <button
                       key={routeId}
                       type="button"
+                      data-nav-route={routeId}
                       className={`nav-item w-full ${isActive ? 'active' : ''}`}
                       onClick={() => navigate(routeId)}
                     >
@@ -286,7 +289,9 @@ export const AppShell = () => {
         {/* Header */}
         <header className="h-14 app-surface-strong border-b app-border-subtle px-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <span className="text-sm font-semibold app-text-strong">{workspace.workspaceLabel}</span>
+            <span className="text-sm font-semibold app-text-strong" data-shell-slot="workspace">
+              {workspace.workspaceLabel}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -294,7 +299,10 @@ export const AppShell = () => {
               <Search size={18} />
             </Button>
 
-            <NotificationBadge count={chatNotifications.totalUnread} onClick={() => navigate('chat')} />
+            <div className="relative">
+              <span className="sr-only">Notices</span>
+              <NotificationBadge count={chatNotifications.totalUnread} onClick={() => navigate('chat')} />
+            </div>
 
             <Button variant="ghost" size="icon" onClick={toggleTheme}>
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
@@ -368,6 +376,7 @@ export const AppShell = () => {
 
         {/* Footer Status Bar */}
         <footer className="h-8 app-surface-strong border-t app-border-subtle px-4 flex items-center gap-4 text-[10px] app-text-faint">
+          <span className="sr-only">Workspace status</span>
           <span>{workspace.workspaceId}</span>
           <span>·</span>
           {cluster && (
@@ -383,7 +392,7 @@ export const AppShell = () => {
               <span>·</span>
             </>
           )}
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1" data-shell-slot="latency">
             <SignalBars level={latencyToSignal(latencyMs)} />
             <span>{latencyMs !== null ? `${latencyMs}ms` : '—'}</span>
           </span>

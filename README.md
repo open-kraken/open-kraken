@@ -10,6 +10,8 @@
 
 Full narrative plus alignment and gaps vs current code: **[docs/product-vision-and-architecture.md](docs/product-vision-and-architecture.md)**.
 
+File placement, naming, code style, deletion, and verification standards are defined in **[docs/development/file-and-code-standards.md](docs/development/file-and-code-standards.md)**.
+
 ---
 
 open-kraken is also the migration root for the Go + React rewrite of the legacy Golutra workspace. All new artifacts should live under this repository; legacy Golutra remains reference input only and must not receive new migration code.

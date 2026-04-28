@@ -6,6 +6,7 @@
 - **[action-items-and-current-state.md](action-items-and-current-state.md)** — **current implementation snapshot**, backlog / action items (scheduling, teams, HA, skill import/export, optional vector memory), and **non-goals** (e.g. P2P mesh).
 - **[architecture/langgraph-and-ray-design-references.md](architecture/langgraph-and-ray-design-references.md)** — **LangGraph** and **Ray** (web-sourced design summaries: agent runtime, checkpoints, tasks/actors; **reference only**, not a default stack).
 - **[observability/langfuse-integration.md](observability/langfuse-integration.md)** — **Langfuse** (LLM traces via OTLP, deployment options, correlation with workspace/member ids; complements **tokentrack** / **ledger**).
+- **[development/file-and-code-standards.md](development/file-and-code-standards.md)** — canonical file placement, naming, code style, deletion, and verification standards for backend, web, docs, scripts, and tests.
 
 ## Scope
 

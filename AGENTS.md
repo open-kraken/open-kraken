@@ -12,6 +12,8 @@ open-kraken is a Go backend plus React/Vite web app. Keep implementation inside 
 
 Do not add feature code at the repository root.
 
+Use `docs/development/file-and-code-standards.md` as the canonical rulebook for file placement, naming, code style, deletion checks, and verification scope.
+
 ## Build, Test, and Development Commands
 
 - `npm run dev:up` / `npm run dev:down`: start or stop the local stack.

@@ -160,7 +160,7 @@ export const appNavGroups: AppNavGroup[] = [
 
 const routeMap = new Map<string, AppRouteDefinition>(appRoutes.map((route) => [route.path, route]));
 
-export const defaultRoute = appRoutes.find((route) => route.id === 'chat') ?? appRoutes[0];
+export const defaultRoute = appRoutes.find((route) => route.id === 'dashboard') ?? appRoutes[0];
 
 export const resolveAppRoute = (pathname: string) => {
   return routeMap.get(pathname) ?? defaultRoute;

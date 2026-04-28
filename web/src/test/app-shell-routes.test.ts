@@ -116,7 +116,7 @@ test('resolveAppRoute covers required shell paths', () => {
   assert.equal(resolveAppRoute('/system').id, 'system');
   assert.equal(resolveAppRoute('/ledger').id, 'ledger');
   assert.equal(resolveAppRoute('/account').id, 'account');
-  assert.equal(resolveAppRoute('/missing').id, 'chat');
+  assert.equal(resolveAppRoute('/missing').id, 'dashboard');
 });
 
 test('AppShell renders workspace shell chrome and the expanded prototype navigation', () => {
