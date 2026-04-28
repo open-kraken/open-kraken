@@ -673,7 +673,6 @@ function NewTeamModal({
 
   const resolvedTeamId = (teamId.trim() || teamIdFromName(teamName)).trim();
   const resolvedTeamName = teamName.trim() || resolvedTeamId;
-  const hasManualTeamId = teamId.trim().length > 0;
   const invalidTeamId = Boolean(resolvedTeamId) && !isValidTeamId(resolvedTeamId);
   const duplicate = resolvedTeamId
     ? existingTeamIds.some((id) => id.toLowerCase() === resolvedTeamId.toLowerCase())
@@ -719,39 +718,17 @@ function NewTeamModal({
             />
           </div>
 
-          <div>
-            <Label htmlFor="newTeamId">Team ID</Label>
-            <Input
-              id="newTeamId"
-              value={teamId}
-              onChange={(event) => setTeamId(event.target.value)}
-              placeholder={teamName ? teamIdFromName(teamName) : 'e.g., backend_squad'}
-              disabled={loading}
-              className="mt-1 font-mono text-sm"
-            />
-            <p className="text-xs app-text-faint mt-1">
-              Used by APIs and mentions. Leave blank to generate it from the name.
-            </p>
-            <div className="mt-2 rounded-lg border app-border-subtle app-bg-elevated px-3 py-2 text-xs">
-              <span className="app-text-faint">Preview: </span>
-              <span className="font-mono app-text-strong">{resolvedTeamId || 'team_id'}</span>
-              {!hasManualTeamId && teamName.trim() && (
-                <span className="ml-2 app-text-faint">auto-generated</span>
-              )}
-            </div>
-          </div>
-
           {invalidTeamId && (
             <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
               <p className="text-xs text-red-600">
-                Team ID must start with a lowercase letter and only contain lowercase letters, numbers, and underscores.
+                Team names must start with a letter and use letters, numbers, spaces, hyphens, or underscores.
               </p>
             </div>
           )}
 
           {duplicate && (
             <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
-              <p className="text-xs text-red-600">A team with this ID already exists.</p>
+              <p className="text-xs text-red-600">A team with this name already exists.</p>
             </div>
           )}
 
