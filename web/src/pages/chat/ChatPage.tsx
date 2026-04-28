@@ -1494,8 +1494,8 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
         </ScrollArea>
 
         {/* Message Composer */}
-        <div className="border-t app-border-subtle p-4 app-surface-strong">
-          <div className="max-w-3xl mx-auto">
+        <div className="border-t app-border-subtle px-5 py-4 app-surface-strong">
+          <div className="max-w-4xl mx-auto">
             {/* Pending attachments */}
             {pendingAttachments.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
@@ -1524,8 +1524,8 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
             {/* Command menu */}
             {commandMenuOpen && (
               <div className="relative mb-1">
-                <div className="absolute bottom-full left-0 w-[360px] max-h-64 overflow-y-auto rounded-lg border app-border-subtle app-surface-strong shadow-lg py-1 z-20">
-                  <div className="px-3 py-2 border-b app-border-subtle">
+                <div className="absolute bottom-full left-0 w-[420px] max-h-72 overflow-y-auto rounded-xl border app-border-subtle app-surface-strong shadow-2xl py-1 z-20">
+                  <div className="px-3 py-2.5 border-b app-border-subtle">
                     <div className="text-xs font-semibold app-text-strong">Command set</div>
                     <div className="text-[10px] app-text-faint">Type / to search commands. Enter inserts the selected command.</div>
                   </div>
@@ -1534,17 +1534,17 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
                       key={command.id}
                       type="button"
                       role="option"
-                      className={`w-full text-left px-3 py-2 transition-colors ${idx === commandIndex ? 'app-bg-hover app-text-strong' : 'app-text-muted hover:app-bg-hover'}`}
+                      className={`w-full text-left px-3 py-2.5 transition-colors ${idx === commandIndex ? 'bg-cyan-50 text-cyan-900 dark:bg-cyan-950/30 dark:text-cyan-100' : 'app-text-muted hover:app-bg-hover'}`}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         applyCommand(command);
                       }}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs app-accent-text w-20">{command.trigger}</span>
+                        <span className="font-mono text-xs app-accent-text w-24">{command.trigger}</span>
                         <span className="text-sm font-medium">{command.title}</span>
                       </div>
-                      <div className="text-[11px] app-text-faint mt-0.5 pl-[5.5rem]">{command.description}</div>
+                      <div className="text-[11px] app-text-faint mt-0.5 pl-[6.5rem]">{command.description}</div>
                     </button>
                   ))}
                 </div>
@@ -1554,13 +1554,13 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
             {/* Mention menu */}
             {mentionMenuOpen && (
               <div className="relative mb-1">
-                <div className="absolute bottom-full left-0 w-64 max-h-48 overflow-y-auto rounded-lg border app-border-subtle app-surface-strong shadow-lg py-1 z-20">
+                <div className="absolute bottom-full left-0 w-72 max-h-56 overflow-y-auto rounded-xl border app-border-subtle app-surface-strong shadow-2xl py-1 z-20">
                   {mentionCandidates.map((c, idx) => (
                     <button
                       key={`${c.kind}-${c.id}`}
                       type="button"
                       role="option"
-                      className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${idx === mentionIndex ? 'app-bg-hover app-text-strong' : 'app-text-muted hover:app-bg-hover'}`}
+                      className={`w-full text-left px-3 py-2 text-sm transition-colors ${idx === mentionIndex ? 'bg-cyan-50 text-cyan-900 dark:bg-cyan-950/30 dark:text-cyan-100' : 'app-text-muted hover:app-bg-hover'}`}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         applyMention(c.insertText);
@@ -1591,35 +1591,46 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
               tabIndex={-1}
               onChange={(e) => void addPendingFiles(e.target.files)}
             />
-            <div className="flex items-end gap-2 rounded-xl border app-border-subtle app-bg-canvas p-1.5 shadow-sm">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 flex-shrink-0 rounded-lg app-text-muted"
-                onClick={insertCommandSlash}
-                disabled={model.composer.disabled}
-                aria-label="Open command set"
-              >
-                <Slash size={16} />
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-lg app-text-muted">
-                    <Paperclip size={16} />
+            <div className="rounded-2xl border app-border-subtle app-bg-canvas shadow-lg shadow-black/5 overflow-hidden focus-within:ring-2 focus-within:ring-cyan-500/30 focus-within:border-cyan-500/60 transition-all">
+              <div className="flex items-center justify-between gap-3 px-3 py-2 border-b app-border-subtle bg-white/60 dark:bg-white/[0.03]">
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 rounded-lg app-text-muted"
+                    onClick={insertCommandSlash}
+                    disabled={model.composer.disabled}
+                    aria-label="Open command set"
+                  >
+                    <Slash size={14} className="mr-1" />
+                    <span className="text-xs">Commands</span>
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
-                    <ImageIcon size={14} className="mr-2" />
-                    Attach Image
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-                    <FileIcon size={14} className="mr-2" />
-                    Attach File
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 rounded-lg app-text-muted">
+                        <Paperclip size={14} className="mr-1" />
+                        <span className="text-xs">Attach</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
+                        <ImageIcon size={14} className="mr-2" />
+                        Attach Image
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                        <FileIcon size={14} className="mr-2" />
+                        Attach File
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="hidden sm:flex items-center gap-2 text-[10px] app-text-faint">
+                  <span>Enter to send</span>
+                  <span>·</span>
+                  <span>Shift+Enter for newline</span>
+                </div>
+              </div>
               <textarea
                 ref={textareaRef}
                 value={composerText}
@@ -1633,25 +1644,32 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
                 onKeyDown={handleComposerKeyDown}
                 placeholder={t('chat.placeholder')}
                 disabled={model.composer.disabled}
-                rows={1}
-                className="flex-1 min-w-0 px-2 py-1.5 text-sm bg-transparent app-text-strong placeholder:app-text-faint focus:outline-none resize-none max-h-32 leading-relaxed"
+                rows={3}
+                className="block w-full min-h-[84px] max-h-40 px-4 py-3 text-sm bg-transparent app-text-strong placeholder:app-text-faint focus:outline-none resize-none leading-relaxed"
                 aria-label={t('chat.composerAria')}
               />
-              <Button
-                size="icon"
-                className="app-accent-bg hover:opacity-90 text-white flex-shrink-0 h-8 w-8 rounded-lg"
-                onClick={() => void sendMessage()}
-                disabled={
-                  model.composer.disabled ||
-                  (composerText.trim().length === 0 && pendingAttachments.length === 0)
-                }
-              >
-                {model.composer.status === 'sending' ? (
-                  <Clock size={16} className="animate-spin" />
-                ) : (
-                  <Send size={16} />
-                )}
-              </Button>
+              <div className="flex items-center justify-between gap-3 px-3 py-2 border-t app-border-subtle bg-white/50 dark:bg-white/[0.02]">
+                <div className="flex items-center gap-2 min-w-0 text-[11px] app-text-faint">
+                  <span className={`inline-flex h-2 w-2 rounded-full ${realtime.status === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                  <span className="truncate">{realtime.detail}</span>
+                </div>
+                <Button
+                  size="sm"
+                  className="app-accent-bg hover:opacity-90 text-white h-8 px-3 rounded-lg"
+                  onClick={() => void sendMessage()}
+                  disabled={
+                    model.composer.disabled ||
+                    (composerText.trim().length === 0 && pendingAttachments.length === 0)
+                  }
+                >
+                  {model.composer.status === 'sending' ? (
+                    <Clock size={15} className="animate-spin mr-1.5" />
+                  ) : (
+                    <Send size={15} className="mr-1.5" />
+                  )}
+                  Send
+                </Button>
+              </div>
             </div>
             {composerState.errorMessage && (
               <div className="flex items-center gap-2 mt-2">
