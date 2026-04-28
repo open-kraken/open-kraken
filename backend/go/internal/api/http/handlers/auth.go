@@ -4,28 +4,34 @@ import (
 	"net/http"
 	"strings"
 
+	"open-kraken/backend/go/internal/account"
 	"open-kraken/backend/go/internal/authn"
 	"open-kraken/backend/go/internal/authz"
 )
 
 // KnownAccount is a pre-seeded account for development login.
 type KnownAccount struct {
-	MemberID    string    `json:"memberId"`
-	WorkspaceID string    `json:"workspaceId"`
-	DisplayName string    `json:"displayName"`
+	MemberID    string     `json:"memberId"`
+	WorkspaceID string     `json:"workspaceId"`
+	DisplayName string     `json:"displayName"`
 	Role        authz.Role `json:"role"`
-	Password    string    `json:"-"`
-	Avatar      string    `json:"avatar"`
+	Password    string     `json:"-"`
+	Avatar      string     `json:"avatar"`
 }
 
 // AuthHandler serves login and identity endpoints.
 type AuthHandler struct {
 	accounts []KnownAccount
+	svc      *account.Service
 }
 
 // NewAuthHandler creates an AuthHandler with the given seed accounts.
 func NewAuthHandler(accounts []KnownAccount) *AuthHandler {
 	return &AuthHandler{accounts: accounts}
+}
+
+func NewAuthHandlerWithService(svc *account.Service, fallback []KnownAccount) *AuthHandler {
+	return &AuthHandler{svc: svc, accounts: fallback}
 }
 
 // HandleLogin handles POST /auth/login.
@@ -55,14 +61,37 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var matched *KnownAccount
-	for i := range h.accounts {
-		if h.accounts[i].MemberID == body.MemberID && h.accounts[i].Password == body.Password {
-			matched = &h.accounts[i]
-			break
+	var matched account.PublicAccount
+	if h.svc != nil {
+		stored, ok, err := h.svc.Authenticate(body.MemberID, body.Password)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if ok {
+			matched = account.PublicAccount{
+				MemberID:    stored.MemberID,
+				WorkspaceID: stored.WorkspaceID,
+				DisplayName: stored.DisplayName,
+				Role:        stored.Role,
+				Avatar:      stored.Avatar,
+			}
+		}
+	} else {
+		for i := range h.accounts {
+			if h.accounts[i].MemberID == body.MemberID && h.accounts[i].Password == body.Password {
+				matched = account.PublicAccount{
+					MemberID:    h.accounts[i].MemberID,
+					WorkspaceID: h.accounts[i].WorkspaceID,
+					DisplayName: h.accounts[i].DisplayName,
+					Role:        h.accounts[i].Role,
+					Avatar:      h.accounts[i].Avatar,
+				}
+				break
+			}
 		}
 	}
-	if matched == nil {
+	if matched.MemberID == "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{
 			"code":    "invalid_credentials",
 			"message": "Invalid member ID or password",
@@ -110,13 +139,19 @@ func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the matching account for display name / avatar
 	var displayName, avatar string
-	for _, a := range h.accounts {
-		if a.MemberID == principal.MemberID && a.WorkspaceID == principal.WorkspaceID {
-			displayName = a.DisplayName
-			avatar = a.Avatar
-			break
+	if h.svc != nil {
+		if account, err := h.svc.Get(principal.MemberID); err == nil && account.WorkspaceID == principal.WorkspaceID {
+			displayName = account.DisplayName
+			avatar = account.Avatar
+		}
+	} else {
+		for _, a := range h.accounts {
+			if a.MemberID == principal.MemberID && a.WorkspaceID == principal.WorkspaceID {
+				displayName = a.DisplayName
+				avatar = a.Avatar
+				break
+			}
 		}
 	}
 	if displayName == "" {

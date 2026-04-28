@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
+import { getHttpClient } from '@/api/http-binding';
 import { useAppShell } from '@/state/app-shell-store';
 import {
   listMemoryEntries,
@@ -32,6 +33,13 @@ type HealthPayload = {
 };
 
 type NodeSummary = { total: number; online: number; degraded: number; offline: number };
+type SystemUser = {
+  memberId: string;
+  workspaceId: string;
+  displayName: string;
+  role: 'owner' | 'supervisor' | 'assistant' | 'member';
+  avatar: string;
+};
 
 export const SystemPage = () => {
   const { notifications } = useAppShell();
@@ -51,9 +59,66 @@ export const SystemPage = () => {
 
   // Node summary
   const [nodeSummary, setNodeSummary] = useState<NodeSummary | null>(null);
+  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [userBusy, setUserBusy] = useState(false);
+  const [newUser, setNewUser] = useState({
+    memberId: '',
+    displayName: '',
+    password: '',
+    role: 'member' as SystemUser['role'],
+  });
 
   const { account } = useAuth();
   const actorId = account?.memberId ?? '';
+  const canManageUsers = account?.role === 'owner';
+
+  const loadUsers = useCallback(async () => {
+    if (!canManageUsers) return;
+    try {
+      const res = await getHttpClient().get<{ items: SystemUser[] }>('system/users');
+      setUsers(res.items);
+      setUsersError(null);
+    } catch (err) {
+      setUsersError(err instanceof Error ? err.message : 'Failed to load users');
+      setUsers([]);
+    }
+  }, [canManageUsers]);
+
+  const createUser = useCallback(async () => {
+    if (!newUser.memberId.trim() || !newUser.password) return;
+    setUserBusy(true);
+    try {
+      await getHttpClient().post('system/users', {
+        memberId: newUser.memberId.trim(),
+        workspaceId: account?.workspaceId ?? 'ws_open_kraken',
+        displayName: newUser.displayName.trim() || newUser.memberId.trim(),
+        password: newUser.password,
+        role: newUser.role,
+      });
+      setNewUser({ memberId: '', displayName: '', password: '', role: 'member' });
+      await loadUsers();
+    } catch (err) {
+      setUsersError(err instanceof Error ? err.message : 'Failed to create user');
+    } finally {
+      setUserBusy(false);
+    }
+  }, [account?.workspaceId, loadUsers, newUser]);
+
+  const updateUser = useCallback(async (memberId: string, patch: Partial<SystemUser> & { password?: string }) => {
+    setUserBusy(true);
+    try {
+      await getHttpClient().request(`system/users/${encodeURIComponent(memberId)}`, {
+        method: 'PUT',
+        body: patch,
+      });
+      await loadUsers();
+    } catch (err) {
+      setUsersError(err instanceof Error ? err.message : 'Failed to update user');
+    } finally {
+      setUserBusy(false);
+    }
+  }, [loadUsers]);
 
   const refresh = useCallback(async () => {
     setHealthError(null);
@@ -126,6 +191,9 @@ export const SystemPage = () => {
   useEffect(() => {
     void loadMemory();
   }, [loadMemory]);
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
 
   // Load node summary
   useEffect(() => {
@@ -305,6 +373,82 @@ export const SystemPage = () => {
                   <span className="app-text-muted">{n.detail}</span>
                 </div>
               ))}
+            </div>
+          </Card>
+        )}
+
+        {canManageUsers && (
+          <Card className="p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold app-text-strong">System Users</h3>
+              <Button variant="outline" size="sm" onClick={() => void loadUsers()}>
+                Refresh
+              </Button>
+            </div>
+            {usersError && <p className="text-sm text-red-600 mb-3">{usersError}</p>}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Member ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Workspace</TableHead>
+                  <TableHead>Reset Password</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.memberId}>
+                    <TableCell className="font-mono text-sm">{user.memberId}</TableCell>
+                    <TableCell>{user.displayName}</TableCell>
+                    <TableCell>
+                      <select
+                        className="app-surface-strong border app-border-subtle rounded px-2 py-1 text-sm"
+                        value={user.role}
+                        disabled={userBusy}
+                        onChange={(event) => void updateUser(user.memberId, { role: event.target.value as SystemUser['role'] })}
+                      >
+                        <option value="owner">owner</option>
+                        <option value="supervisor">supervisor</option>
+                        <option value="assistant">assistant</option>
+                        <option value="member">member</option>
+                      </select>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">{user.workspaceId}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={userBusy}
+                        onClick={() => {
+                          const password = window.prompt(`New password for ${user.memberId}`);
+                          if (password) void updateUser(user.memberId, { password });
+                        }}
+                      >
+                        Reset
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-5 gap-2">
+              <Input value={newUser.memberId} onChange={(e) => setNewUser((v) => ({ ...v, memberId: e.target.value }))} placeholder="memberId" />
+              <Input value={newUser.displayName} onChange={(e) => setNewUser((v) => ({ ...v, displayName: e.target.value }))} placeholder="Display name" />
+              <Input value={newUser.password} onChange={(e) => setNewUser((v) => ({ ...v, password: e.target.value }))} placeholder="Password" type="password" />
+              <select
+                className="app-surface-strong border app-border-subtle rounded px-2 py-1 text-sm"
+                value={newUser.role}
+                onChange={(e) => setNewUser((v) => ({ ...v, role: e.target.value as SystemUser['role'] }))}
+              >
+                <option value="member">member</option>
+                <option value="assistant">assistant</option>
+                <option value="supervisor">supervisor</option>
+                <option value="owner">owner</option>
+              </select>
+              <Button variant="outline" size="sm" disabled={userBusy || !newUser.memberId.trim() || !newUser.password} onClick={() => void createUser()}>
+                Create Account
+              </Button>
             </div>
           </Card>
         )}

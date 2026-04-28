@@ -8,8 +8,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"open-kraken/backend/go/internal/account"
 	apihttp "open-kraken/backend/go/internal/api/http"
 	"open-kraken/backend/go/internal/authn"
 	"open-kraken/backend/go/internal/authz"
@@ -187,6 +189,51 @@ func TestWorkspaceMembersPersistRosterToStore(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workspaceRoot, ".open-kraken", "roster.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected no local roster.json when roster store is configured, err=%v", err)
+	}
+}
+
+func TestSystemUsersCanCreateAccountAndLogin(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	appRoot := t.TempDir()
+	repo := projectdata.NewRepository(appRoot)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), realtime.NewHub(64))
+	accountSvc, err := account.NewService(filepath.Join(appRoot, "accounts"), []account.SeedAccount{{
+		MemberID:    "owner_1",
+		WorkspaceID: "ws_open_kraken",
+		DisplayName: "Owner",
+		Role:        authz.RoleOwner,
+		Password:    "admin",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := apihttp.NewHandlerWithDependencies(service, realtime.NewHub(64), repo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{
+		AccountService: accountSvc,
+	}, plathttp.PermissiveWebSocketUpgrader())
+
+	ownerToken := mustToken(t, authz.Principal{MemberID: "owner_1", WorkspaceID: "ws_open_kraken", Role: authz.RoleOwner})
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/system/users", bytes.NewBufferString(`{
+		"memberId":"ops_1",
+		"workspaceId":"ws_open_kraken",
+		"displayName":"Ops",
+		"role":"supervisor",
+		"password":"ops-pass"
+	}`))
+	create.Header.Set("Authorization", ownerToken)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, create)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	login := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"memberId":"ops_1","password":"ops-pass"}`))
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, login)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("expected login 200, got %d body=%s", loginRec.Code, loginRec.Body.String())
+	}
+	if strings.Contains(loginRec.Body.String(), "ops-pass") {
+		t.Fatalf("login response leaked password: %s", loginRec.Body.String())
 	}
 }
 

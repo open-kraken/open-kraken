@@ -18,6 +18,7 @@
 
 - Architecture reviews, API/realtime contracts, auth models, deployment, data migration, production readiness, test matrices, and migration notes.
 - Team roster persistence: [backend/team-roster-persistence.md](backend/team-roster-persistence.md)
+- System account management: [backend/system-account-management.md](backend/system-account-management.md)
 
 ## Dependency direction
 

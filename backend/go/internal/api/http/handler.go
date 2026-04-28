@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"open-kraken/backend/go/internal/account"
 	"open-kraken/backend/go/internal/ael"
 	"open-kraken/backend/go/internal/api/http/handlers"
 	"open-kraken/backend/go/internal/ledger"
@@ -46,6 +47,7 @@ type ExtendedServices struct {
 	TaskQueueService *taskqueue.Service
 	InstanceManager  *instance.Manager
 	AuthAccounts     []handlers.KnownAccount
+	AccountService   *account.Service
 	RosterStore      roster.Store
 	// AELService is the Authoritative Execution Ledger (paper §3.2). Nil when
 	// OPEN_KRAKEN_POSTGRES_DSN is not configured.
@@ -222,9 +224,15 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	}
 
 	// Authentication endpoints (always registered).
-	authHandler := handlers.NewAuthHandler(ext.AuthAccounts)
+	authHandler := handlers.NewAuthHandlerWithService(ext.AccountService, ext.AuthAccounts)
 	mux.HandleFunc(JoinAPI(apiBasePath, "auth/login"), authHandler.HandleLogin)
 	mux.HandleFunc(JoinAPI(apiBasePath, "auth/me"), authHandler.HandleMe)
+	if ext.AccountService != nil {
+		accountHandler := handlers.NewAccountHandler(ext.AccountService)
+		accountsBase := JoinAPI(apiBasePath, "system/users")
+		mux.HandleFunc(accountsBase, accountHandler.Handle)
+		mux.HandleFunc(accountsBase+"/", accountHandler.HandleByID)
+	}
 
 	// AEL v2 routes: Runs, Flows, Steps.
 	// These are always registered; handlers return 503 when AELService is nil.

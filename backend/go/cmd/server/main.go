@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"open-kraken/backend/go/internal/account"
 	"open-kraken/backend/go/internal/ael"
 	apihttp "open-kraken/backend/go/internal/api/http"
 	"open-kraken/backend/go/internal/api/http/handlers"
@@ -581,6 +582,22 @@ func main() {
 		{MemberID: "assistant_1", WorkspaceID: "ws_open_kraken", DisplayName: "Planner", Role: authz.RoleAssistant, Password: "planner", Avatar: "PL"},
 		{MemberID: "member_1", WorkspaceID: "ws_open_kraken", DisplayName: "Runner", Role: authz.RoleMember, Password: "runner", Avatar: "RN"},
 	}
+	accountSeeds := make([]account.SeedAccount, 0, len(seedAccounts))
+	for _, seed := range seedAccounts {
+		accountSeeds = append(accountSeeds, account.SeedAccount{
+			MemberID:    seed.MemberID,
+			WorkspaceID: seed.WorkspaceID,
+			DisplayName: seed.DisplayName,
+			Role:        seed.Role,
+			Password:    seed.Password,
+			Avatar:      seed.Avatar,
+		})
+	}
+	accountSvc, err := account.NewService(filepath.Join(cfg.AppDataRoot, "accounts"), accountSeeds)
+	if err != nil {
+		log.Error("init account service failed", logger.WithFields("error", err.Error()))
+		panic("init account service: " + err.Error())
+	}
 
 	// Paper §3.3 / §5.3: FlowScheduler connects AEL + Step Lease + AgentInstance
 	// into an end-to-end execution path. Only started when AEL is configured —
@@ -634,6 +651,7 @@ func main() {
 		RosterStore:      rosterStore,
 		AELService:       aelSvc,
 		AuthAccounts:     seedAccounts,
+		AccountService:   accountSvc,
 	}, platformhttp.WebSocketUpgrader(cfg))
 
 	server := &http.Server{
