@@ -523,7 +523,7 @@ func (h *WorkspaceHandler) initializeAgentRuntime(r *http.Request, memberID stri
 		cwd,
 		env,
 		h.providerReg,
-		nil,
+		chatTerminalSink{svc: h.msgSvc},
 	)
 	if err != nil {
 		_ = inst.Crash("terminal init failed: " + err.Error())

@@ -5,16 +5,16 @@ import (
 	"net/http"
 	"strings"
 
-	"open-kraken/backend/go/internal/ael"
 	"open-kraken/backend/go/contracts"
+	"open-kraken/backend/go/internal/ael"
 )
 
 // FlowHandler handles HTTP requests for AEL Flow objects under /api/v2/flows
 // and the nested /api/v2/runs/{id}/flows routes.
 type FlowHandler struct {
-	svc            *ael.Service
-	flowsPrefix    string // e.g. /api/v2/flows
-	runsPrefix     string // e.g. /api/v2/runs
+	svc         *ael.Service
+	flowsPrefix string // e.g. /api/v2/flows
+	runsPrefix  string // e.g. /api/v2/runs
 }
 
 // NewFlowHandler creates a FlowHandler.
@@ -72,7 +72,7 @@ func (h *FlowHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	flow := &ael.Flow{
 		RunID:        body.RunID,
-		TenantID:     body.TenantID,
+		TenantID:     normalizeAELID(body.TenantID),
 		AgentRole:    body.AgentRole,
 		AssignedNode: body.AssignedNode,
 	}

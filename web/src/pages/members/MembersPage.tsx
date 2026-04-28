@@ -288,13 +288,24 @@ function InviteAIAssistantModal({
   const needsAuth = Boolean(
     selectedProvider &&
       selectedProvider.id !== 'shell' &&
-      ((authMode === 'api_key' && !selectedProviderAuth?.hasApiKey && !apiKey.trim()) ||
-        (authMode === 'account' && !selectedProviderAuth?.account && !authAccount.trim())),
+      authMode === 'api_key' &&
+      !selectedProviderAuth?.hasApiKey &&
+      !apiKey.trim(),
   );
 
   const handleNextStep = () => {
-    if (step === 1 && selectedProvider) setStep(2);
-    else if (step === 2 && !needsAuth) setStep(3);
+    setError(null);
+    if (step === 1 && selectedProvider) {
+      setStep(2);
+      return;
+    }
+    if (step === 2) {
+      if (needsAuth) {
+        setError('Paste an API key, use a saved key, or switch to Existing CLI login.');
+        return;
+      }
+      setStep(3);
+    }
   };
 
   const handleCreate = async () => {
@@ -348,7 +359,7 @@ function InviteAIAssistantModal({
   const selectedTeamName = teamList.find((t) => t.teamId === teamId)?.name ?? teamId;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) handleClose(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -467,7 +478,7 @@ function InviteAIAssistantModal({
                   <Input
                     value={authAccount}
                     onChange={(event) => setAuthAccount(event.target.value)}
-                    placeholder="Account or login note"
+                    placeholder={authMode === 'account' ? 'Optional login note' : 'Account or login note'}
                   />
                   <Input
                     type="password"
@@ -478,7 +489,12 @@ function InviteAIAssistantModal({
                   />
                   {needsAuth && (
                     <p className="text-xs text-yellow-600">
-                      Provide an API key or confirm the host already has a CLI login.
+                      Paste an API key, use a saved key, or switch to Existing CLI login.
+                    </p>
+                  )}
+                  {authMode === 'account' && !selectedProviderAuth?.account && (
+                    <p className="text-xs app-text-faint">
+                      This uses the CLI account already logged in on the host. The note is optional.
                     </p>
                   )}
                 </div>
@@ -587,6 +603,12 @@ function InviteAIAssistantModal({
               )}
             </div>
           )}
+
+          {step !== 3 && error && (
+            <div className="mt-4 rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -603,7 +625,7 @@ function InviteAIAssistantModal({
             {step < 3 ? (
               <Button
                 onClick={handleNextStep}
-                disabled={step === 1 && !selectedProvider}
+                disabled={(step === 1 && !selectedProvider) || (step === 2 && needsAuth)}
                 className="app-accent-bg hover:opacity-90 text-white"
               >
                 Next

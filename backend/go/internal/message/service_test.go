@@ -51,6 +51,47 @@ func TestServiceSendAndGet(t *testing.T) {
 	}
 }
 
+func TestServiceSendEnqueuesOutboxTargets(t *testing.T) {
+	repo, db := tempDB(t)
+	store, err := NewOutboxStore(db)
+	if err != nil {
+		t.Fatalf("new outbox store: %v", err)
+	}
+	svc := NewService(repo, nil)
+	svc.SetMemberResolver(func(_ context.Context, _, _ string) ([]string, error) {
+		return []string{"owner_1", "assistant_1"}, nil
+	})
+	svc.SetOutboxStore(store)
+
+	ctx := context.Background()
+	saved, err := svc.Send(ctx, Message{
+		WorkspaceID:    "ws1",
+		ConversationID: "conv1",
+		SenderID:       "owner_1",
+		ContentType:    ContentTypeText,
+		ContentText:    "run the assignment",
+	})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if saved.Status != StatusQueued {
+		t.Fatalf("expected queued message, got %s", saved.Status)
+	}
+	tasks, err := store.ClaimDue(ctx, 10)
+	if err != nil {
+		t.Fatalf("claim due: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected one outbox task, got %d", len(tasks))
+	}
+	if tasks[0].TargetMemberID != "assistant_1" {
+		t.Fatalf("expected assistant target, got %s", tasks[0].TargetMemberID)
+	}
+	if tasks[0].Payload == "" {
+		t.Fatal("expected dispatch payload")
+	}
+}
+
 func TestServiceList(t *testing.T) {
 	repo, _ := tempDB(t)
 	svc := NewService(repo, nil)

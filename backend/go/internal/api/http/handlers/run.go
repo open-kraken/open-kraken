@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"open-kraken/backend/go/internal/ael"
 	"open-kraken/backend/go/contracts"
+	"open-kraken/backend/go/internal/ael"
 )
 
 // RunHandler handles HTTP requests for AEL Run objects under /api/v2/runs.
@@ -60,8 +60,8 @@ func (h *RunHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	run := &ael.Run{
-		TenantID:    body.TenantID,
-		HiveID:      body.HiveID,
+		TenantID:    normalizeAELID(body.TenantID),
+		HiveID:      normalizeAELID(body.HiveID),
 		Objective:   body.Objective,
 		TokenBudget: body.TokenBudget,
 	}
@@ -74,7 +74,7 @@ func (h *RunHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *RunHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	tenantID := q.Get("tenant_id")
+	tenantID := normalizeAELID(q.Get("tenant_id"))
 	state := ael.RunState(q.Get("state"))
 	limit := 50
 	if l := q.Get("limit"); l != "" {

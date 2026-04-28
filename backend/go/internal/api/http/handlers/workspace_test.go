@@ -15,6 +15,7 @@ import (
 	apihttp "open-kraken/backend/go/internal/api/http"
 	"open-kraken/backend/go/internal/authn"
 	"open-kraken/backend/go/internal/authz"
+	"open-kraken/backend/go/internal/message"
 	"open-kraken/backend/go/internal/node"
 	plathttp "open-kraken/backend/go/internal/platform/http"
 	"open-kraken/backend/go/internal/projectdata"
@@ -556,6 +557,86 @@ func TestWorkspaceConversationCreateAndSendMessage(t *testing.T) {
 	}
 	if roadmap.Document.Tasks[0].AssigneeID != "assistant_1" {
 		t.Fatalf("expected direct assistant assignment, got %+v", roadmap.Document.Tasks[0])
+	}
+}
+
+func TestWorkspaceDirectAssistantMessageEnqueuesOutbox(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	appRoot := t.TempDir()
+	projectRepo := projectdata.NewRepository(appRoot)
+	hub := realtime.NewHub(64)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), hub)
+	instanceMgr := instance.NewManagerWithRepository(instance.NewMemoryRepository(), nil)
+	msgRepo, err := message.NewSQLiteRepository(filepath.Join(t.TempDir(), "messages.db"))
+	if err != nil {
+		t.Fatalf("new message repo: %v", err)
+	}
+	outbox, err := message.NewOutboxStore(msgRepo.(message.DBAccessor).DB())
+	if err != nil {
+		t.Fatalf("new outbox store: %v", err)
+	}
+	msgSvc := message.NewService(msgRepo, hub)
+	msgSvc.SetOutboxStore(outbox)
+	handler := apihttp.NewHandlerWithDependencies(service, hub, projectRepo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{
+		MessageService:   msgSvc,
+		ProviderRegistry: provider.NewRegistry(),
+		InstanceManager:  instanceMgr,
+	}, plathttp.PermissiveWebSocketUpgrader())
+
+	ownerToken := mustToken(t, authz.Principal{
+		MemberID:    "owner-1",
+		WorkspaceID: "ws_open_kraken",
+		Role:        authz.RoleOwner,
+	})
+	createAgent := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/ws_open_kraken/members", bytes.NewBufferString(`{
+		"memberId":"agent_runtime_outbox",
+		"displayName":"Runtime Outbox Agent",
+		"roleType":"assistant",
+		"createRuntime":true,
+		"providerId":"shell",
+		"terminalType":"shell",
+		"command":"/bin/bash",
+		"workingDir":"/tmp"
+	}`))
+	createAgent.Header.Set("Authorization", ownerToken)
+	agentRec := httptest.NewRecorder()
+	handler.ServeHTTP(agentRec, createAgent)
+	if agentRec.Code != http.StatusCreated {
+		t.Fatalf("expected runtime agent create 201, got %d body=%s", agentRec.Code, agentRec.Body.String())
+	}
+
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/ws_open_kraken/conversations", bytes.NewBufferString(`{"type":"direct","memberId":"agent_runtime_outbox"}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, create)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected conversation create 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Conversation map[string]any `json:"conversation"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	conversationID, _ := created.Conversation["id"].(string)
+	if conversationID == "" {
+		t.Fatalf("conversation id missing: %+v", created.Conversation)
+	}
+
+	send := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/ws_open_kraken/conversations/"+conversationID+"/messages", bytes.NewBufferString(`{"senderId":"owner_1","content":{"type":"text","text":"please inspect this instance"},"isAI":false}`))
+	sendRec := httptest.NewRecorder()
+	handler.ServeHTTP(sendRec, send)
+	if sendRec.Code != http.StatusCreated {
+		t.Fatalf("expected message create 201, got %d body=%s", sendRec.Code, sendRec.Body.String())
+	}
+	tasks, err := outbox.ClaimDue(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("claim outbox: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected one outbox task, got %d", len(tasks))
+	}
+	if tasks[0].TargetMemberID != "agent_runtime_outbox" {
+		t.Fatalf("expected agent_runtime_outbox target, got %s", tasks[0].TargetMemberID)
 	}
 }
 

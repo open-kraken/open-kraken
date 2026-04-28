@@ -47,6 +47,7 @@ import {
   BarChart3,
   Image as ImageIcon,
   File as FileIcon,
+  Slash,
 } from 'lucide-react';
 
 type ChatPageRealtimeState = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'degraded';
@@ -105,6 +106,89 @@ type ChatRealtimeEvent = {
   messageId?: string;
   senderId?: string;
   status?: string;
+};
+
+type ChatCommandDefinition = {
+  id: string;
+  trigger: string;
+  title: string;
+  description: string;
+  template: string;
+  sendAs?: string;
+};
+
+const chatCommands: ChatCommandDefinition[] = [
+  {
+    id: 'help',
+    trigger: '/help',
+    title: 'Help',
+    description: 'Show the available chat commands.',
+    template: '/help',
+    sendAs: 'List the available workspace chat commands and briefly explain when to use each one.'
+  },
+  {
+    id: 'status',
+    trigger: '/status',
+    title: 'Workspace Status',
+    description: 'Ask agents for current tasks, blockers, nodes, and terminals.',
+    template: '/status',
+    sendAs: 'Summarize current workspace status: active agents, running tasks, terminal sessions, nodes, blockers, and next actions.'
+  },
+  {
+    id: 'terminal',
+    trigger: '/terminal',
+    title: 'Terminal Command',
+    description: 'Route a shell command to an agent terminal.',
+    template: '/terminal @agent <command>'
+  },
+  {
+    id: 'assign',
+    trigger: '/assign',
+    title: 'Assign Task',
+    description: 'Assign work to an agent or team member.',
+    template: '/assign @agent <task>'
+  },
+  {
+    id: 'roadmap',
+    trigger: '/roadmap',
+    title: 'Roadmap',
+    description: 'Create or update a roadmap item.',
+    template: '/roadmap add <title>'
+  },
+  {
+    id: 'task',
+    trigger: '/task',
+    title: 'Queue Task',
+    description: 'Create a queue-backed task.',
+    template: '/task create <title>'
+  },
+  {
+    id: 'summarize',
+    trigger: '/summarize',
+    title: 'Summarize Thread',
+    description: 'Ask for a concise summary of the current conversation.',
+    template: '/summarize',
+    sendAs: 'Summarize this conversation with decisions, open questions, blockers, and next actions.'
+  }
+];
+
+const parseActiveCommand = (draft: string, caretPos: number) => {
+  const beforeCaret = draft.slice(0, caretPos);
+  if (!beforeCaret.startsWith('/')) return null;
+  if (beforeCaret.includes('\n')) return null;
+  const match = beforeCaret.match(/^\/([^\s]*)$/);
+  if (!match) return null;
+  return {
+    query: match[1]?.toLowerCase() ?? '',
+    start: 0,
+    end: caretPos
+  };
+};
+
+const resolveCommandSendText = (draft: string) => {
+  const trimmed = draft.trim();
+  const command = chatCommands.find((item) => item.trigger === trimmed);
+  return command?.sendAs ?? trimmed;
 };
 
 const mapShellRealtimeState = (status: RealtimeStatus): ChatPageRealtimeState => {
@@ -328,6 +412,9 @@ const buildDisplayMaps = (members: MemberFixture[], teamGroups: TeamGroupFixture
   return { memberById, teamById };
 };
 
+const isAssistantRuntimeMember = (member: MemberFixture) =>
+  Boolean(member.agentInstanceId || member.agentRuntimeState || member.runtimeReady || member.terminalId);
+
 const conversationTitle = (
   c: ChatConversation,
   memberById: Map<string, string>,
@@ -411,6 +498,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
   const [threadQuery, setThreadQuery] = useState('');
   const [caretPos, setCaretPos] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [commandIndex, setCommandIndex] = useState(0);
   const [showStats, setShowStats] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -425,19 +513,40 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
   );
 
   const mentionActive = useMemo(() => parseActiveMention(composerText, caretPos), [composerText, caretPos]);
+  const commandActive = useMemo(() => parseActiveCommand(composerText, caretPos), [composerText, caretPos]);
+
+  const commandCandidates = useMemo(() => {
+    if (!commandActive) return [];
+    return chatCommands.filter((command) => {
+      const query = commandActive.query;
+      return (
+        query.length === 0 ||
+        command.trigger.slice(1).includes(query) ||
+        command.title.toLowerCase().includes(query) ||
+        command.description.toLowerCase().includes(query)
+      );
+    });
+  }, [commandActive]);
 
   const mentionCandidates = useMemo(() => {
-    if (!mentionActive) return [];
+    if (!mentionActive || commandActive) return [];
     return filterMentionCandidates(rosterMembers, teamGroups, mentionActive.query);
-  }, [mentionActive, rosterMembers, teamGroups]);
+  }, [mentionActive, commandActive, rosterMembers, teamGroups]);
 
   const mentionMenuOpen = Boolean(mentionActive && mentionCandidates.length > 0);
+  const commandMenuOpen = Boolean(commandActive && commandCandidates.length > 0);
 
   useEffect(() => {
     if (mentionIndex >= mentionCandidates.length) {
       setMentionIndex(0);
     }
   }, [mentionCandidates.length, mentionIndex]);
+
+  useEffect(() => {
+    if (commandIndex >= commandCandidates.length) {
+      setCommandIndex(0);
+    }
+  }, [commandCandidates.length, commandIndex]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -496,11 +605,19 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
         }));
       }
 
-      if (event.type === 'chat.status' && event.payload?.status === 'failed') {
-        setComposerState({
-          errorMessage: 'Message delivery failed. Retry after connection recovery.',
-          status: 'failed'
-        });
+      if (event.type === 'chat.status' && event.payload?.messageId && event.payload?.status) {
+        setMessagePage((current) => ({
+          ...current,
+          items: current.items.map((item) =>
+            item.id === event.payload?.messageId ? { ...item, status: event.payload.status } : item
+          )
+        }));
+        if (event.payload.status === 'failed') {
+          setComposerState({
+            errorMessage: 'Message delivery failed. Retry after connection recovery.',
+            status: 'failed'
+          });
+        }
       }
     });
 
@@ -605,7 +722,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
 
   /** Send a message via the API. */
   const sendMessage = useCallback(async () => {
-    const text = composerText.trim();
+    const text = resolveCommandSendText(composerText);
     const payloads = pendingAttachments.map(pendingToPayload);
     if ((!text && payloads.length === 0) || !activeConvId) return;
 
@@ -679,7 +796,42 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
         status: 'failed'
       });
     }
-  }, [composerText, pendingAttachments, activeConvId, apiClient]);
+  }, [composerText, pendingAttachments, activeConvId, apiClient, SESSION_SENDER_ID]);
+
+  const applyCommand = useCallback(
+    (command: ChatCommandDefinition) => {
+      const ta = textareaRef.current;
+      const active = parseActiveCommand(composerText, caretPos);
+      const before = active ? composerText.slice(0, active.start) : '';
+      const after = active ? composerText.slice(active.end) : composerText;
+      const next = `${before}${command.template}${command.template.endsWith(' ') ? '' : ' '}${after}`;
+      const pos = before.length + command.template.length + (command.template.endsWith(' ') ? 0 : 1);
+      setComposerText(next);
+      requestAnimationFrame(() => {
+        ta?.focus();
+        ta?.setSelectionRange(pos, pos);
+        setCaretPos(pos);
+      });
+      setCommandIndex(0);
+    },
+    [composerText, caretPos]
+  );
+
+  const insertCommandSlash = useCallback(() => {
+    if (!activeConvId || composerState.status === 'sending') return;
+    const ta = textareaRef.current;
+    const start = ta?.selectionStart ?? composerText.length;
+    const end = ta?.selectionEnd ?? start;
+    const prefix = start === 0 ? '' : composerText[start - 1] === '\n' ? '' : '\n';
+    const next = `${composerText.slice(0, start)}${prefix}/${composerText.slice(end)}`;
+    const pos = start + prefix.length + 1;
+    setComposerText(next);
+    requestAnimationFrame(() => {
+      ta?.focus();
+      ta?.setSelectionRange(pos, pos);
+      setCaretPos(pos);
+    });
+  }, [activeConvId, composerState.status, composerText]);
 
   const applyMention = useCallback(
     (insertText: string) => {
@@ -721,6 +873,34 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
   /** Handle Enter key in composer (Shift+Enter for newline). */
   const handleComposerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.nativeEvent.isComposing) {
+        return;
+      }
+
+      if (commandMenuOpen && commandCandidates.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setCommandIndex((i) => (i + 1) % commandCandidates.length);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setCommandIndex((i) => (i - 1 + commandCandidates.length) % commandCandidates.length);
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const pick = commandCandidates[commandIndex];
+          if (pick) applyCommand(pick);
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setCommandIndex(0);
+          return;
+        }
+      }
+
       if (mentionMenuOpen && mentionCandidates.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
@@ -742,12 +922,26 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
           e.preventDefault();
           cancelMention();
         }
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        void sendMessage();
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
         void sendMessage();
       }
     },
-    [mentionMenuOpen, mentionCandidates, mentionIndex, applyMention, cancelMention, sendMessage]
+    [
+      commandMenuOpen,
+      commandCandidates,
+      commandIndex,
+      applyCommand,
+      mentionMenuOpen,
+      mentionCandidates,
+      mentionIndex,
+      applyMention,
+      cancelMention,
+      sendMessage
+    ]
   );
 
   /** Retry sending after a failure -- reset composer state. */
@@ -848,7 +1042,7 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
 
   const activeConversationStats = useMemo(() => {
     const imageCount = model.messages.reduce((sum, message) => sum + (message.attachments?.length ?? 0), 0);
-    const agentCount = activeParticipants.filter((member) => member.roleType === 'assistant').length;
+    const agentCount = activeParticipants.filter(isAssistantRuntimeMember).length;
     const humanCount = Math.max(activeParticipants.length - agentCount, 0);
     return {
       participantCount: activeParticipants.length,
@@ -858,6 +1052,11 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
       humanCount
     };
   }, [activeParticipants, model.messages]);
+
+  const activeAssistantTargets = useMemo(
+    () => activeParticipants.filter(isAssistantRuntimeMember),
+    [activeParticipants]
+  );
 
   const selectedTeamMeta = useMemo(() => {
     if (teamFilter === 'all') return { icon: '🏢', label: 'All Teams' };
@@ -917,6 +1116,20 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
           <div className="flex items-center gap-1 text-[10px] app-text-faint">
             <Clock className="size-3" />
             Sending...
+          </div>
+        );
+      case 'queued':
+        return (
+          <div className="flex items-center gap-1 text-[10px] text-amber-600">
+            <Clock className="size-3" />
+            Queued to assistant
+          </div>
+        );
+      case 'delivered':
+        return (
+          <div className="flex items-center gap-1 text-[10px] text-green-600">
+            <Check className="size-3" />
+            Delivered
           </div>
         );
       case 'sent':
@@ -1095,6 +1308,28 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
             <Badge variant="outline" className="text-xs">
               {activeConversationStats.participantCount} members
             </Badge>
+            {activeAssistantTargets.length > 0 && (
+              <div className="hidden lg:flex items-center gap-1.5 min-w-0">
+                {activeAssistantTargets.slice(0, 2).map((member) => (
+                  <Badge key={member.memberId} variant="secondary" className="max-w-48 h-6 px-2 text-[11px] font-normal">
+                    <Zap size={12} className="mr-1 shrink-0" />
+                    <span className="truncate">
+                      {member.displayName ?? member.memberId}
+                      {member.nodeHostname || member.nodeId
+                        ? ` -> ${member.nodeHostname ?? member.nodeId}`
+                        : member.agentPlacementState === 'pending'
+                          ? ' -> pending node'
+                          : ''}
+                    </span>
+                  </Badge>
+                ))}
+                {activeAssistantTargets.length > 2 && (
+                  <Badge variant="outline" className="h-6 px-2 text-[11px] font-normal">
+                    +{activeAssistantTargets.length - 2}
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -1286,6 +1521,36 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
             )}
             {attachError && <p className="text-xs text-red-600 mb-2">{attachError}</p>}
 
+            {/* Command menu */}
+            {commandMenuOpen && (
+              <div className="relative mb-1">
+                <div className="absolute bottom-full left-0 w-[360px] max-h-64 overflow-y-auto rounded-lg border app-border-subtle app-surface-strong shadow-lg py-1 z-20">
+                  <div className="px-3 py-2 border-b app-border-subtle">
+                    <div className="text-xs font-semibold app-text-strong">Command set</div>
+                    <div className="text-[10px] app-text-faint">Type / to search commands. Enter inserts the selected command.</div>
+                  </div>
+                  {commandCandidates.map((command, idx) => (
+                    <button
+                      key={command.id}
+                      type="button"
+                      role="option"
+                      className={`w-full text-left px-3 py-2 transition-colors ${idx === commandIndex ? 'app-bg-hover app-text-strong' : 'app-text-muted hover:app-bg-hover'}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        applyCommand(command);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs app-accent-text w-20">{command.trigger}</span>
+                        <span className="text-sm font-medium">{command.title}</span>
+                      </div>
+                      <div className="text-[11px] app-text-faint mt-0.5 pl-[5.5rem]">{command.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Mention menu */}
             {mentionMenuOpen && (
               <div className="relative mb-1">
@@ -1327,6 +1592,17 @@ export const ChatPage = ({ feedbackOverride }: { feedbackOverride?: ChatPageFeed
               onChange={(e) => void addPendingFiles(e.target.files)}
             />
             <div className="flex items-end gap-2 rounded-xl border app-border-subtle app-bg-canvas p-1.5 shadow-sm">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 flex-shrink-0 rounded-lg app-text-muted"
+                onClick={insertCommandSlash}
+                disabled={model.composer.disabled}
+                aria-label="Open command set"
+              >
+                <Slash size={16} />
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-lg app-text-muted">

@@ -6,16 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"open-kraken/backend/go/internal/ael"
 	"open-kraken/backend/go/contracts"
+	"open-kraken/backend/go/internal/ael"
 )
 
 // StepHandler handles HTTP requests for AEL Step objects.
 // Routes served:
-//   POST   /api/v2/steps
-//   GET    /api/v2/steps/pending
-//   GET    /api/v2/steps/{id}
-//   GET    /api/v2/flows/{id}/steps
+//
+//	POST   /api/v2/steps
+//	GET    /api/v2/steps/pending
+//	GET    /api/v2/steps/{id}
+//	GET    /api/v2/flows/{id}/steps
 type StepHandler struct {
 	svc         *ael.Service
 	stepsPrefix string // e.g. /api/v2/steps
@@ -92,7 +93,7 @@ func (h *StepHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	step := &ael.Step{
 		FlowID:        body.FlowID,
 		RunID:         body.RunID,
-		TenantID:      body.TenantID,
+		TenantID:      normalizeAELID(body.TenantID),
 		Regime:        ael.StepRegime(body.Regime),
 		WorkloadClass: body.WorkloadClass,
 		AgentType:     body.AgentType,
@@ -138,7 +139,7 @@ func (h *StepHandler) handleListByFlow(w http.ResponseWriter, r *http.Request, f
 
 func (h *StepHandler) handlePending(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	tenantID := q.Get("tenant_id")
+	tenantID := normalizeAELID(q.Get("tenant_id"))
 	limit := 50
 	if l := q.Get("limit"); l != "" {
 		var n int

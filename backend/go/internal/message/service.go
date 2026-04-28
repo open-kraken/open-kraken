@@ -2,6 +2,7 @@ package message
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -14,6 +15,7 @@ type Service struct {
 	repo     Repository
 	hub      *realtime.Hub
 	pipeline *Pipeline
+	outbox   *OutboxStore
 	now      func() time.Time
 	idGen    func() string
 	seqGen   func() uint64
@@ -43,6 +45,11 @@ func (s *Service) SetDNDCheck(fn func(ctx context.Context, memberID string) bool
 	s.pipeline.isDND = fn
 }
 
+// SetOutboxStore enables reliable terminal dispatch for queued messages.
+func (s *Service) SetOutboxStore(store *OutboxStore) {
+	s.outbox = store
+}
+
 // Send processes a message through the pipeline, persists it, and publishes
 // a realtime event. Returns the persisted message.
 func (s *Service) Send(ctx context.Context, m Message) (Message, error) {
@@ -54,6 +61,10 @@ func (s *Service) Send(ctx context.Context, m Message) (Message, error) {
 	result, err := s.pipeline.Process(ctx, m)
 	if err != nil {
 		return Message{}, fmt.Errorf("message send: %w", err)
+	}
+
+	if err := s.enqueueDispatchTargets(ctx, result); err != nil {
+		return Message{}, fmt.Errorf("message outbox: %w", err)
 	}
 
 	s.publishChatDelta(result.Message)
@@ -116,6 +127,33 @@ func (s *Service) MarkRead(ctx context.Context, mark UnreadMark) (int, error) {
 // UnreadCount returns the unread message count for a member in a conversation.
 func (s *Service) UnreadCount(ctx context.Context, workspaceID, conversationID, memberID string) (int, error) {
 	return s.repo.UnreadCount(ctx, workspaceID, conversationID, memberID)
+}
+
+func (s *Service) enqueueDispatchTargets(ctx context.Context, result PipelineResult) error {
+	if s.outbox == nil || len(result.Targets) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(map[string]string{
+		"text":           result.Message.ContentText,
+		"conversationId": result.Message.ConversationID,
+		"senderId":       result.Message.SenderID,
+		"senderName":     "",
+	})
+	if err != nil {
+		return err
+	}
+	for _, target := range result.Targets {
+		if err := s.outbox.Enqueue(ctx, OutboxTask{
+			MessageID:      result.Message.ID,
+			WorkspaceID:    result.Message.WorkspaceID,
+			ConversationID: result.Message.ConversationID,
+			TargetMemberID: target,
+			Payload:        string(payload),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // publishChatDelta sends a chat.delta realtime event.

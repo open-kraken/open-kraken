@@ -150,6 +150,46 @@ func (h *WorkspaceHandler) handleConversationCreate(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusCreated, map[string]any{"conversation": conversation})
 }
 
+func (h *WorkspaceHandler) resolveDirectAssistantTargets(_ context.Context, workspaceID, conversationID string) ([]string, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if workspaceID != h.state.Workspace.ID {
+		return nil, nil
+	}
+	var conversation map[string]any
+	for _, candidate := range h.state.Conversations {
+		if asString(candidate["id"]) == conversationID {
+			conversation = candidate
+			break
+		}
+	}
+	if conversation == nil || asString(conversation["type"]) != "direct" {
+		return nil, nil
+	}
+	allowed := map[string]bool{}
+	for _, id := range asStringSlice(conversation["memberIds"]) {
+		allowed[id] = true
+	}
+	targets := make([]string, 0, len(allowed))
+	for _, member := range h.state.Members.Members {
+		id := asString(member["memberId"])
+		if id == "" || !allowed[id] {
+			continue
+		}
+		if isAssistantRuntimeMember(member) {
+			targets = append(targets, id)
+		}
+	}
+	return targets, nil
+}
+
+func isAssistantRuntimeMember(member map[string]any) bool {
+	return asString(member["agentInstanceId"]) != "" ||
+		asString(member["agentRuntimeState"]) != "" ||
+		asString(member["terminalId"]) != "" ||
+		asBool(member["runtimeReady"])
+}
+
 func (h *WorkspaceHandler) handleMessagesList(w http.ResponseWriter, conversationID string) {
 	// Delegate to message service if available.
 	if h.msgSvc != nil {

@@ -540,6 +540,7 @@ func main() {
 		if outboxErr != nil {
 			log.Error("init outbox store failed", logger.WithFields("error", outboxErr.Error()))
 		} else {
+			msgSvc.SetOutboxStore(outboxStore)
 			outboxWorker := message.NewOutboxWorker(outboxStore, orch.DispatchChatToTerminal, msgSvc)
 			go outboxWorker.Run(ctx)
 		}

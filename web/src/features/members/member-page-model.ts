@@ -12,6 +12,9 @@ export type MemberFixture = {
   agentInstanceId?: string;
   agentRuntimeState?: string;
   runtimeReady?: boolean;
+  nodeId?: string;
+  nodeHostname?: string;
+  agentPlacementState?: string;
   manualStatus?: string;
   status?: string;
   statusLabel?: string;

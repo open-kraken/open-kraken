@@ -138,6 +138,9 @@ func (h *WorkspaceHandler) SetRosterStore(ctx context.Context, store roster.Stor
 // When set, message list/create routes delegate to the service instead of fixture data.
 func (h *WorkspaceHandler) SetMessageService(svc *message.Service) {
 	h.msgSvc = svc
+	if svc != nil {
+		svc.SetMemberResolver(h.resolveDirectAssistantTargets)
+	}
 }
 
 // SetAgentRuntime wires the backend AgentInstance pool and provider registry

@@ -535,6 +535,15 @@ const roadmapStatusToNodeStatus = (status: string) => {
   }
 };
 
+const roadmapStatusClass = (status: string) =>
+  status === "done"
+    ? "text-green-600 border-green-400"
+    : status === "in_progress"
+      ? "text-sky-600 border-sky-400"
+      : status === "blocked"
+        ? "text-red-600 border-red-400"
+        : "text-gray-500 border-gray-300";
+
 const normalizeRoadmapResponseForTaskMap = (response: Awaited<ReturnType<ReturnType<typeof useAppShell>["apiClient"]["getRoadmapDocument"]>>): RoadmapFeatureResponse =>
   ({
     ...response,
@@ -607,18 +616,24 @@ const mapRoadmapDetailEdges = (roadmapTasks: RoadmapTaskItem[], queueTasks: Queu
   return edges;
 };
 
-const buildTaskMapCanvas = (tasks: QueueTask[], roadmap: RoadmapDocument) => {
+const buildTaskMapCanvas = (tasks: QueueTask[], roadmap: RoadmapDocument, roadmapTaskId: string | null = null) => {
   const orderedQueueTasks = [...tasks].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
-  const roadmapTasks = roadmap.tasks;
+  const selectedRoadmapTask = roadmapTaskId
+    ? roadmap.tasks.find((task) => task.id === roadmapTaskId) ?? null
+    : null;
+  const roadmapTasks = selectedRoadmapTask ? [selectedRoadmapTask] : roadmap.tasks;
+  const visibleQueueTasks = selectedRoadmapTask
+    ? orderedQueueTasks.filter((task) => queueTaskMentionsRoadmapStep(task, selectedRoadmapTask))
+    : orderedQueueTasks;
   return {
     nodes: [
       ...roadmapTasks.map(mapRoadmapTaskToNode),
-      ...orderedQueueTasks.map(mapTaskToNode),
+      ...visibleQueueTasks.map(mapTaskToNode),
     ],
     edges: [
       ...mapRoadmapTasksToEdges(roadmapTasks),
-      ...mapTasksToEdges(orderedQueueTasks),
-      ...mapRoadmapDetailEdges(roadmapTasks, orderedQueueTasks),
+      ...mapTasksToEdges(visibleQueueTasks),
+      ...mapRoadmapDetailEdges(roadmapTasks, visibleQueueTasks),
     ],
   };
 };
@@ -632,6 +647,7 @@ export function TaskMapPage() {
   const [v2Runs, setV2Runs] = useState<RunDTO[]>([]);
   const [queueTasks, setQueueTasks] = useState<QueueTask[]>([]);
   const [roadmap, setRoadmap] = useState<RoadmapDocument>(emptyRoadmap);
+  const [selectedRoadmapTaskId, setSelectedRoadmapTaskId] = useState<string | null>(null);
   const [roadmapError, setRoadmapError] = useState<string>("");
   const [runtimeNodes, setRuntimeNodes] = useState<RuntimeNode[]>([]);
   const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([]);
@@ -688,7 +704,7 @@ export function TaskMapPage() {
   }, [refreshRoadmap]);
 
   useEffect(() => {
-    const canvas = buildTaskMapCanvas(queueTasks, roadmap);
+    const canvas = buildTaskMapCanvas(queueTasks, roadmap, selectedRoadmapTaskId);
     if (canvas.nodes.length === 0) {
       setNodes(initialNodes);
       setEdges(initialEdges);
@@ -696,7 +712,13 @@ export function TaskMapPage() {
     }
     setNodes(canvas.nodes);
     setEdges(canvas.edges);
-  }, [queueTasks, roadmap, setEdges, setNodes]);
+  }, [queueTasks, roadmap, selectedRoadmapTaskId, setEdges, setNodes]);
+
+  useEffect(() => {
+    if (selectedRoadmapTaskId && !roadmap.tasks.some((task) => task.id === selectedRoadmapTaskId)) {
+      setSelectedRoadmapTaskId(null);
+    }
+  }, [roadmap.tasks, selectedRoadmapTaskId]);
 
   useEffect(() => {
     const load = () => {
@@ -711,6 +733,9 @@ export function TaskMapPage() {
 
   const selectedNode = selection?.kind === "node" ? nodes.find((n) => n.id === selection.id) ?? null : null;
   const selectedEdge = selection?.kind === "edge" ? edges.find((e) => e.id === selection.id) ?? null : null;
+  const selectedRoadmapTask = selectedRoadmapTaskId
+    ? roadmap.tasks.find((task) => task.id === selectedRoadmapTaskId) ?? null
+    : null;
   const contextNode = nodeMenu ? nodes.find((n) => n.id === nodeMenu.nodeId) ?? null : null;
   const editingNode = editingNodeId ? nodes.find((n) => n.id === editingNodeId) ?? null : null;
   const deleteCandidateNode = deleteNodeId ? nodes.find((n) => n.id === deleteNodeId) ?? null : null;
@@ -1066,6 +1091,12 @@ export function TaskMapPage() {
   const roadmapRunning = roadmap.tasks.filter((task) => task.status === "in_progress").length;
   const roadmapBlocked = roadmap.tasks.filter((task) => task.status === "blocked").length;
   const roadmapProgress = roadmap.tasks.length > 0 ? Math.round((roadmapDone / roadmap.tasks.length) * 100) : 0;
+  const selectRoadmapScope = (task: RoadmapTaskItem | null) => {
+    setSelectedRoadmapTaskId(task?.id ?? null);
+    setNodeMenu(null);
+    setSelectedView("graph");
+    setSelection(task ? { kind: "node", id: `roadmap-${task.id}` } : null);
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -1163,6 +1194,85 @@ export function TaskMapPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Roadmap Scope */}
+        <div className="w-[280px] app-surface-strong border-r app-border-subtle flex flex-col">
+          <div className="px-4 py-3 border-b app-border-subtle">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold app-text-strong">Roadmap</h2>
+                <p className="text-xs app-text-faint mt-0.5">
+                  {selectedRoadmapTask ? "Scoped task map" : "All work content"}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => selectRoadmapScope(null)}>
+                All
+              </Button>
+            </div>
+            {roadmapError && (
+              <p className="mt-2 text-[11px] text-red-600">{roadmapError}</p>
+            )}
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-2">
+              <button
+                type="button"
+                onClick={() => selectRoadmapScope(null)}
+                className={`w-full rounded-md border p-3 text-left transition-all ${
+                  selectedRoadmapTaskId === null
+                    ? "border-cyan-400 bg-cyan-50/80 dark:bg-cyan-950/20 shadow-sm"
+                    : "app-border-subtle hover:app-surface-strong"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold app-text-strong">All work</span>
+                  <Badge variant="outline" className="text-[10px]">{queueTasks.length} tasks</Badge>
+                </div>
+                <p className="mt-1 text-[10px] app-text-faint">
+                  Shows every roadmap step and queue-backed task on one canvas.
+                </p>
+              </button>
+
+              {roadmap.tasks.length === 0 ? (
+                <Card className="p-4 text-center">
+                  <Map size={22} className="app-text-faint mx-auto mb-2" />
+                  <p className="text-xs app-text-faint">No roadmap steps from the backend.</p>
+                </Card>
+              ) : (
+                roadmap.tasks.map((task) => {
+                  const linkedMicroTasks = queueTasks.filter((queueTask) => queueTaskMentionsRoadmapStep(queueTask, task));
+                  const isActive = selectedRoadmapTaskId === task.id;
+                  return (
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => selectRoadmapScope(task)}
+                      className={`w-full rounded-md border p-3 text-left transition-all ${
+                        isActive
+                          ? "border-cyan-400 bg-cyan-50/80 dark:bg-cyan-950/20 shadow-sm"
+                          : "app-border-subtle hover:app-surface-strong"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[10px] app-text-faint">Step {task.number}</div>
+                          <div className="text-xs font-semibold app-text-strong truncate">{task.title || task.id}</div>
+                        </div>
+                        <Badge variant="outline" className={`text-[10px] shrink-0 ${roadmapStatusClass(task.status)}`}>
+                          {task.status}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[10px] app-text-faint">
+                        <span>{linkedMicroTasks.length} micro tasks</span>
+                        {task.dueAt ? <span>Due {task.dueAt}</span> : null}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+
         {/* Flow Graph */}
         <div className="flex-1 relative" onContextMenu={onFlowContextMenu}>
           <ReactFlow
@@ -1208,11 +1318,13 @@ export function TaskMapPage() {
             {/* Workflow Info Panel */}
             <Panel position="top-left" className="m-4">
               <Card className="p-3 shadow-lg">
-                <div className="text-xs font-semibold app-text-strong mb-2">Roadmap Workflow</div>
+                <div className="text-xs font-semibold app-text-strong mb-2">
+                  {selectedRoadmapTask ? "Roadmap Step Task Map" : "Roadmap Workflow"}
+                </div>
                 <div className="flex items-center gap-2 mb-2">
                   <GitBranch size={14} className="app-accent-text" />
                   <span className="text-xs app-text-strong max-w-[260px] truncate">
-                    {roadmap.objective || "Queue-backed delivery graph"}
+                    {selectedRoadmapTask?.title || roadmap.objective || "Queue-backed delivery graph"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mb-2">
@@ -1881,14 +1993,6 @@ export function TaskMapPage() {
                   ) : (
                     roadmap.tasks.map((task) => {
                       const linkedMicroTasks = queueTasks.filter((queueTask) => queueTaskMentionsRoadmapStep(queueTask, task));
-                      const statusClass =
-                        task.status === "done"
-                          ? "text-green-600 border-green-400"
-                          : task.status === "in_progress"
-                            ? "text-sky-600 border-sky-400"
-                            : task.status === "blocked"
-                              ? "text-red-600 border-red-400"
-                              : "text-gray-500 border-gray-300";
                       return (
                         <Card key={task.id} className="p-3">
                           <div className="flex items-start justify-between gap-2">
@@ -1896,7 +2000,7 @@ export function TaskMapPage() {
                               <div className="text-[10px] app-text-faint">Step {task.number}</div>
                               <div className="text-xs font-semibold app-text-strong truncate">{task.title || task.id}</div>
                             </div>
-                            <Badge variant="outline" className={`text-[10px] shrink-0 ${statusClass}`}>
+                            <Badge variant="outline" className={`text-[10px] shrink-0 ${roadmapStatusClass(task.status)}`}>
                               {task.status}
                             </Badge>
                           </div>
