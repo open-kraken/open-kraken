@@ -12,6 +12,7 @@ export type PluginDTO = {
   rating: string;
   icon: string;
   installed: boolean;
+  disabled?: boolean;
   installedAt?: string;
 };
 
@@ -21,5 +22,7 @@ export const createPluginApi = (http: HttpClient) => ({
   listAvailable: () => http.get<PluginListResponse>('plugins'),
   listInstalled: () => http.get<PluginListResponse>('plugins/installed'),
   install: (pluginId: string) => http.post<PluginDTO>(`plugins/${pluginId}/install`),
+  disable: (pluginId: string) => http.post<PluginDTO>(`plugins/${pluginId}/disable`),
+  enable: (pluginId: string) => http.post<PluginDTO>(`plugins/${pluginId}/enable`),
   remove: (pluginId: string) => http.request<void>(`plugins/${pluginId}`, { method: 'DELETE' }),
 });

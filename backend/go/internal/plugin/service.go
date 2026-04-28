@@ -18,23 +18,24 @@ var (
 type Category string
 
 const (
-	CategoryProductivity   Category = "productivity"
-	CategoryDevelopment    Category = "development"
-	CategoryDesign         Category = "design"
-	CategoryCommunication  Category = "communication"
-	CategoryObservability  Category = "observability"
+	CategoryProductivity  Category = "productivity"
+	CategoryDevelopment   Category = "development"
+	CategoryDesign        Category = "design"
+	CategoryCommunication Category = "communication"
+	CategoryObservability Category = "observability"
 )
 
 // Plugin represents a catalog entry.
 type Plugin struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Category    Category `json:"category"`
-	Version     string   `json:"version"`
-	Rating      string   `json:"rating"`
-	Icon        string   `json:"icon"`
-	Installed   bool     `json:"installed"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Category    Category   `json:"category"`
+	Version     string     `json:"version"`
+	Rating      string     `json:"rating"`
+	Icon        string     `json:"icon"`
+	Installed   bool       `json:"installed"`
+	Disabled    bool       `json:"disabled,omitempty"`
 	InstalledAt *time.Time `json:"installedAt,omitempty"`
 }
 
@@ -108,6 +109,19 @@ func (s *Service) Remove(_ context.Context, pluginID string) error {
 	}
 	delete(s.installed, pluginID)
 	return nil
+}
+
+// SetDisabled toggles an installed plugin without uninstalling it.
+func (s *Service) SetDisabled(_ context.Context, pluginID string, disabled bool) (Plugin, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.installed[pluginID]
+	if !ok {
+		return Plugin{}, ErrNotFound
+	}
+	p.Disabled = disabled
+	s.installed[pluginID] = p
+	return p, nil
 }
 
 // Get returns a single plugin by ID.

@@ -352,6 +352,14 @@ export const acknowledgeAutoScroll = (state: TerminalPanelState): TerminalPanelS
   }
 });
 
+export const clearOutput = (state: TerminalPanelState): TerminalPanelState => ({
+  ...state,
+  output: {
+    ...createOutputState(),
+    followOutput: state.output.followOutput
+  }
+});
+
 export const selectTerminalPanelViewModel = (
   state: TerminalPanelState
 ): TerminalPanelViewModel => {
@@ -462,6 +470,9 @@ export const createTerminalStore = ({
     },
     setFollowOutput(followOutput: boolean) {
       return update(setFollowOutput(state, followOutput));
+    },
+    clearOutput() {
+      return update(clearOutput(state));
     },
     acknowledgeAutoScroll() {
       return update(acknowledgeAutoScroll(state));

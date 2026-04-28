@@ -48,24 +48,24 @@ export const useNodesStore = () => {
   /** Assign an agent (member) to a node and update store in place. */
   const assignAgent = useCallback(async (nodeId: string, memberId: string) => {
     await assignAgentToNode(nodeId, { memberId });
-    void store.load();
+    await store.load();
   }, [store.load]);
 
   /** Remove an agent assignment from a node and update store in place. */
   const unassignAgent = useCallback(async (nodeId: string, memberId: string) => {
     await unassignAgentFromNode(nodeId, memberId);
-    void store.load();
+    await store.load();
   }, [store.load]);
 
   const createNode = useCallback(async (input: RegisterNodeInput) => {
     await registerNode(input);
-    void store.load();
+    await store.load();
   }, [store.load]);
 
   const removeNode = useCallback(async (nodeId: string) => {
     await deregisterNode(nodeId);
     setSelectedNodeId((current) => (current === nodeId ? null : current));
-    void store.load();
+    await store.load();
   }, [store.load]);
 
   return {

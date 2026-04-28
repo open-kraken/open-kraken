@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -82,14 +83,20 @@ func (h *StaticHandler) indexPath() (string, error) {
 	}
 	info, err := os.Stat(h.distDir)
 	if err != nil {
-		return "", err
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("web assets are not built at OPEN_KRAKEN_WEB_DIST_DIR=%q; run `cd web && npm run build` or point OPEN_KRAKEN_WEB_DIST_DIR at an existing dist directory", h.distDir)
+		}
+		return "", fmt.Errorf("web assets directory check failed for OPEN_KRAKEN_WEB_DIST_DIR=%q: %w", h.distDir, err)
 	}
 	if !info.IsDir() {
 		return "", errors.New("OPEN_KRAKEN_WEB_DIST_DIR must be a directory")
 	}
 	indexPath := filepath.Join(h.distDir, "index.html")
 	if _, err := os.Stat(indexPath); err != nil {
-		return "", err
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("web assets index is missing at %q; run `cd web && npm run build` before serving the bundled UI", indexPath)
+		}
+		return "", fmt.Errorf("web assets index check failed for %q: %w", indexPath, err)
 	}
 	return indexPath, nil
 }

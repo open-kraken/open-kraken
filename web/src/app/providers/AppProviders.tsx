@@ -79,10 +79,36 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
   }, [httpClient, authToken]);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const intentionalCloseRef = useRef(false);
 
   const realtimeClient = useMemo(() => {
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+    const scheduleReconnect = (reason: string) => {
+      clearReconnectTimer();
+      const attempt = reconnectAttemptRef.current;
+      const delayMs = Math.min(30_000, 1_000 * 2 ** attempt);
+      reconnectAttemptRef.current = attempt + 1;
+      setRealtime({
+        status: 'reconnecting',
+        detail: `${reason}. Reconnecting in ${Math.round(delayMs / 1000)}s`,
+        lastCursor: client.getCursor()
+      });
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        client.reconnect();
+      }, delayMs);
+    };
     const client = new RealtimeClient({
       open: (cursor) => {
+        intentionalCloseRef.current = false;
+        clearReconnectTimer();
         // Close any previous connection
         if (wsRef.current) {
           wsRef.current.close();
@@ -106,6 +132,7 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
         wsRef.current = ws;
 
         ws.addEventListener('open', () => {
+          reconnectAttemptRef.current = 0;
           client.markConnected();
           setRealtime({
             status: 'connected',
@@ -124,18 +151,25 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
         });
 
         ws.addEventListener('close', () => {
-          setRealtime({
-            status: 'disconnected',
-            detail: 'Realtime disconnected',
-            lastCursor: null
-          });
+          if (wsRef.current === ws) {
+            wsRef.current = null;
+          }
+          if (intentionalCloseRef.current) {
+            setRealtime({
+              status: 'disconnected',
+              detail: 'Realtime disconnected',
+              lastCursor: client.getCursor()
+            });
+            return;
+          }
+          scheduleReconnect('Realtime disconnected');
         });
 
         ws.addEventListener('error', () => {
           setRealtime({
-            status: 'disconnected',
+            status: 'reconnecting',
             detail: 'WebSocket error',
-            lastCursor: null
+            lastCursor: client.getCursor()
           });
         });
 
@@ -146,6 +180,8 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
         });
       },
       close: () => {
+        intentionalCloseRef.current = true;
+        clearReconnectTimer();
         if (wsRef.current) {
           wsRef.current.close();
           wsRef.current = null;
@@ -185,7 +221,7 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
     realtimeClient.connect();
     setRealtime({
       status: realtimeClient.getStatus(),
-      detail: 'Connected to workspace stream',
+      detail: 'Connecting to workspace stream',
       lastCursor: realtimeClient.getCursor()
     });
 

@@ -81,6 +81,30 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestDisableEnableInstalledPlugin(t *testing.T) {
+	svc := NewService()
+	ctx := context.Background()
+	if _, err := svc.Install(ctx, "plugin-code-review"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	disabled, err := svc.SetDisabled(ctx, "plugin-code-review", true)
+	if err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	if !disabled.Disabled {
+		t.Fatal("expected disabled=true")
+	}
+
+	enabled, err := svc.SetDisabled(ctx, "plugin-code-review", false)
+	if err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	if enabled.Disabled {
+		t.Fatal("expected disabled=false")
+	}
+}
+
 func TestRemoveNotFound(t *testing.T) {
 	svc := NewService()
 	err := svc.Remove(context.Background(), "nonexistent")

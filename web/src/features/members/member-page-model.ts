@@ -1,4 +1,5 @@
 import type { CollaborationStatus, RoleType } from './member-read-model';
+import { resolveAgentStatus } from '@/shared/status-model';
 
 export type MemberFixture = {
   workspaceId?: string;
@@ -129,29 +130,21 @@ const initialsFromName = (displayName: string) => {
 };
 
 const normalizeStatus = (member: MemberFixture): CollaborationStatus => {
-  const raw = String(member.status ?? member.terminalStatus ?? '').toLowerCase();
-  switch (raw) {
+  switch (resolveAgentStatus({
+    status: member.status,
+    manualStatus: member.manualStatus,
+    terminalStatus: member.terminalStatus,
+    runtimeState: member.agentRuntimeState,
+    runtimeReady: member.runtimeReady,
+  })) {
     case 'running':
-    case 'working':
-    case 'busy':
-    case 'in_progress':
       return 'running';
-    case 'success':
-    case 'done':
-    case 'completed':
-    case 'exited':
-      return 'success';
     case 'error':
-    case 'failed':
       return 'error';
     case 'offline':
       return 'offline';
-    case 'idle':
-    case 'attached':
-    case 'online':
-      return 'idle';
     default:
-      return String(member.manualStatus ?? '').toLowerCase() === 'offline' ? 'offline' : 'idle';
+      return 'idle';
   }
 };
 

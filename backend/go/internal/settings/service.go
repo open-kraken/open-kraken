@@ -58,7 +58,7 @@ func (s *Service) Get(memberID string) (UserSettings, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return UserSettings{MemberID: memberID, SoundEnabled: true, Timezone: "UTC"}, nil
+			return UserSettings{MemberID: memberID, SoundEnabled: true}, nil
 		}
 		return UserSettings{}, fmt.Errorf("settings read: %w", err)
 	}

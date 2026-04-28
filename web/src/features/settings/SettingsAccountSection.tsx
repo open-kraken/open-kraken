@@ -3,7 +3,7 @@
  * Extends the existing SettingsPage with golutra-equivalent account management.
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const PRESET_AVATARS = [
   'CO', 'PL', 'RN', 'DV', 'QA', 'PM', 'DS', 'OP',
@@ -11,7 +11,7 @@ const PRESET_AVATARS = [
 ];
 
 const TIMEZONES = [
-  'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'browser', 'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
   'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai',
   'Asia/Kolkata', 'Australia/Sydney', 'Pacific/Auckland',
 ];
@@ -30,11 +30,19 @@ type SettingsAccountSectionProps = {
 export const SettingsAccountSection = ({ initial, onSave }: SettingsAccountSectionProps) => {
   const [name, setName] = useState(initial.displayName);
   const [avatar, setAvatar] = useState(initial.avatar);
-  const [timezone, setTimezone] = useState(initial.timezone || 'UTC');
+  const browserTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
+  const [timezone, setTimezone] = useState(initial.timezone || 'browser');
   const [dirty, setDirty] = useState(false);
 
+  useEffect(() => {
+    if (dirty) return;
+    setName(initial.displayName);
+    setAvatar(initial.avatar);
+    setTimezone(initial.timezone || 'browser');
+  }, [dirty, initial.avatar, initial.displayName, initial.timezone]);
+
   const handleSave = () => {
-    onSave({ displayName: name, avatar, timezone });
+    onSave({ displayName: name, avatar, timezone: timezone === 'browser' ? browserTimezone : timezone });
     setDirty(false);
   };
 
@@ -88,9 +96,14 @@ export const SettingsAccountSection = ({ initial, onSave }: SettingsAccountSecti
           className="route-page__action"
         >
           {TIMEZONES.map((tz) => (
-            <option key={tz} value={tz}>{tz}</option>
+            <option key={tz} value={tz}>
+              {tz === 'browser' ? `Follow browser (${browserTimezone})` : tz}
+            </option>
           ))}
         </select>
+        <p className="text-xs app-text-faint mt-1">
+          Saved value: {timezone === 'browser' ? browserTimezone : timezone}
+        </p>
       </div>
     </section>
   );

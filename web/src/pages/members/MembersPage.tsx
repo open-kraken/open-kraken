@@ -15,6 +15,7 @@ import {
 } from '@/features/members/member-page-model';
 import { useAppShell } from '@/state/app-shell-store';
 import { getSkills } from '@/api/skills';
+import { getAgentStatuses } from '@/api/agents';
 import { getNodes } from '@/api/nodes';
 import { buildNodeBindingByMemberId } from '@/features/members/member-runtime-map';
 import type { Skill } from '@/types/skill';
@@ -672,12 +673,14 @@ function NewTeamModal({
 
   const resolvedTeamId = (teamId.trim() || teamIdFromName(teamName)).trim();
   const resolvedTeamName = teamName.trim() || resolvedTeamId;
+  const hasManualTeamId = teamId.trim().length > 0;
+  const invalidTeamId = Boolean(resolvedTeamId) && !isValidTeamId(resolvedTeamId);
   const duplicate = resolvedTeamId
     ? existingTeamIds.some((id) => id.toLowerCase() === resolvedTeamId.toLowerCase())
     : false;
 
   const handleCreate = async () => {
-    if (!resolvedTeamId || duplicate) return;
+    if (!resolvedTeamId || duplicate || invalidTeamId) return;
     setLoading(true);
     setError(null);
     try {
@@ -729,7 +732,22 @@ function NewTeamModal({
             <p className="text-xs app-text-faint mt-1">
               Used by APIs and mentions. Leave blank to generate it from the name.
             </p>
+            <div className="mt-2 rounded-lg border app-border-subtle app-bg-elevated px-3 py-2 text-xs">
+              <span className="app-text-faint">Preview: </span>
+              <span className="font-mono app-text-strong">{resolvedTeamId || 'team_id'}</span>
+              {!hasManualTeamId && teamName.trim() && (
+                <span className="ml-2 app-text-faint">auto-generated</span>
+              )}
+            </div>
           </div>
+
+          {invalidTeamId && (
+            <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
+              <p className="text-xs text-red-600">
+                Team ID must start with a lowercase letter and only contain lowercase letters, numbers, and underscores.
+              </p>
+            </div>
+          )}
 
           {duplicate && (
             <div className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20 p-3">
@@ -750,7 +768,7 @@ function NewTeamModal({
           </Button>
           <Button
             onClick={() => void handleCreate()}
-            disabled={!resolvedTeamId || duplicate || loading}
+            disabled={!resolvedTeamId || duplicate || invalidTeamId || loading}
             className="app-accent-bg hover:opacity-90 text-white"
           >
             {loading ? 'Creating...' : 'Create Team'}
@@ -930,6 +948,20 @@ const idFromName = (name: string) =>
 const teamIdFromName = (name: string) =>
   idFromName(name);
 
+const isValidTeamId = (value: string) => /^[a-z][a-z0-9_]*$/.test(value);
+
+const realtimeToneClass = (status: string) => {
+  switch (status) {
+    case 'connected':
+      return 'text-green-600';
+    case 'connecting':
+    case 'reconnecting':
+      return 'text-yellow-600';
+    default:
+      return 'text-red-600';
+  }
+};
+
 const statusToDisplay = (status: StatusKey): string => {
   switch (status) {
     case 'running': return 'Working...';
@@ -986,7 +1018,7 @@ const emptyModel: MembersPageModel = {
 /* ── Main Page ── */
 
 export const MembersPage = () => {
-  const { workspace, realtime, apiClient, navigate } = useAppShell();
+  const { workspace, realtime, apiClient, navigate, pushNotification } = useAppShell();
   const { account } = useAuth();
   const [model, setModel] = useState<MembersPageModel>(emptyModel);
   const [nodeByMemberId, setNodeByMemberId] = useState<Record<string, MemberNodeBinding>>({});
@@ -999,19 +1031,39 @@ export const MembersPage = () => {
   const [newTeamModalOpen, setNewTeamModalOpen] = useState(false);
 
   const load = useCallback(async () => {
-    const [membersResponse, roadmapResponse] = await Promise.all([
+    const [membersResponse, roadmapResponse, agentStatusResponse] = await Promise.all([
       apiClient.getMembers(),
       apiClient.getRoadmap(),
+      getAgentStatuses(workspace.workspaceId).catch(() => ({ agents: [] })),
     ]);
     const { members, teamGroups } = normalizeTeamsAndMembers(
       membersResponse as Record<string, unknown>
     );
+    const statusByAgent = new Map(agentStatusResponse.agents.map((agent) => [agent.agentId, agent]));
+    const mergedMembers = members.map((member) => {
+      const status = statusByAgent.get(member.memberId);
+      if (!status) return member;
+      return {
+        ...member,
+        terminalId: status.terminalId ?? member.terminalId,
+        terminalStatus: status.terminalStatus ?? member.terminalStatus,
+        agentRuntimeState: status.runtimeState ?? member.agentRuntimeState,
+        runtimeReady: status.runtimeReady,
+        nodeId: status.nodeId || member.nodeId,
+        nodeHostname: status.nodeHostname || member.nodeHostname,
+        manualStatus: status.presenceStatus === 'unknown' ? member.manualStatus : status.presenceStatus,
+      };
+    });
+    const mergedTeamGroups = teamGroups.map((team) => ({
+      ...team,
+      members: team.members.map((member) => mergedMembers.find((item) => item.memberId === member.memberId) ?? member),
+    }));
     const built = buildMembersPageModel({
       workspaceId: workspace.workspaceId,
       realtimeStatus: realtime.status,
-      members,
+      members: mergedMembers,
       roadmapTasks: normalizeRoadmapTasksEnvelope(roadmapResponse),
-      teamGroups,
+      teamGroups: mergedTeamGroups,
     });
     setModel(built);
     if (!selectedTeamId && built.teams.length > 0) {
@@ -1062,6 +1114,19 @@ export const MembersPage = () => {
   const activeTeam: TeamRosterModel | undefined =
     teams.find((t) => t.teamId === selectedTeamId) ?? teams[0];
   const rosterMembers = activeTeam?.members ?? model.members;
+  const pushRealtimeMutationNotice = useCallback(
+    (title: string, detail: string) => {
+      pushNotification({ tone: 'info', title, detail });
+      if (realtime.status !== 'connected') {
+        pushNotification({
+          tone: 'warning',
+          title: 'Realtime not connected',
+          detail: `Saved successfully, but live updates are ${realtime.status}. Use Refresh if the roster does not update immediately.`,
+        });
+      }
+    },
+    [pushNotification, realtime.status],
+  );
 
   const totalTeams = teams.length;
   const totalAgents = model.metrics.aiAssistants;
@@ -1217,7 +1282,7 @@ export const MembersPage = () => {
               <TabsTrigger key={team.teamId} value={team.teamId} className="flex items-center gap-2">
                 <span>{team.name}</span>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 ml-1">
-                  {team.metrics.aiAssistants}
+                  {team.members.length}
                 </Badge>
               </TabsTrigger>
             ))}
@@ -1275,7 +1340,7 @@ export const MembersPage = () => {
         <div className="flex items-center gap-4 app-text-faint">
           <span>
             Realtime:{' '}
-            <span className="text-green-600 font-medium">{model.realtimeStatus}</span>
+            <span className={`${realtimeToneClass(model.realtimeStatus)} font-medium`}>{model.realtimeStatus}</span>
           </span>
           <span>-</span>
           <span>
@@ -1283,8 +1348,22 @@ export const MembersPage = () => {
             <span className="app-text-strong font-medium">{activeTeam?.name ?? 'Workspace'}</span>
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            Live
+            <span
+              className={`w-2 h-2 rounded-full ${
+                realtime.status === 'connected'
+                  ? 'bg-green-500 animate-pulse'
+                  : realtime.status === 'connecting' || realtime.status === 'reconnecting'
+                    ? 'bg-yellow-500 animate-pulse'
+                    : 'bg-red-500'
+              }`}
+            />
+            {realtime.status === 'connected'
+              ? 'Live'
+              : realtime.status === 'connecting'
+                ? 'Connecting'
+                : realtime.status === 'reconnecting'
+                  ? 'Reconnecting'
+                  : 'Disconnected'}
           </span>
         </div>
       </div>
@@ -1332,11 +1411,42 @@ export const MembersPage = () => {
           </div>
         ) : (
           /* Org Chart View */
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center py-12 app-text-muted">
-              <GitBranch size={48} className="mx-auto mb-4 opacity-30" />
-              <p className="text-sm">Organizational chart view</p>
-              <p className="text-xs mt-2">Hierarchy visualization coming soon</p>
+          <div className="max-w-6xl mx-auto space-y-6">
+            <div className="rounded-lg border app-border-subtle app-surface-strong p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <GitBranch size={18} className="app-accent-text" />
+                <h2 className="font-semibold app-text-strong">{activeTeam?.name ?? 'Workspace'} Org Chart</h2>
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                {(['owner', 'supervisor', 'member', 'assistant'] as const).map((role) => {
+                  const roleMembers = rosterMembers.filter((member) => member.role === role);
+                  if (roleMembers.length === 0) return null;
+                  return (
+                    <div key={role} className="grid grid-cols-[120px_1fr] gap-4 items-start">
+                      <div className="pt-3 text-xs font-semibold uppercase app-text-faint">{role}</div>
+                      <div className="flex flex-wrap gap-3">
+                        {roleMembers.map((member) => (
+                          <button
+                            key={member.memberId}
+                            type="button"
+                            className="min-w-[220px] rounded-lg border app-border-subtle app-bg-surface p-3 text-left hover:shadow-sm"
+                            onClick={() => navigate('terminal', { hash: member.terminalId })}
+                          >
+                            <div className="flex items-center gap-3">
+                              <PixelAvatar name={member.displayName} size="sm" />
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold app-text-strong">{member.displayName}</div>
+                                <div className="truncate text-xs app-text-faint">{member.memberId}</div>
+                              </div>
+                              <StatusDot status={statusToDotVariant(member.status as StatusKey)} />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -1360,6 +1470,7 @@ export const MembersPage = () => {
             teamId: config.teamId,
           });
           await load();
+          pushRealtimeMutationNotice('Member invited', `${config.displayName} added to ${config.teamId}.`);
         }}
       />
 
@@ -1430,6 +1541,10 @@ export const MembersPage = () => {
           if (createError) {
             throw createError;
           }
+          pushRealtimeMutationNotice(
+            'AI assistant invited',
+            `${config.agents.length} assistant${config.agents.length === 1 ? '' : 's'} added to ${config.teamId}.`,
+          );
         }}
       />
       <NewTeamModal
@@ -1444,6 +1559,7 @@ export const MembersPage = () => {
           });
           setSelectedTeamId(teamId);
           await load();
+          pushRealtimeMutationNotice('Team created', name);
         }}
       />
     </div>

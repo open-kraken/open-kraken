@@ -41,7 +41,9 @@ export const TerminalPanel = ({
 
   const title = state.session?.command ?? t('terminalPanel.title');
   const body =
-    view.uiState === 'error'
+    state.runtime.connection === 'disconnected'
+      ? 'Realtime disconnected. Terminal output is paused until the connection is restored.'
+      : view.uiState === 'error'
       ? view.body
       : view.uiState === 'connecting'
         ? t('terminalPanel.connectingBody')
@@ -57,7 +59,12 @@ export const TerminalPanel = ({
 
   const primaryLabel =
     view.primaryAction.kind === 'retry' ? t('terminalPanel.retry') : t('terminalPanel.attach');
-  const followHint = view.followOutput ? t('terminalPanel.followOn') : t('terminalPanel.followOff');
+  const followHint =
+    state.runtime.connection === 'disconnected'
+      ? 'Output paused'
+      : view.followOutput
+        ? t('terminalPanel.followOn')
+        : t('terminalPanel.followOff');
 
   const canSendInput =
     state.runtime.connection === 'attached' &&
@@ -110,7 +117,12 @@ export const TerminalPanel = ({
           <button type="button" className="terminal-panel__btn" onClick={onPrimaryAction}>
             {primaryLabel}
           </button>
-          <button type="button" className="terminal-panel__btn terminal-panel__btn--subtle" onClick={onToggleFollow}>
+          <button
+            type="button"
+            className="terminal-panel__btn terminal-panel__btn--subtle"
+            onClick={onToggleFollow}
+            disabled={state.runtime.connection === 'disconnected'}
+          >
             {followHint}
           </button>
         </div>

@@ -539,14 +539,16 @@ function RunDetail({ run, onRefresh }: { run: RunDTO; onRefresh: () => Promise<v
 export const RunsPage = () => {
   const [runs, setRuns] = useState<RunDTO[]>([]);
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error' | 'unavailable'>('idle');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [tenantFilter, setTenantFilter] = useState('default');
+  const [tenantFilter, setTenantFilter] = useState('');
   const [stateFilter, setStateFilter] = useState<'all' | RunState>('all');
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     setLoadState((current) => (runs.length === 0 && current !== 'unavailable' ? 'loading' : current));
+    setLoadError(null);
     try {
       const data = await listRuns({
         tenant_id: tenantFilter.trim() || undefined,
@@ -556,11 +558,13 @@ export const RunsPage = () => {
       setRuns(Array.isArray(data) ? data : []);
       setLoadState('idle');
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load runs.';
       const isUnavailable =
         err instanceof Error &&
         (err.message.includes('503') ||
           err.message.toLowerCase().includes('unavailable') ||
           err.message.toLowerCase().includes('ael not configured'));
+      setLoadError(message);
       setLoadState(isUnavailable ? 'unavailable' : 'error');
     }
   }, [runs.length, stateFilter, tenantFilter]);
@@ -721,6 +725,7 @@ export const RunsPage = () => {
         {loadState === 'error' && (
           <div className="text-center py-12">
             <p className="text-sm text-red-500">Failed to load runs.</p>
+            {loadError && <p className="mt-1 text-xs app-text-faint">{loadError}</p>}
             <Button variant="outline" size="sm" className="mt-3" onClick={() => void load()}>
               Retry
             </Button>

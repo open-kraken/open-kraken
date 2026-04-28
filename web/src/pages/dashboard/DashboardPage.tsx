@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { normalizeTeamsAndMembers, type TeamGroupFixture } from '@/features/members/member-page-model';
+import { agentStatusFromApi, resolveAgentStatus, summarizeNodes } from '@/shared/status-model';
 import { useAppShell } from '@/state/app-shell-store';
 import { useDashboardStore } from '@/state/dashboardStore';
 import type { Node } from '@/types/node';
@@ -53,12 +54,6 @@ type TeamCard = {
   spend: number;
   health: 'healthy' | 'warning';
 };
-
-const statusIsActive = (status: string) =>
-  ['running', 'working', 'busy', 'in_progress', 'online', 'idle', 'scheduled'].includes(status.toLowerCase());
-
-const agentStatusValue = (agent: AgentStatus) =>
-  agent.runtimeState ?? agent.terminalStatus ?? agent.presenceStatus ?? '';
 
 const formatRelativeTime = (iso: string | null) => {
   if (!iso) return '-';
@@ -140,6 +135,11 @@ export const DashboardPage = () => {
   }, [teamGroups]);
 
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const agentStatusById = useMemo(() => new Map(agentStatuses.map((agent) => [agent.agentId, agent])), [agentStatuses]);
+  const rosterAgents = useMemo(
+    () => teamGroups.flatMap((team) => team.members).filter((member) => member.roleType === 'assistant'),
+    [teamGroups],
+  );
 
   const summary = useMemo(() => {
     const totalTokens = agentStatuses.length > 0
@@ -148,8 +148,21 @@ export const DashboardPage = () => {
     const totalCost = agentStatuses.length > 0
       ? agentStatuses.reduce((sum, item) => sum + item.totalCost, 0)
       : store.tokenStats.reduce((sum, item) => sum + item.cost, 0);
-    const activeAgents = agentStatuses.filter((agent) => statusIsActive(agentStatusValue(agent))).length;
-    const totalAgents = agentStatuses.length;
+    const rosterAgentIds = new Set(rosterAgents.map((member) => member.memberId));
+    const agentIds = new Set([...rosterAgentIds, ...agentStatuses.map((agent) => agent.agentId)]);
+    const activeAgents = [...agentIds].filter((agentId) => {
+      const runtime = agentStatusById.get(agentId);
+      if (runtime) return resolveAgentStatus(agentStatusFromApi(runtime)) === 'running';
+      const roster = rosterAgents.find((member) => member.memberId === agentId);
+      return roster ? resolveAgentStatus({
+        status: roster.status,
+        manualStatus: roster.manualStatus,
+        terminalStatus: roster.terminalStatus,
+        runtimeState: roster.agentRuntimeState,
+        runtimeReady: roster.runtimeReady,
+      }) === 'running' : false;
+    }).length;
+    const totalAgents = agentIds.size;
 
     const teamMap = new Map<string, TeamCard>();
     for (const agent of agentStatuses) {
@@ -164,7 +177,7 @@ export const DashboardPage = () => {
         health: 'healthy' as const,
       };
       current.totalAgents += 1;
-      if (statusIsActive(agentStatusValue(agent))) current.activeAgents += 1;
+      if (resolveAgentStatus(agentStatusFromApi(agent)) === 'running') current.activeAgents += 1;
       current.spend += agent.totalCost;
       current.queuedTasks += agent.activeTasks;
       if (agent.runtimeState === 'crashed' || agent.terminalStatus === 'error') {
@@ -177,20 +190,22 @@ export const DashboardPage = () => {
     const teams = [...teamMap.values()].sort((a, b) => b.spend - a.spend);
     const queuedTasks = teams.reduce((sum, team) => sum + team.queuedTasks, 0);
     const failedTasks = teams.reduce((sum, team) => sum + team.failedTasks, 0);
-    const onlineNodes = nodes.filter((node) => node.status === 'online').length;
+    const nodeSummary = summarizeNodes(nodes);
 
     return {
       totalTokens,
       totalCost,
       activeAgents,
       totalAgents,
-      onlineNodes,
-      totalNodes: nodes.length,
+      onlineNodes: nodeSummary.online,
+      totalNodes: nodeSummary.total,
+      degradedNodes: nodeSummary.degraded,
+      offlineNodes: nodeSummary.offline,
       queuedTasks,
       failedTasks,
       teams,
     };
-  }, [agentStatuses, nodes, store.tokenStats, teamByMemberId]);
+  }, [agentStatusById, agentStatuses, nodes, rosterAgents, store.tokenStats, teamByMemberId]);
 
   const costChartKeys = useMemo(
     () => summary.teams.slice(0, chartColors.length).map((team) => ({ name: team.name, key: chartKeyForTeam(team.name) })),
@@ -237,7 +252,7 @@ export const DashboardPage = () => {
     provider: agent.provider ?? agent.agentType ?? 'agent',
     team: teamByMemberId.get(agent.agentId) ?? 'Unassigned',
     node: agent.nodeHostname || nodeById.get(agent.nodeId)?.hostname || agent.nodeId || 'unassigned',
-    status: statusIsActive(agentStatusValue(agent)) ? ('working' as const) : ('idle' as const),
+    status: resolveAgentStatus(agentStatusFromApi(agent)) === 'running' ? ('working' as const) : ('idle' as const),
     uptime: formatRelativeTime(agent.lastHeartbeat),
     tokens: agent.totalInputTokens + agent.totalOutputTokens,
     cost: `$${agent.totalCost.toFixed(2)}`,
@@ -263,6 +278,8 @@ export const DashboardPage = () => {
   const totalAgentCount = summary.totalAgents;
   const onlineNodes = summary.onlineNodes;
   const totalNodes = summary.totalNodes;
+  const degradedNodes = summary.degradedNodes;
+  const offlineNodes = summary.offlineNodes;
   const queuedTasks = summary.queuedTasks;
   const failedTasks = summary.failedTasks;
   const openTokens = () => navigate('ledger');
@@ -427,7 +444,10 @@ export const DashboardPage = () => {
                 {onlineNodes} Online
               </Badge>
               <Badge variant="outline" className="text-orange-500 border-orange-500">
-                {Math.max(totalNodes - onlineNodes, 0)} Degraded
+                {degradedNodes} Degraded
+              </Badge>
+              <Badge variant="outline" className="app-text-faint">
+                {offlineNodes} Offline
               </Badge>
             </div>
           </Card>

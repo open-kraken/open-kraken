@@ -22,6 +22,7 @@ const (
 	ActionTerminalAttach       Action = "terminal.attach"
 	ActionTerminalDispatch     Action = "terminal.dispatch"
 	ActionCollaborationCommand Action = "collaboration.command"
+	ActionApprovalDecide       Action = "approval.decide"
 )
 
 type Principal struct {
@@ -50,6 +51,7 @@ type CapabilitySet struct {
 	AttachTerminal       bool
 	DispatchTerminal     bool
 	CommandCollaboration bool
+	DecideApprovals      bool
 }
 
 type MemberReadModel struct {

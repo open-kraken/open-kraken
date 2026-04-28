@@ -488,12 +488,14 @@ function SkillAssignmentsTab({
   bindings,
   loading,
   onReload,
+  onToast,
 }: {
   skills: Skill[];
   assistants: MemberFixture[];
   bindings: SkillBindingMap;
   loading: boolean;
   onReload: () => Promise<void>;
+  onToast: (toast: { tone: 'info' | 'warning' | 'error'; title: string; detail: string }) => void;
 }) {
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -553,10 +555,21 @@ function SkillAssignmentsTab({
       await updateMemberSkills(selectedAssistantId, { skills: selectedSkills });
       await onReload();
       setNotice({ tone: 'ok', text: 'Skill assignments saved.' });
+      onToast({
+        tone: 'info',
+        title: 'Skills saved',
+        detail: `${selectedAssistant?.displayName ?? selectedAssistantId} now has ${selectedSkills.length} skill${selectedSkills.length === 1 ? '' : 's'}.`,
+      });
     } catch (err) {
+      const text = err instanceof Error ? err.message : 'Failed to save skill assignments.';
       setNotice({
         tone: 'err',
-        text: err instanceof Error ? err.message : 'Failed to save skill assignments.',
+        text,
+      });
+      onToast({
+        tone: 'error',
+        title: 'Skill save failed',
+        detail: text,
       });
     } finally {
       setSaving(false);
@@ -759,7 +772,7 @@ function SkillAssignmentsTab({
 
 export const SkillsPage = () => {
   const { t } = useI18n();
-  const { apiClient } = useAppShell();
+  const { apiClient, pushNotification } = useAppShell();
   const fileRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'catalog' | 'assignments' | 'library'>('assignments');
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -800,11 +813,14 @@ export const SkillsPage = () => {
       setSelectedSkillId(null);
       const loadedText = typeof result.loaded === 'number' ? `${result.loaded} skills loaded.` : 'Catalog reloaded.';
       setMessage({ tone: 'ok', text: loadedText });
+      pushNotification({ tone: 'info', title: 'Skill catalog reloaded', detail: loadedText });
     } catch (e) {
+      const text = e instanceof Error ? e.message : 'Failed to reload assignable skill catalog.';
       setMessage({
         tone: 'err',
-        text: e instanceof Error ? e.message : 'Failed to reload assignable skill catalog.',
+        text,
       });
+      pushNotification({ tone: 'error', title: 'Skill reload failed', detail: text });
     } finally {
       setReloadingCatalog(false);
     }
@@ -854,11 +870,14 @@ export const SkillsPage = () => {
         snap,
       );
       setMessage({ tone: 'ok', text: t('skillsPage.exportDone') });
+      pushNotification({ tone: 'info', title: 'Skills exported', detail: t('skillsPage.exportDone') });
     } catch (e) {
+      const text = e instanceof Error ? e.message : t('skillsPage.exportFailed');
       setMessage({
         tone: 'err',
-        text: e instanceof Error ? e.message : t('skillsPage.exportFailed'),
+        text,
       });
+      pushNotification({ tone: 'error', title: 'Skill export failed', detail: text });
     } finally {
       setExporting(false);
     }
@@ -880,16 +899,19 @@ export const SkillsPage = () => {
         if (!isSkillsSnapshotV1(parsed)) {
           setPreview(null);
           setMessage({ tone: 'err', text: t('skillsPage.importInvalid') });
+          pushNotification({ tone: 'error', title: 'Skill import invalid', detail: t('skillsPage.importInvalid') });
           return;
         }
         setPreview(parsed);
         setMessage({ tone: 'ok', text: t('skillsPage.importPreviewReady') });
+        pushNotification({ tone: 'info', title: 'Skill import ready', detail: t('skillsPage.importPreviewReady') });
       } catch {
         setPreview(null);
         setMessage({ tone: 'err', text: t('skillsPage.importParseFailed') });
+        pushNotification({ tone: 'error', title: 'Skill import failed', detail: t('skillsPage.importParseFailed') });
       }
     },
-    [t],
+    [pushNotification, t],
   );
 
   const applyImport = useCallback(async () => {
@@ -908,9 +930,12 @@ export const SkillsPage = () => {
         }
       }
       if (errors.length > 0) {
-        setMessage({ tone: 'err', text: errors.join('\n') });
+        const text = errors.join('\n');
+        setMessage({ tone: 'err', text });
+        pushNotification({ tone: 'error', title: 'Skill import partially failed', detail: text });
       } else {
         setMessage({ tone: 'ok', text: t('skillsPage.applyDone') });
+        pushNotification({ tone: 'info', title: 'Skill import applied', detail: t('skillsPage.applyDone') });
         setPreview(null);
         void loadCatalog();
         void loadAssignments();
@@ -918,7 +943,7 @@ export const SkillsPage = () => {
     } finally {
       setImporting(false);
     }
-  }, [preview, loadCatalog, loadAssignments, t]);
+  }, [preview, skills, loadCatalog, loadAssignments, pushNotification, t]);
 
   const usageBySkill = useMemo(
     () => buildUsageBySkill(assistantMembers, skillBindings),
@@ -1077,6 +1102,7 @@ export const SkillsPage = () => {
             bindings={skillBindings}
             loading={assignmentState === 'loading'}
             onReload={loadAssignments}
+            onToast={pushNotification}
           />
         )}
         {activeTab === 'catalog' && (

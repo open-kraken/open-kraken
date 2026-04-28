@@ -144,6 +144,10 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	if ext.LedgerService != nil {
 		ledgerHandler := handlers.NewLedgerHandler(ext.LedgerService)
 		mux.HandleFunc(JoinAPI(apiBasePath, "ledger/events"), ledgerHandler.HandleEvents)
+		approvalsBase := JoinAPI(apiBasePath, "approvals")
+		approvalHandler := handlers.NewApprovalHandler(ext.LedgerService, approvalsBase)
+		mux.HandleFunc(approvalsBase, approvalHandler.Handle)
+		mux.HandleFunc(approvalsBase+"/", approvalHandler.Handle)
 	}
 
 	// Presence routes.

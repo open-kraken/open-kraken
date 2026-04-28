@@ -2,7 +2,7 @@
  * Phase 7: Notification settings section — browser notifications toggle, DND hours.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type NotificationSettings = {
   browserNotifications: boolean;
@@ -22,6 +22,14 @@ export const SettingsNotificationSection = ({ initial, onSave }: Props) => {
   const [dndStart, setDndStart] = useState(initial.dndStart || '22:00');
   const [dndEnd, setDndEnd] = useState(initial.dndEnd || '08:00');
   const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (dirty) return;
+    setBrowserNotif(initial.browserNotifications);
+    setSound(initial.soundEnabled);
+    setDndStart(initial.dndStart || '22:00');
+    setDndEnd(initial.dndEnd || '08:00');
+  }, [dirty, initial.browserNotifications, initial.dndEnd, initial.dndStart, initial.soundEnabled]);
 
   const handleSave = () => {
     onSave({ browserNotifications: browserNotif, soundEnabled: sound, dndStart, dndEnd });

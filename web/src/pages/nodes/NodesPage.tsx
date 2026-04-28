@@ -47,6 +47,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { StatusDot } from '@/components/ui/status-dot';
+import { agentStatusFromApi, resolveAgentStatus, summarizeNodes } from '@/shared/status-model';
 
 type ViewMode = 'list' | 'topology';
 type NodeStatusFilter = 'all' | 'online' | 'degraded' | 'offline';
@@ -184,9 +185,10 @@ export const NodesPage = () => {
     ? store.nodes.find((n) => n.id === assignmentNodeId) ?? null
     : null;
 
-  const onlineCount = store.nodes.filter((n) => n.status === 'online').length;
-  const degradedCount = store.nodes.filter((n) => n.status === 'degraded').length;
-  const offlineCount = store.nodes.filter((n) => n.status === 'offline').length;
+  const nodeSummary = summarizeNodes(store.nodes);
+  const onlineCount = nodeSummary.online;
+  const degradedCount = nodeSummary.degraded;
+  const offlineCount = nodeSummary.offline;
   const totalAssignedAgents = store.nodes.reduce((sum, n) => sum + n.assignedAgents.length, 0);
   const getNodeCapacity = (node: Node) => (node.maxAgents > 0 ? node.maxAgents : 4);
   const totalCapacity = Math.max(store.nodes.reduce((sum, n) => sum + getNodeCapacity(n), 0), 1);
@@ -219,7 +221,7 @@ export const NodesPage = () => {
       tokens:
         (agentStatuses[agentId]?.totalInputTokens ?? 0) +
         (agentStatuses[agentId]?.totalOutputTokens ?? 0),
-      status: ((agentStatuses[agentId]?.activeTasks ?? 0) > 0
+      status: (agentStatuses[agentId] && resolveAgentStatus(agentStatusFromApi(agentStatuses[agentId])) === 'running'
         ? 'working'
         : 'idle') as 'working' | 'idle',
       presenceStatus: agentStatuses[agentId]?.presenceStatus ?? 'offline',
@@ -655,13 +657,40 @@ export const NodesPage = () => {
           ) : visibleNodes.length === 0 ? (
             <p className="text-center py-12 app-text-faint">{t('nodes.empty')}</p>
           ) : (
-            <div className="h-full app-surface-strong rounded-lg border app-border-subtle overflow-hidden">
-              <NodeTopology
-                nodes={visibleNodes}
-                selectedNodeId={store.selectedNodeId}
-                onSelect={store.selectNode}
-                onAssignClick={handleAssignClick}
-              />
+            <div className="h-full grid grid-rows-[minmax(360px,1fr)_auto] gap-4">
+              <div className="app-surface-strong rounded-lg border app-border-subtle overflow-hidden">
+                <NodeTopology
+                  nodes={visibleNodes}
+                  selectedNodeId={store.selectedNodeId}
+                  onSelect={store.selectNode}
+                  onAssignClick={handleAssignClick}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {visibleNodes.map((node) => (
+                  <button
+                    key={node.id}
+                    type="button"
+                    className={`rounded-lg border p-3 text-left app-surface-strong hover:shadow-sm ${
+                      store.selectedNodeId === node.id ? 'border-cyan-500 ring-2 ring-cyan-500/20' : 'app-border-subtle'
+                    }`}
+                    onClick={() => handleNodeClick(node.id)}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold app-text-strong">{node.hostname}</div>
+                        <div className="truncate text-xs app-text-faint font-mono">{node.id}</div>
+                      </div>
+                      <Badge variant="outline" className="text-xs">{node.status}</Badge>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                      <span className="app-text-muted">{node.nodeType === 'k8s_pod' ? 'K8s' : 'Bare metal'}</span>
+                      <span className="app-text-muted">{node.labels.region ?? 'default'}</span>
+                      <span className="text-right app-text-strong">{node.assignedAgents.length}/{getNodeCapacity(node)} agents</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>

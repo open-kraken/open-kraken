@@ -6,6 +6,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { ErrorBoundary } from '@/components/shell/ErrorBoundary';
 import { NavRouteIcon } from '@/components/shell/NavRouteIcon';
 import { getNodes } from '@/api/nodes';
+import { summarizeNodes } from '@/shared/status-model';
 import type { AuthAccount } from '@/auth/auth-types';
 import { ContextMenuHost } from '@/shared/context-menu/ContextMenuHost';
 import { NotificationBadge } from '@/features/notifications/NotificationBadge';
@@ -233,12 +234,7 @@ export const AppShell = () => {
     void getNodes()
       .then(({ nodes }) => {
         setLatencyMs(Math.round(performance.now() - start));
-        setCluster({
-          total: nodes.length,
-          online: nodes.filter((n) => n.status === 'online').length,
-          degraded: nodes.filter((n) => n.status === 'degraded').length,
-          offline: nodes.filter((n) => n.status === 'offline').length
-        });
+        setCluster(summarizeNodes(nodes));
       })
       .catch(() => {
         setCluster(null);

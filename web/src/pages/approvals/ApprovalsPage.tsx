@@ -1,9 +1,20 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { decideApproval, getApprovals, type Approval, type ApprovalRisk, type ApprovalStatus, type ApprovalType } from "@/api/approvals";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useAuth } from "@/auth/AuthProvider";
 import {
   AlertTriangle,
   CheckCircle,
@@ -16,113 +27,6 @@ import {
   DollarSign,
   Key,
 } from "lucide-react";
-
-type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
-type ApprovalRisk = "high" | "medium" | "low";
-type ApprovalType = "deploy" | "file_write" | "shell_exec" | "git_push" | "secret_access" | "budget";
-
-interface Approval {
-  id: string;
-  type: ApprovalType;
-  status: ApprovalStatus;
-  risk: ApprovalRisk;
-  requester: string;
-  requesterTeam: string;
-  requestedAt: string;
-  expiresAt: string;
-  title: string;
-  description: string;
-  context: {
-    agent?: string;
-    task?: string;
-    command?: string;
-    file?: string;
-    amount?: number;
-  };
-  approvedBy?: string;
-  approvedAt?: string;
-  rejectedBy?: string;
-  rejectedAt?: string;
-  rejectionReason?: string;
-}
-
-const mockApprovals: Approval[] = [
-  {
-    id: "appr_001",
-    type: "deploy",
-    status: "pending",
-    risk: "high",
-    requester: "Claude BE",
-    requesterTeam: "Backend Squad",
-    requestedAt: "5 min ago",
-    expiresAt: "in 25 min",
-    title: "Deploy to production",
-    description: "Deploy backend-api v2.1.4 to production cluster",
-    context: { agent: "Claude BE", task: "task_142", command: "kubectl apply -f deploy/prod.yaml" },
-  },
-  {
-    id: "appr_002",
-    type: "git_push",
-    status: "pending",
-    risk: "medium",
-    requester: "Gemini FE",
-    requesterTeam: "Frontend Squad",
-    requestedAt: "12 min ago",
-    expiresAt: "in 18 min",
-    title: "Push to main branch",
-    description: "Push dashboard redesign commits to main branch",
-    context: {
-      agent: "Gemini FE",
-      task: "task_143",
-      command: "git push origin main",
-      file: "12 files changed, 384 insertions(+), 127 deletions(-)",
-    },
-  },
-  {
-    id: "appr_003",
-    type: "secret_access",
-    status: "pending",
-    risk: "high",
-    requester: "Codex DevOps",
-    requesterTeam: "Workspace Team",
-    requestedAt: "18 min ago",
-    expiresAt: "in 12 min",
-    title: "Access AWS credentials",
-    description: "Access production AWS credentials for deployment",
-    context: { agent: "Codex DevOps", task: "task_144", command: "Required for S3 deployment" },
-  },
-  {
-    id: "appr_004",
-    type: "file_write",
-    status: "approved",
-    risk: "medium",
-    requester: "Qwen API",
-    requesterTeam: "Backend Squad",
-    requestedAt: "1h ago",
-    expiresAt: "-",
-    title: "Modify config file",
-    description: "Update database connection pool configuration",
-    context: { agent: "Qwen API", task: "task_140", file: "config/database.yaml" },
-    approvedBy: "Alex",
-    approvedAt: "45 min ago",
-  },
-  {
-    id: "appr_005",
-    type: "budget",
-    status: "rejected",
-    risk: "low",
-    requester: "Claude Code",
-    requesterTeam: "Backend Squad",
-    requestedAt: "2h ago",
-    expiresAt: "-",
-    title: "Exceed budget limit",
-    description: "Request to exceed $50 daily token budget",
-    context: { agent: "Claude Code", amount: 62.5 },
-    rejectedBy: "Alex",
-    rejectedAt: "1h ago",
-    rejectionReason: "Budget exceeded without justification",
-  },
-];
 
 const getTypeIcon = (type: ApprovalType) => {
   switch (type) {
@@ -168,25 +72,86 @@ const getRiskBadge = (risk: ApprovalRisk) => {
 };
 
 export function ApprovalsPage() {
+  const { account } = useAuth();
   const [filter, setFilter] = useState<ApprovalStatus | "all">("pending");
-  const [approveDialog, setApproveDialog] = useState<string | null>(null);
-  const [rejectDialog, setRejectDialog] = useState<string | null>(null);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [decision, setDecision] = useState<{ approval: Approval; action: "approve" | "reject" } | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [reason, setReason] = useState("");
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getApprovals()
+      .then((response) => {
+        if (cancelled) return;
+        setApprovals(response.items);
+        setLoadError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredApprovals =
-    filter === "all" ? mockApprovals : mockApprovals.filter((a) => a.status === filter);
+    filter === "all" ? approvals : approvals.filter((a) => a.status === filter);
 
-  const pendingCount = mockApprovals.filter((a) => a.status === "pending").length;
-  const approvedCount = mockApprovals.filter((a) => a.status === "approved").length;
-  const rejectedCount = mockApprovals.filter((a) => a.status === "rejected").length;
+  const pendingCount = approvals.filter((a) => a.status === "pending").length;
+  const approvedCount = approvals.filter((a) => a.status === "approved").length;
+  const rejectedCount = approvals.filter((a) => a.status === "rejected").length;
+  const canDecide = account?.role === "owner" || account?.role === "supervisor";
 
-  const handleApprove = (id: string) => {
-    console.log("Approved:", id);
-    setApproveDialog(null);
+  const openDecision = (approval: Approval, action: "approve" | "reject") => {
+    setDecision({ approval, action });
+    setConfirmation("");
+    setReason("");
+    setDecisionError(null);
   };
 
-  const handleReject = (id: string) => {
-    console.log("Rejected:", id);
-    setRejectDialog(null);
+  const closeDecision = () => {
+    if (submitting) return;
+    setDecision(null);
+    setConfirmation("");
+    setReason("");
+    setDecisionError(null);
+  };
+
+  const expectedPhrase = useMemo(() => {
+    if (!decision || decision.approval.risk !== "high") return "";
+    return `${decision.action.toUpperCase()} ${decision.approval.id}`;
+  }, [decision]);
+
+  const submitDisabled = !decision ||
+    submitting ||
+    !canDecide ||
+    (decision.approval.risk === "high" && confirmation.trim() !== expectedPhrase);
+
+  const submitDecision = async () => {
+    if (!decision || submitDisabled) return;
+    setSubmitting(true);
+    setDecisionError(null);
+    try {
+      const response = await decideApproval(decision.approval.id, {
+        decision: decision.action,
+        confirmed: true,
+        confirmation: confirmation.trim(),
+        reason: reason.trim() || undefined,
+      });
+      setApprovals((current) => current.map((item) => item.id === response.approval.id ? response.approval : item));
+      setDecision(null);
+      setConfirmation("");
+      setReason("");
+    } catch (err) {
+      setDecisionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -199,6 +164,11 @@ export function ApprovalsPage() {
             <p className="text-sm app-text-muted mt-1">
               Review and approve high-risk agent actions
             </p>
+            {!canDecide && (
+              <p className="text-xs text-red-600 mt-2">
+                Only owners and supervisors can approve or reject requests.
+              </p>
+            )}
           </div>
         </div>
 
@@ -238,7 +208,13 @@ export function ApprovalsPage() {
       {/* Approvals List */}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-5xl mx-auto space-y-4">
-          {filteredApprovals.length === 0 ? (
+          {loadError ? (
+            <div className="text-center py-12">
+              <AlertTriangle size={48} className="mx-auto text-red-500 mb-3" />
+              <h3 className="font-semibold app-text-strong mb-1">Approvals unavailable</h3>
+              <p className="text-sm app-text-muted">{loadError}</p>
+            </div>
+          ) : filteredApprovals.length === 0 ? (
             <div className="text-center py-12">
               <Shield size={48} className="mx-auto app-text-faint mb-3" />
               <h3 className="font-semibold app-text-strong mb-1">No approvals</h3>
@@ -364,14 +340,15 @@ export function ApprovalsPage() {
 
                 {approval.status === "pending" && (
                   <div className="flex gap-2 justify-end">
-                    <Button variant="outline" size="sm" onClick={() => setRejectDialog(approval.id)}>
+                    <Button variant="outline" size="sm" disabled={!canDecide} onClick={() => openDecision(approval, "reject")}>
                       <XCircle size={14} className="mr-1" />
                       Reject
                     </Button>
                     <Button
                       className="bg-green-600 hover:bg-green-700 text-white"
                       size="sm"
-                      onClick={() => setApproveDialog(approval.id)}
+                      disabled={!canDecide}
+                      onClick={() => openDecision(approval, "approve")}
                     >
                       <CheckCircle size={14} className="mr-1" />
                       Approve
@@ -384,26 +361,81 @@ export function ApprovalsPage() {
         </div>
       </div>
 
-      {/* Approve Dialog */}
-      <ConfirmDialog
-        open={!!approveDialog}
-        onOpenChange={(open) => !open && setApproveDialog(null)}
-        title="Approve Request"
-        description="Are you sure you want to approve this request? The action will be executed immediately."
-        confirmLabel="Approve"
-        onConfirm={() => approveDialog && handleApprove(approveDialog)}
-      />
+      <Dialog open={!!decision} onOpenChange={(open) => !open && closeDecision()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {decision?.action === "approve" ? "Approve Request" : "Reject Request"}
+            </DialogTitle>
+            <DialogDescription>
+              This decision is enforced server-side and written to the audit ledger.
+            </DialogDescription>
+          </DialogHeader>
 
-      {/* Reject Dialog */}
-      <ConfirmDialog
-        open={!!rejectDialog}
-        onOpenChange={(open) => !open && setRejectDialog(null)}
-        title="Reject Request"
-        description="Are you sure you want to reject this request? The requester will be notified."
-        confirmLabel="Reject"
-        variant="destructive"
-        onConfirm={() => rejectDialog && handleReject(rejectDialog)}
-      />
+          {decision && (
+            <div className="space-y-4">
+              <div className="rounded-md border app-border-subtle p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  {getRiskBadge(decision.approval.risk)}
+                  <Badge variant="outline" className="text-[10px]">
+                    {decision.approval.type.replace("_", " ")}
+                  </Badge>
+                </div>
+                <div className="font-medium app-text-strong">{decision.approval.title}</div>
+                <div className="text-sm app-text-muted mt-1">{decision.approval.description}</div>
+              </div>
+
+              {decision.approval.risk === "high" && (
+                <div className="rounded-md border border-red-500/40 bg-red-500/5 p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-red-600 mb-2">
+                    <AlertTriangle size={14} />
+                    High-risk confirmation required
+                  </div>
+                  <p className="text-xs app-text-muted mb-2">
+                    Type the exact phrase to continue: <code className="font-mono app-text-strong">{expectedPhrase}</code>
+                  </p>
+                  <Input
+                    value={confirmation}
+                    onChange={(event) => setConfirmation(event.target.value)}
+                    placeholder={expectedPhrase}
+                  />
+                </div>
+              )}
+
+              {decision.action === "reject" && (
+                <div>
+                  <div className="text-sm font-medium app-text-strong mb-1">Reason</div>
+                  <Textarea
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    placeholder="Explain why this request is rejected"
+                  />
+                </div>
+              )}
+
+              {decisionError && (
+                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded">
+                  {decisionError}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDecision} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button
+              variant={decision?.action === "reject" ? "destructive" : "default"}
+              onClick={() => void submitDecision()}
+              disabled={submitDisabled}
+              className={decision?.action === "approve" ? "bg-green-600 hover:bg-green-700 text-white" : undefined}
+            >
+              {submitting ? "Submitting..." : decision?.action === "approve" ? "Approve" : "Reject"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -296,7 +296,7 @@ export const SettingsPage = () => {
           initial={{
             displayName: backendSettings?.displayName ?? account?.displayName ?? 'User',
             avatar: backendSettings?.avatar ?? account?.avatar ?? 'CO',
-            timezone: backendSettings?.timezone ?? 'UTC',
+            timezone: backendSettings?.timezone ?? '',
           }}
           onSave={(s) => {
             void saveSettings({

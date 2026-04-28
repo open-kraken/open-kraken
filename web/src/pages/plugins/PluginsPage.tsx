@@ -105,6 +105,28 @@ export const PluginsPage = () => {
     }
   };
 
+  const handleToggleDisabled = async (plugin: PluginDTO) => {
+    try {
+      if (plugin.disabled) {
+        await pluginApi.enable(plugin.id);
+      } else {
+        await pluginApi.disable(plugin.id);
+      }
+      pushNotification({
+        tone: 'info',
+        title: plugin.disabled ? 'Plugin enabled' : 'Plugin disabled',
+        detail: plugin.name,
+      });
+      void refresh();
+    } catch {
+      pushNotification({
+        tone: 'error',
+        title: 'Plugin update failed',
+        detail: `Could not update ${plugin.id}.`,
+      });
+    }
+  };
+
   const isInstalled = (pluginId: string) => installed.some((ip) => ip.id === pluginId);
 
   return (
@@ -166,9 +188,16 @@ export const PluginsPage = () => {
                   <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold flex-shrink-0">
                     {plugin.name.charAt(0).toUpperCase()}
                   </div>
-                  <Badge variant="outline" className="text-xs">
-                    {('category' in plugin && (plugin as Record<string, unknown>).category as string) || 'plugin'}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant="outline" className="text-xs">
+                      {('category' in plugin && (plugin as Record<string, unknown>).category as string) || 'plugin'}
+                    </Badge>
+                    {isInstalled(plugin.id) && (
+                      <Badge variant="outline" className={`text-[10px] ${plugin.disabled ? 'text-yellow-600 border-yellow-600' : 'text-green-600 border-green-600'}`}>
+                        {plugin.disabled ? 'Disabled' : 'Enabled'}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 <h3 className="font-semibold app-text-strong mb-2">{plugin.name}</h3>
@@ -187,14 +216,23 @@ export const PluginsPage = () => {
                 </div>
 
                 {isInstalled(plugin.id) ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => void handleRemove(plugin.id)}
-                  >
-                    Remove
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleToggleDisabled(plugin)}
+                    >
+                      {plugin.disabled ? 'Enable' : 'Disable'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600"
+                      onClick={() => void handleRemove(plugin.id)}
+                    >
+                      Uninstall
+                    </Button>
+                  </div>
                 ) : (
                   <Button
                     size="sm"

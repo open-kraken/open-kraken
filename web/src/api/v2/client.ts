@@ -49,8 +49,10 @@ export async function v2Fetch<T>(
   if (!response.ok) {
     let message = `v2 request failed: ${response.status}`;
     try {
-      const err = (await response.json()) as { message?: string };
-      if (err.message) message = err.message;
+      const err = (await response.json()) as { message?: string; error?: { message?: string }; code?: string };
+      const detail = err.message ?? err.error?.message;
+      if (detail) message = detail;
+      if (err.code && detail) message = `${detail} (${err.code})`;
     } catch {
       // ignore parse error
     }

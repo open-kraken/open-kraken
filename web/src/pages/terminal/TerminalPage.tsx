@@ -56,6 +56,7 @@ import {
   Square,
 } from 'lucide-react';
 import { acceptsTerminalHash, decodeTerminalHash } from './terminal-route-utils';
+import type { TerminalPanelState } from '@/features/terminal/terminal-types';
 
 const fallbackTerminalIdForMember = (memberId: string) => `term_${memberId}`;
 const terminalIdForMember = (member: Pick<MemberFixture, 'memberId' | 'terminalId'>) =>
@@ -227,6 +228,25 @@ export const TerminalPage = () => {
 
   const activeTerminalId =
     terminalRuntime.state.activeTerminalId ?? terminalRuntime.state.session?.terminalId ?? bootTerminalId;
+  const realtimeConnected = realtime.status === 'connected';
+  const terminalPanelState: TerminalPanelState = realtimeConnected
+    ? terminalRuntime.state
+    : {
+        ...terminalRuntime.state,
+        output: {
+          ...terminalRuntime.state.output,
+          followOutput: false,
+          pendingAutoScroll: false,
+        },
+        runtime: {
+          ...terminalRuntime.state.runtime,
+          connection: 'disconnected',
+          process: 'idle',
+          statusLabel: realtime.status === 'reconnecting' ? 'Reconnecting' : 'Disconnected',
+          intelligenceStatus: 'offline',
+          shellReady: false,
+        },
+      };
 
   const sessionRows = useMemo<SessionRow[]>(() => {
     const memberById = new Map(roster.map((member) => [member.memberId, member]));
@@ -402,9 +422,17 @@ export const TerminalPage = () => {
   }, [terminalRuntime.state.session?.terminalId, refreshSessions, pushNotification, t]);
 
   const handleToggleFollow = useCallback(() => {
-    setFollowing((f) => !f);
-    terminalRuntime.toggleFollow();
-  }, [terminalRuntime]);
+    if (!realtimeConnected) {
+      pushNotification({
+        tone: 'warning',
+        title: 'Realtime disconnected',
+        detail: 'Terminal output following is paused until realtime reconnects.',
+      });
+      return;
+    }
+    const state = terminalRuntime.toggleFollow();
+    setFollowing(state.output.followOutput);
+  }, [pushNotification, realtimeConnected, terminalRuntime]);
 
   const handleCreateSession = useCallback(async () => {
     if (!newSessionData.member) return;
@@ -701,7 +729,7 @@ export const TerminalPage = () => {
                   </>
                 )}
               </Button>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={terminalRuntime.clearOutput}>
                 Clear
               </Button>
               <Button
@@ -719,7 +747,7 @@ export const TerminalPage = () => {
           {/* Terminal Output -- xterm.js panel kept as-is */}
           <div className="flex-1 p-4 app-bg-canvas overflow-hidden" data-terminal-runtime="connected-panel">
             <TerminalPanel
-              state={terminalRuntime.state}
+              state={terminalPanelState}
               onAttach={() => { void terminalRuntime.attach(); }}
               onRetry={() => { void terminalRuntime.retry(); }}
               onToggleFollow={handleToggleFollow}
@@ -737,7 +765,7 @@ export const TerminalPage = () => {
             <span>·</span>
             <span>Node: {activeSession ? metadataText(activeSession.metadata, ['currentNode', 'nodeId', 'nodeName', 'podName'], 'unassigned') : 'unassigned'}</span>
             <span>·</span>
-            <span>Connection: {terminalRuntime.state.runtime.connection}</span>
+            <span>Connection: {terminalPanelState.runtime.connection}</span>
           </div>
         </div>
       </div>

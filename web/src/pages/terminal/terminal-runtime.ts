@@ -38,6 +38,7 @@ type TerminalPanelController = {
   attachTo: (terminalId: string) => Promise<TerminalPanelState>;
   retry: () => Promise<TerminalPanelState>;
   toggleFollow: () => TerminalPanelState;
+  clearOutput: () => TerminalPanelState;
   handleRealtimeEvent: (event: unknown) => Promise<TerminalPanelState>;
 };
 
@@ -357,6 +358,9 @@ export const createTerminalPanelController = ({
       const state = store.getState();
       return store.setFollowOutput(!state.output.followOutput);
     },
+    clearOutput() {
+      return store.clearOutput();
+    },
     async handleRealtimeEvent(rawEvent) {
       const envelope = unwrapRealtimeEnvelope(rawEvent);
       const activeTerminalId = store.getState().activeTerminalId;
@@ -438,12 +442,14 @@ export const useTerminalPanelRuntime = ({
   const attachTo = useCallback((terminalId: string) => controller.attachTo(terminalId), [controller]);
   const retry = useCallback(() => controller.retry(), [controller]);
   const toggleFollow = useCallback(() => controller.toggleFollow(), [controller]);
+  const clearOutput = useCallback(() => controller.clearOutput(), [controller]);
 
   return {
     state,
     attach,
     attachTo,
     retry,
-    toggleFollow
+    toggleFollow,
+    clearOutput
   };
 };

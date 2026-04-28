@@ -53,6 +53,8 @@ func (s Service) Authorize(ctx AuthContext) Decision {
 		return allowRoles(ctx.Actor.Role, RoleOwner, RoleSupervisor, RoleAssistant)
 	case ActionTerminalDispatch, ActionCollaborationCommand:
 		return allowRoles(ctx.Actor.Role, RoleOwner, RoleSupervisor)
+	case ActionApprovalDecide:
+		return allowRoles(ctx.Actor.Role, RoleOwner, RoleSupervisor)
 	default:
 		return deny("unknown action")
 	}
@@ -77,6 +79,7 @@ func (s Service) CapabilitiesFor(actor Principal) CapabilitySet {
 		AttachTerminal:       s.Authorize(withAction(base, ActionTerminalAttach)).Allowed,
 		DispatchTerminal:     s.Authorize(withAction(base, ActionTerminalDispatch)).Allowed,
 		CommandCollaboration: s.Authorize(withAction(base, ActionCollaborationCommand)).Allowed,
+		DecideApprovals:      s.Authorize(withAction(base, ActionApprovalDecide)).Allowed,
 	}
 }
 

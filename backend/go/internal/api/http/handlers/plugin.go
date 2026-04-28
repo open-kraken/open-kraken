@@ -24,6 +24,8 @@ func NewPluginHandler(svc *plugin.Service, pathPrefix string) *PluginHandler {
 //	GET    /plugins            → list available
 //	GET    /plugins/installed  → list installed
 //	POST   /plugins/{id}/install
+//	POST   /plugins/{id}/disable
+//	POST   /plugins/{id}/enable
 //	DELETE /plugins/{id}
 func (h *PluginHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, h.pathPrefix)
@@ -37,11 +39,28 @@ func (h *PluginHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		h.handleListInstalled(w, r)
 	case len(parts) == 2 && parts[1] == "install" && r.Method == http.MethodPost:
 		h.handleInstall(w, r, parts[0])
+	case len(parts) == 2 && parts[1] == "disable" && r.Method == http.MethodPost:
+		h.handleSetDisabled(w, r, parts[0], true)
+	case len(parts) == 2 && parts[1] == "enable" && r.Method == http.MethodPost:
+		h.handleSetDisabled(w, r, parts[0], false)
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		h.handleRemove(w, r, parts[0])
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func (h *PluginHandler) handleSetDisabled(w http.ResponseWriter, r *http.Request, id string, disabled bool) {
+	p, err := h.svc.SetDisabled(r.Context(), id, disabled)
+	if err != nil {
+		if errors.Is(err, plugin.ErrNotFound) {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, pluginToJSON(p))
 }
 
 func (h *PluginHandler) handleList(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +120,7 @@ func pluginToJSON(p plugin.Plugin) map[string]any {
 		"rating":      p.Rating,
 		"icon":        p.Icon,
 		"installed":   p.Installed,
+		"disabled":    p.Disabled,
 	}
 	if p.InstalledAt != nil {
 		m["installedAt"] = p.InstalledAt.Format("2006-01-02T15:04:05Z07:00")

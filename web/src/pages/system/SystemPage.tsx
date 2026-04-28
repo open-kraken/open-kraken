@@ -23,6 +23,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { CheckCircle, RefreshCw, AlertCircle } from 'lucide-react';
+import { summarizeNodes } from '@/shared/status-model';
 
 type HealthPayload = {
   status?: string;
@@ -199,12 +200,7 @@ export const SystemPage = () => {
   useEffect(() => {
     void getNodes()
       .then(({ nodes }) => {
-        setNodeSummary({
-          total: nodes.length,
-          online: nodes.filter((n) => n.status === 'online').length,
-          degraded: nodes.filter((n) => n.status === 'degraded').length,
-          offline: nodes.filter((n) => n.status === 'offline').length,
-        });
+        setNodeSummary(summarizeNodes(nodes));
       })
       .catch(() => setNodeSummary(null));
   }, []);

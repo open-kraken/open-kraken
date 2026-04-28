@@ -62,6 +62,9 @@ func roleCanAccessAPI(role authz.Role, method, suffix string) bool {
 	if strings.HasPrefix(suffix, "/v2") {
 		return role == authz.RoleOwner || role == authz.RoleSupervisor || role == authz.RoleAssistant
 	}
+	if strings.HasPrefix(suffix, "/approvals") {
+		return method == http.MethodGet
+	}
 	if role == authz.RoleAssistant {
 		return assistantCanAccessAPI(method, suffix)
 	}
