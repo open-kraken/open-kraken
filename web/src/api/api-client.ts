@@ -1,4 +1,5 @@
 import type { HttpClient } from '@/api/http-client';
+import { mapTerminalSession, type TerminalSessionsResponse } from '@/api/terminal';
 import type { MemberFixture, RoadmapTaskFixture } from '@/features/members/member-page-model';
 
 export type WorkspaceSummary = {
@@ -167,6 +168,7 @@ export type ApiClient = {
   getProjectDataDocument: () => Promise<ProjectDataDocumentResponse>;
   updateProjectDataDocument: (payload: { readOnly: boolean; payload: Record<string, unknown> }) => Promise<ProjectDataDocumentResponse>;
   /** Terminal attach for a session id (HTTP GET per workspace route handler). */
+  listTerminalSessions?: (workspaceId: string) => Promise<TerminalSessionsResponse>;
   attachTerminalSession: (sessionId: string) => Promise<unknown>;
   attachTerminal?: (terminalId: string) => Promise<unknown>;
   subscribe?: (listener: (event: unknown) => void) => () => void;
@@ -251,6 +253,13 @@ export const createApiClient = (httpClient: HttpClient): ApiClient => {
       httpClient.post(`terminal/sessions/${encodeURIComponent(sessionId)}/attach`, {
         subscriberId: `web_${httpClient.workspaceId}_${Date.now()}`
       }),
+    listTerminalSessions: async (workspaceId) => {
+      const body = await httpClient.get<{ items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>(
+        `terminal/sessions?workspaceId=${encodeURIComponent(workspaceId)}`
+      );
+      const items = Array.isArray(body) ? body : (body.items ?? []);
+      return { items: items.map(mapTerminalSession) };
+    },
     attachTerminal: (terminalId: string) =>
       httpClient.post(`terminal/sessions/${encodeURIComponent(terminalId)}/attach`, {
         subscriberId: `web_${httpClient.workspaceId}_${Date.now()}`

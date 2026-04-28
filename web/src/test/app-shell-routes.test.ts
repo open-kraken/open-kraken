@@ -39,7 +39,7 @@ const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
   } as unknown as AppShellContextValue['apiClient'];
 };
 
-const renderShell = (routePath: string) => {
+const renderShell = (routePath: string, role: 'owner' | 'supervisor' | 'assistant' | 'member' = 'owner') => {
   const route = resolveAppRoute(routePath);
   const contextValue: AppShellContextValue = {
     route,
@@ -88,7 +88,17 @@ const renderShell = (routePath: string) => {
         null,
         React.createElement(
           AuthContext.Provider,
-          { value: shellTestAuthValue },
+          { value: {
+            ...shellTestAuthValue,
+            state: {
+              status: 'authenticated',
+              session: {
+                token: shellTestAuthValue.token ?? 'shell_test_token',
+                account: { ...shellTestAuthValue.account!, role }
+              }
+            },
+            account: { ...shellTestAuthValue.account!, role }
+          } },
           React.createElement(
             AppShellContext.Provider,
             { value: contextValue },
@@ -117,6 +127,21 @@ test('resolveAppRoute covers required shell paths', () => {
   assert.equal(resolveAppRoute('/ledger').id, 'ledger');
   assert.equal(resolveAppRoute('/account').id, 'account');
   assert.equal(resolveAppRoute('/missing').id, 'dashboard');
+});
+
+test('AppShell filters navigation by authenticated role', () => {
+  const memberMarkup = renderShell('/dashboard', 'member');
+  assert.match(memberMarkup, /data-nav-route="dashboard"/);
+  assert.match(memberMarkup, /data-nav-route="chat"/);
+  assert.match(memberMarkup, /data-nav-route="terminal"/);
+  assert.doesNotMatch(memberMarkup, /data-nav-route="system"/);
+  assert.doesNotMatch(memberMarkup, /data-nav-route="approvals"/);
+  assert.doesNotMatch(memberMarkup, /data-nav-route="plugins"/);
+
+  const supervisorMarkup = renderShell('/dashboard', 'supervisor');
+  assert.match(supervisorMarkup, /data-nav-route="system"/);
+  assert.match(supervisorMarkup, /data-nav-route="approvals"/);
+  assert.match(supervisorMarkup, /data-nav-route="plugins"/);
 });
 
 test('AppShell renders workspace shell chrome and the expanded prototype navigation', () => {
@@ -151,7 +176,7 @@ test('roadmap route is wired through AppShell', () => {
   const markup = renderShell('/roadmap');
 
   assert.match(markup, /data-shell-route="roadmap"/);
-  assert.match(markup, /data-nav-route="roadmap"/);
+  assert.match(markup, /data-nav-route="taskmap"/);
   assert.match(markup, /Notices/);
 });
 

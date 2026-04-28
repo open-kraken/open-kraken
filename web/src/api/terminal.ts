@@ -12,6 +12,10 @@ export type TerminalSessionInfo = {
   terminalType: string;
   command: string;
   status: string;
+  seq: number;
+  subscriberCount: number;
+  keepAlive: boolean;
+  metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 };
@@ -26,11 +30,15 @@ type SessionApi = {
   terminalType?: string;
   command?: string;
   status?: string;
+  seq?: number;
+  subscriberCount?: number;
+  keepAlive?: boolean;
+  metadata?: Record<string, unknown>;
   createdAt?: string;
   updatedAt?: string;
 };
 
-function mapSession(raw: SessionApi): TerminalSessionInfo {
+export function mapTerminalSession(raw: SessionApi): TerminalSessionInfo {
   const sessionId = String(raw.sessionId ?? raw.terminalId ?? '');
   return {
     terminalId: sessionId,
@@ -39,6 +47,10 @@ function mapSession(raw: SessionApi): TerminalSessionInfo {
     terminalType: String(raw.terminalType ?? ''),
     command: String(raw.command ?? ''),
     status: String(raw.status ?? 'unknown'),
+    seq: Number(raw.seq ?? 0),
+    subscriberCount: Number(raw.subscriberCount ?? 0),
+    keepAlive: Boolean(raw.keepAlive ?? false),
+    metadata: raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {},
     createdAt: String(raw.createdAt ?? ''),
     updatedAt: String(raw.updatedAt ?? '')
   };
@@ -51,7 +63,7 @@ export const listTerminalSessions = async (workspaceId: string): Promise<Termina
     `/terminal/sessions?workspaceId=${encodeURIComponent(workspaceId)}`
   );
   const items = Array.isArray(body) ? body : (body.items ?? []);
-  return { items: items.map(mapSession) };
+  return { items: items.map(mapTerminalSession) };
 };
 
 export type CreateSessionOptions = {

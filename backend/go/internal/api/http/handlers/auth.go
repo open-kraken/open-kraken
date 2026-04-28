@@ -139,11 +139,13 @@ func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	role := principal.Role
 	var displayName, avatar string
 	if h.svc != nil {
 		if account, err := h.svc.Get(principal.MemberID); err == nil && account.WorkspaceID == principal.WorkspaceID {
 			displayName = account.DisplayName
 			avatar = account.Avatar
+			role = account.Role
 		}
 	} else {
 		for _, a := range h.accounts {
@@ -162,7 +164,7 @@ func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		"memberId":    principal.MemberID,
 		"workspaceId": principal.WorkspaceID,
 		"displayName": displayName,
-		"role":        principal.Role,
+		"role":        role,
 		"avatar":      avatar,
 	})
 }

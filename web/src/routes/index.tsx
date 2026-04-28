@@ -19,11 +19,14 @@ export type AppRouteId =
   | 'plugins'
   | 'account';
 
+export type AppRole = 'owner' | 'supervisor' | 'assistant' | 'member';
+
 export type AppRouteDefinition = {
   id: AppRouteId;
   path: `/${string}`;
   label: string;
   description: string;
+  allowedRoles?: AppRole[];
 };
 
 export const appRoutes: AppRouteDefinition[] = [
@@ -37,13 +40,15 @@ export const appRoutes: AppRouteDefinition[] = [
     id: 'ledger',
     path: '/ledger',
     label: 'Ledger',
-    description: 'Central audit trail: teams, members, commands, and context for retrospectives.'
+    description: 'Central audit trail: teams, members, commands, and context for retrospectives.',
+    allowedRoles: ['owner', 'supervisor', 'assistant']
   },
   {
     id: 'runs',
     path: '/runs',
     label: 'Runs',
-    description: 'AEL execution runs — monitor flows, steps, and token usage in real time.'
+    description: 'AEL execution runs — monitor flows, steps, and token usage in real time.',
+    allowedRoles: ['owner', 'supervisor', 'assistant']
   },
   {
     id: 'chat',
@@ -61,19 +66,22 @@ export const appRoutes: AppRouteDefinition[] = [
     id: 'skills',
     path: '/skills',
     label: 'Skills',
-    description: 'Skill catalog, export/import snapshots, and binding backup.'
+    description: 'Skill catalog, export/import snapshots, and binding backup.',
+    allowedRoles: ['owner', 'supervisor', 'assistant']
   },
   {
     id: 'taskmap',
     path: '/taskmap',
     label: 'Task Map',
-    description: 'Dependency graph for work items, execution paths, and blockers.'
+    description: 'Dependency graph for work items, execution paths, and blockers.',
+    allowedRoles: ['owner', 'supervisor', 'assistant']
   },
   {
     id: 'roadmap',
     path: '/roadmap',
-    label: 'Observability',
-    description: 'Roadmap and execution observability across squads and milestones.'
+    label: 'Roadmap',
+    description: 'Compatibility route for the merged Task Map and roadmap view.',
+    allowedRoles: ['owner', 'supervisor', 'assistant']
   },
   {
     id: 'terminal',
@@ -85,43 +93,50 @@ export const appRoutes: AppRouteDefinition[] = [
     id: 'nodes',
     path: '/nodes',
     label: 'Nodes',
-    description: 'Execution node topology, status, and agent assignment.'
+    description: 'Execution node topology, status, and agent assignment.',
+    allowedRoles: ['owner', 'supervisor', 'assistant']
   },
   {
     id: 'approvals',
     path: '/approvals',
     label: 'Approvals',
-    description: 'Review gated actions, escalation requests, and pending approvals.'
+    description: 'Review gated actions, escalation requests, and pending approvals.',
+    allowedRoles: ['owner', 'supervisor']
   },
   {
     id: 'workspaces',
     path: '/workspaces',
     label: 'Workspaces',
-    description: 'Workspace registry, ownership, and current activity.'
+    description: 'Workspace registry, ownership, and current activity.',
+    allowedRoles: ['owner', 'supervisor']
   },
   {
     id: 'repositories',
     path: '/repositories',
     label: 'Repositories',
-    description: 'Connected repositories, branch posture, and sync health.'
+    description: 'Connected repositories, branch posture, and sync health.',
+    allowedRoles: ['owner', 'supervisor']
   },
   {
     id: 'namespaces',
     path: '/namespaces',
     label: 'Namespaces',
-    description: 'Namespace inventory, tenancy boundaries, and membership.'
+    description: 'Namespace inventory, tenancy boundaries, and membership.',
+    allowedRoles: ['owner', 'supervisor']
   },
   {
     id: 'artifacts',
     path: '/artifacts',
     label: 'Artifacts',
-    description: 'Build outputs, bundles, and delivery artifacts across runs.'
+    description: 'Build outputs, bundles, and delivery artifacts across runs.',
+    allowedRoles: ['owner', 'supervisor']
   },
   {
     id: 'system',
     path: '/system',
     label: 'System',
-    description: 'Health probes, stream posture, and observability baselines.'
+    description: 'Health probes, stream posture, and observability baselines.',
+    allowedRoles: ['owner', 'supervisor']
   },
   {
     id: 'settings',
@@ -133,7 +148,8 @@ export const appRoutes: AppRouteDefinition[] = [
     id: 'plugins',
     path: '/plugins',
     label: 'Plugins',
-    description: 'Browse, install, and manage workspace plugins and extensions.'
+    description: 'Browse, install, and manage workspace plugins and extensions.',
+    allowedRoles: ['owner', 'supervisor']
   },
   {
     id: 'account',
@@ -152,7 +168,7 @@ export type AppNavGroup = {
 export const appNavGroups: AppNavGroup[] = [
   { id: 'observability', label: 'Observability', routeIds: ['dashboard', 'ledger', 'runs'] },
   { id: 'collaboration', label: 'Collaboration', routeIds: ['chat', 'members', 'skills'] },
-  { id: 'delivery', label: 'Delivery', routeIds: ['taskmap', 'roadmap'] },
+  { id: 'delivery', label: 'Delivery', routeIds: ['taskmap'] },
   { id: 'runtime', label: 'Runtime & nodes', routeIds: ['terminal', 'nodes', 'approvals'] },
   { id: 'development', label: 'Development', routeIds: ['workspaces', 'repositories'] },
   { id: 'workspace', label: 'Workspace & ops', routeIds: ['namespaces', 'artifacts', 'system', 'settings', 'plugins'] }
@@ -165,3 +181,13 @@ export const defaultRoute = appRoutes.find((route) => route.id === 'dashboard') 
 export const resolveAppRoute = (pathname: string) => {
   return routeMap.get(pathname) ?? defaultRoute;
 };
+
+export const canAccessRoute = (role: AppRole | undefined, routeId: AppRouteId) => {
+  const route = appRoutes.find((item) => item.id === routeId);
+  if (!route) return false;
+  if (!route.allowedRoles) return true;
+  return Boolean(role && route.allowedRoles.includes(role));
+};
+
+export const firstRouteForRole = (role: AppRole | undefined) =>
+  appRoutes.find((route) => canAccessRoute(role, route.id)) ?? defaultRoute;

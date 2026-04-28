@@ -45,6 +45,7 @@ import {
   ArrowRight,
   Pencil,
   Copy,
+  Map,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,6 +69,9 @@ import type { RunDTO } from "@/api/v2/types";
 import { getAgentStatuses, type AgentStatus } from "@/api/agents";
 import { assignAgentToNode, getNodes } from "@/api/nodes";
 import type { Node as RuntimeNode } from "@/types/node";
+import { useAppShell } from "@/state/app-shell-store";
+import type { RoadmapDocument, RoadmapTaskItem, RoadmapResponse as RoadmapFeatureResponse } from "@/features/roadmap-project-data/api-client";
+import { normalizeRoadmapDocument } from "@/features/roadmap-project-data/api-client";
 import {
   ackQueueTask,
   cancelQueueTask,
@@ -182,10 +186,38 @@ function DecisionNode({ data }: { data: Record<string, any> }) {
   );
 }
 
+function RoadmapNode({ data }: { data: Record<string, any> }) {
+  const statusTone =
+    data.status === "success"
+      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/25"
+      : data.status === "running"
+        ? "border-sky-500 bg-sky-50 dark:bg-sky-950/25"
+        : data.status === "error"
+          ? "border-red-500 bg-red-50 dark:bg-red-950/25"
+          : "border-slate-300 bg-white dark:bg-slate-950";
+
+  return (
+    <div className={`px-4 py-3 rounded-md border-2 ${statusTone} min-w-[220px] max-w-[260px] shadow-sm relative`}>
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <div className="flex items-start gap-2">
+        <Map size={14} className="app-accent-text mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-wider app-text-faint">Roadmap step {data.number}</div>
+          <div className="text-xs font-semibold app-text-strong truncate">{data.label}</div>
+          <div className="mt-1 text-[10px] app-text-faint capitalize">{data.roadmapStatus}</div>
+        </div>
+      </div>
+      <Handle type="source" position={Position.Right} style={handleStyle} />
+      <Handle type="source" id="details" position={Position.Bottom} style={handleStyle} />
+    </div>
+  );
+}
+
 const nodeTypes: NodeTypes = {
   agent: AgentNode,
   action: ActionNode,
   decision: DecisionNode,
+  roadmap: RoadmapNode,
 };
 
 /* ------------------------------------------------------------------ */
@@ -440,7 +472,7 @@ const taskLabel = (task: QueueTask) => {
 const mapTaskToNode = (task: QueueTask, index: number): Node => ({
   id: task.id,
   type: "agent",
-  position: { x: 160 + (index % 3) * 280, y: 80 + Math.floor(index / 3) * 180 },
+  position: { x: 160 + (index % 3) * 280, y: 300 + Math.floor(index / 3) * 180 },
   data: {
     label: taskLabel(task),
     status: taskStatusToNodeStatus(task.status),
@@ -482,13 +514,119 @@ const mapTasksToEdges = (tasks: QueueTask[]): Edge[] =>
     };
   });
 
+const emptyRoadmap: RoadmapDocument = { objective: "", tasks: [] };
+
+const roadmapStatusToNodeStatus = (status: string) => {
+  switch (status) {
+    case "done":
+      return "success";
+    case "in_progress":
+      return "running";
+    case "blocked":
+      return "error";
+    default:
+      return "pending";
+  }
+};
+
+const normalizeRoadmapResponseForTaskMap = (response: Awaited<ReturnType<ReturnType<typeof useAppShell>["apiClient"]["getRoadmapDocument"]>>): RoadmapFeatureResponse =>
+  ({
+    ...response,
+    readOnly: response.readOnly ?? false,
+    readOnlyReason: response.readOnlyReason ?? undefined,
+  }) as RoadmapFeatureResponse;
+
+const mapRoadmapTaskToNode = (task: RoadmapTaskItem, index: number): Node => ({
+  id: `roadmap-${task.id}`,
+  type: "roadmap",
+  position: { x: 80 + index * 300, y: 60 },
+  data: {
+    label: task.title || `Step ${task.number}`,
+    status: roadmapStatusToNodeStatus(task.status),
+    roadmapStatus: task.status,
+    roadmapTaskId: task.id,
+    taskId: task.id,
+    number: task.number,
+    progress: task.status === "done" ? 100 : task.status === "in_progress" ? 50 : undefined,
+  },
+});
+
+const mapRoadmapTasksToEdges = (tasks: RoadmapTaskItem[]): Edge[] =>
+  tasks.slice(1).map((task, index) => {
+    const previous = tasks[index];
+    const color = task.status === "done" ? "#10b981" : task.status === "in_progress" ? "#0ea5e9" : "#94a3b8";
+    return {
+      id: `roadmap-edge-${previous.id}-${task.id}`,
+      source: `roadmap-${previous.id}`,
+      target: `roadmap-${task.id}`,
+      type: "smoothstep",
+      animated: task.status === "in_progress",
+      style: { stroke: color, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color, width: 20, height: 20 },
+      interactionWidth: 20,
+      reconnectable: true,
+    };
+  });
+
+const queueTaskMentionsRoadmapStep = (task: QueueTask, roadmapTask: RoadmapTaskItem) => {
+  const haystack = [task.id, task.type, task.payload, task.agentId, task.nodeId, task.lastError, task.result]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const title = roadmapTask.title.trim().toLowerCase();
+  return haystack.includes(roadmapTask.id.toLowerCase()) || (title.length > 2 && haystack.includes(title));
+};
+
+const mapRoadmapDetailEdges = (roadmapTasks: RoadmapTaskItem[], queueTasks: QueueTask[]): Edge[] => {
+  const edges: Edge[] = [];
+  roadmapTasks.forEach((roadmapTask) => {
+    queueTasks.forEach((queueTask) => {
+      if (!queueTaskMentionsRoadmapStep(queueTask, roadmapTask)) return;
+      const color = queueTask.status === "completed" ? "#10b981" : queueTask.status === "running" ? "#eab308" : "#94a3b8";
+      edges.push({
+        id: `roadmap-detail-${roadmapTask.id}-${queueTask.id}`,
+        source: `roadmap-${roadmapTask.id}`,
+        sourceHandle: "details",
+        target: queueTask.id,
+        type: "smoothstep",
+        label: "details",
+        animated: queueTask.status === "running",
+        style: { stroke: color, strokeWidth: 1.5, strokeDasharray: "5,5" },
+        markerEnd: { type: MarkerType.ArrowClosed, color, width: 20, height: 20 },
+        interactionWidth: 20,
+        reconnectable: true,
+      });
+    });
+  });
+  return edges;
+};
+
+const buildTaskMapCanvas = (tasks: QueueTask[], roadmap: RoadmapDocument) => {
+  const orderedQueueTasks = [...tasks].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  const roadmapTasks = roadmap.tasks;
+  return {
+    nodes: [
+      ...roadmapTasks.map(mapRoadmapTaskToNode),
+      ...orderedQueueTasks.map(mapTaskToNode),
+    ],
+    edges: [
+      ...mapRoadmapTasksToEdges(roadmapTasks),
+      ...mapTasksToEdges(orderedQueueTasks),
+      ...mapRoadmapDetailEdges(roadmapTasks, orderedQueueTasks),
+    ],
+  };
+};
+
 export function TaskMapPage() {
+  const { apiClient } = useAppShell();
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selection, setSelection] = useState<Selection>(null);
-  const [selectedView, setSelectedView] = useState<"graph" | "logs" | "details" | "runs">("graph");
+  const [selectedView, setSelectedView] = useState<"graph" | "roadmap" | "logs" | "details" | "runs">("graph");
   const [v2Runs, setV2Runs] = useState<RunDTO[]>([]);
   const [queueTasks, setQueueTasks] = useState<QueueTask[]>([]);
+  const [roadmap, setRoadmap] = useState<RoadmapDocument>(emptyRoadmap);
+  const [roadmapError, setRoadmapError] = useState<string>("");
   const [runtimeNodes, setRuntimeNodes] = useState<RuntimeNode[]>([]);
   const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([]);
   const [queueError, setQueueError] = useState<string>("");
@@ -516,19 +654,43 @@ export function TaskMapPage() {
       setRuntimeNodes(nodesList.nodes);
       setAgentStatuses(agentsList.agents);
       setQueueError("");
-      const ordered = [...tasks].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
-      setNodes(ordered.map(mapTaskToNode));
-      setEdges(mapTasksToEdges(ordered));
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : "Task queue is unavailable.");
     }
-  }, [setEdges, setNodes]);
+  }, []);
+
+  const refreshRoadmap = useCallback(async () => {
+    try {
+      const response = await apiClient.getRoadmapDocument();
+      setRoadmap(normalizeRoadmapDocument(normalizeRoadmapResponseForTaskMap(response)));
+      setRoadmapError("");
+    } catch (err) {
+      setRoadmapError(err instanceof Error ? err.message : "Roadmap is unavailable.");
+    }
+  }, [apiClient]);
 
   useEffect(() => {
     refreshQueue();
     const id = setInterval(refreshQueue, 10_000);
     return () => clearInterval(id);
   }, [refreshQueue]);
+
+  useEffect(() => {
+    void refreshRoadmap();
+    const id = setInterval(refreshRoadmap, 30_000);
+    return () => clearInterval(id);
+  }, [refreshRoadmap]);
+
+  useEffect(() => {
+    const canvas = buildTaskMapCanvas(queueTasks, roadmap);
+    if (canvas.nodes.length === 0) {
+      setNodes(initialNodes);
+      setEdges(initialEdges);
+      return;
+    }
+    setNodes(canvas.nodes);
+    setEdges(canvas.edges);
+  }, [queueTasks, roadmap, setEdges, setNodes]);
 
   useEffect(() => {
     const load = () => {
@@ -857,7 +1019,11 @@ export function TaskMapPage() {
   const completedNodes = nodes.filter((n) => n.type === "agent" && n.data.status === "success").length;
   const runningNodes = nodes.filter((n) => n.type === "agent" && n.data.status === "running").length;
   const errorNodes = nodes.filter((n) => n.type === "agent" && n.data.status === "error").length;
-  const progressPercentage = Math.round((completedNodes / totalNodes) * 100);
+  const progressPercentage = totalNodes > 0 ? Math.round((completedNodes / totalNodes) * 100) : 0;
+  const roadmapDone = roadmap.tasks.filter((task) => task.status === "done").length;
+  const roadmapRunning = roadmap.tasks.filter((task) => task.status === "in_progress").length;
+  const roadmapBlocked = roadmap.tasks.filter((task) => task.status === "blocked").length;
+  const roadmapProgress = roadmap.tasks.length > 0 ? Math.round((roadmapDone / roadmap.tasks.length) * 100) : 0;
 
   return (
     <div className="h-full flex flex-col">
@@ -867,7 +1033,14 @@ export function TaskMapPage() {
           <div className="flex items-center gap-4">
             <h1 className="text-base font-bold app-text-strong">Task Map</h1>
             <Badge variant="outline" className="text-[10px]">Queue-backed</Badge>
+            <Badge variant="outline" className="text-[10px]">Roadmap merged</Badge>
             <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <Map size={14} className="app-accent-text" />
+                <span className="font-semibold app-text-strong">{roadmap.tasks.length}</span>
+                <span className="app-text-faint">steps</span>
+              </div>
+              <div className="w-px h-3 bg-gray-300 dark:bg-gray-700" />
               <div className="flex items-center gap-1.5">
                 <Activity size={14} className="app-text-muted" />
                 <span className="font-semibold app-text-strong">{totalNodes}</span>
@@ -993,19 +1166,21 @@ export function TaskMapPage() {
             {/* Workflow Info Panel */}
             <Panel position="top-left" className="m-4">
               <Card className="p-3 shadow-lg">
-                <div className="text-xs font-semibold app-text-strong mb-2">Current Workflow</div>
+                <div className="text-xs font-semibold app-text-strong mb-2">Roadmap Workflow</div>
                 <div className="flex items-center gap-2 mb-2">
                   <GitBranch size={14} className="app-accent-text" />
-                  <span className="text-xs app-text-strong">feature/analytics-dashboard</span>
+                  <span className="text-xs app-text-strong max-w-[260px] truncate">
+                    {roadmap.objective || "Queue-backed delivery graph"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 mb-2">
                   <FileCode size={14} className="app-text-muted" />
-                  <span className="text-xs app-text-faint">PR #234</span>
+                  <span className="text-xs app-text-faint">{roadmapProgress}% roadmap complete</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Users size={14} className="app-text-muted" />
                   <div className="flex -space-x-2">
-                    {["Claude BE", "Gemini FE", "GPT-4 QA"].map((agent, i) => (
+                    {(agentStatuses.length > 0 ? agentStatuses.map((agent) => agent.agentId) : ["Agents"]).slice(0, 4).map((agent, i) => (
                       <div
                         key={i}
                         className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 border-2 border-white dark:border-gray-900 flex items-center justify-center text-white text-[8px] font-bold"
@@ -1140,8 +1315,9 @@ export function TaskMapPage() {
         <div className="w-[360px] app-surface-strong border-l app-border-subtle flex flex-col">
           <div className="border-b app-border-subtle px-4 py-3">
             <Tabs value={selectedView} onValueChange={(v) => setSelectedView(v as typeof selectedView)}>
-              <TabsList className="w-full grid grid-cols-4">
+              <TabsList className="w-full grid grid-cols-5">
                 <TabsTrigger value="graph" className="text-xs">Details</TabsTrigger>
+                <TabsTrigger value="roadmap" className="text-xs">Roadmap</TabsTrigger>
                 <TabsTrigger value="logs" className="text-xs">Logs</TabsTrigger>
                 <TabsTrigger value="details" className="text-xs">Config</TabsTrigger>
                 <TabsTrigger value="runs" className="text-xs">Runs</TabsTrigger>
@@ -1161,8 +1337,33 @@ export function TaskMapPage() {
                       <span className="text-[10px] font-mono app-text-faint">{selectedNode.id}</span>
                     </div>
 
+                    {selectedNode.type === "roadmap" && (
+                      <Card className="p-3 space-y-2.5">
+                        <div className="text-[10px] font-semibold app-text-faint uppercase tracking-wider">Macro step</div>
+                        <div>
+                          <Label className="text-[11px] app-text-faint">Roadmap Title</Label>
+                          <div className="mt-1 text-sm font-semibold app-text-strong">
+                            {String(selectedNode.data.label ?? selectedNode.id)}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <div className="app-text-faint">Status</div>
+                            <div className="font-medium app-text-strong">{String(selectedNode.data.roadmapStatus ?? "todo")}</div>
+                          </div>
+                          <div>
+                            <div className="app-text-faint">Step</div>
+                            <div className="font-medium app-text-strong">{String(selectedNode.data.number ?? "")}</div>
+                          </div>
+                        </div>
+                        <p className="text-xs app-text-faint">
+                          This macro node comes from the roadmap document. Queue nodes below it are the micro execution details when their payload or title links back to this step.
+                        </p>
+                      </Card>
+                    )}
+
                     {/* ─ Identity ─ */}
-                    {(() => {
+                    {selectedNode.type !== "roadmap" && (() => {
                       const locked = selectedNode.data.status === "success";
                       return (
                         <Card className="p-3 space-y-2.5">
@@ -1202,7 +1403,7 @@ export function TaskMapPage() {
                     })()}
 
                     {/* ─ Execution Context ─ */}
-                    {selectedNode.type !== "decision" && (() => {
+                    {selectedNode.type !== "decision" && selectedNode.type !== "roadmap" && (() => {
                       const done = selectedNode.data.status === "success";
                       return (
                         <Card className="p-3 space-y-2.5">
@@ -1305,7 +1506,7 @@ export function TaskMapPage() {
                     })()}
 
                     {/* ─ Schedule & Timing ─ */}
-                    {(() => {
+                    {selectedNode.type !== "roadmap" && (() => {
                       const locked = selectedNode.data.status === "success";
                       return (
                         <Card className="p-3 space-y-2.5">
@@ -1580,6 +1781,92 @@ export function TaskMapPage() {
                     <p className="text-xs app-text-faint mt-1">Drag from handles to draw new connections</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {selectedView === "roadmap" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold app-text-strong">Roadmap</h3>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={refreshRoadmap}>
+                    <RotateCcw size={12} className="mr-1" />
+                    Refresh
+                  </Button>
+                </div>
+
+                {roadmapError && (
+                  <Card className="p-3 border-red-200 bg-red-50 dark:bg-red-950/20">
+                    <p className="text-xs text-red-600">{roadmapError}</p>
+                  </Card>
+                )}
+
+                <Card className="p-3 space-y-3">
+                  <div>
+                    <div className="text-[10px] font-semibold app-text-faint uppercase tracking-wider">Objective</div>
+                    <p className="mt-1 text-xs app-text-strong">
+                      {roadmap.objective || "No roadmap objective has been set."}
+                    </p>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] app-text-faint mb-1">
+                      <span>Overall progress</span>
+                      <span>{roadmapDone}/{roadmap.tasks.length} done</span>
+                    </div>
+                    <Progress value={roadmapProgress} className="h-1.5" />
+                    <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+                      <div className="rounded border app-border-subtle p-2">
+                        <div className="text-sm font-semibold text-sky-600">{roadmapRunning}</div>
+                        <div className="text-[10px] app-text-faint">active</div>
+                      </div>
+                      <div className="rounded border app-border-subtle p-2">
+                        <div className="text-sm font-semibold text-green-600">{roadmapDone}</div>
+                        <div className="text-[10px] app-text-faint">done</div>
+                      </div>
+                      <div className="rounded border app-border-subtle p-2">
+                        <div className="text-sm font-semibold text-red-600">{roadmapBlocked}</div>
+                        <div className="text-[10px] app-text-faint">blocked</div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <div className="space-y-2">
+                  {roadmap.tasks.length === 0 ? (
+                    <Card className="p-4 text-center">
+                      <Map size={24} className="app-text-faint mx-auto mb-2" />
+                      <p className="text-xs app-text-faint">No roadmap steps from the backend.</p>
+                    </Card>
+                  ) : (
+                    roadmap.tasks.map((task) => {
+                      const linkedMicroTasks = queueTasks.filter((queueTask) => queueTaskMentionsRoadmapStep(queueTask, task));
+                      const statusClass =
+                        task.status === "done"
+                          ? "text-green-600 border-green-400"
+                          : task.status === "in_progress"
+                            ? "text-sky-600 border-sky-400"
+                            : task.status === "blocked"
+                              ? "text-red-600 border-red-400"
+                              : "text-gray-500 border-gray-300";
+                      return (
+                        <Card key={task.id} className="p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[10px] app-text-faint">Step {task.number}</div>
+                              <div className="text-xs font-semibold app-text-strong truncate">{task.title || task.id}</div>
+                            </div>
+                            <Badge variant="outline" className={`text-[10px] shrink-0 ${statusClass}`}>
+                              {task.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-[10px] app-text-faint">
+                            <span>{linkedMicroTasks.length} micro tasks on canvas</span>
+                            {task.dueAt ? <span>Due {task.dueAt}</span> : null}
+                          </div>
+                        </Card>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
 

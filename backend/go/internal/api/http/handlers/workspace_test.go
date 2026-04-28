@@ -23,6 +23,7 @@ import (
 	"open-kraken/backend/go/internal/roster"
 	"open-kraken/backend/go/internal/runtime/instance"
 	"open-kraken/backend/go/internal/session"
+	"open-kraken/backend/go/internal/settings"
 	"open-kraken/backend/go/internal/terminal"
 	"open-kraken/backend/go/internal/terminal/provider"
 )
@@ -234,6 +235,115 @@ func TestSystemUsersCanCreateAccountAndLogin(t *testing.T) {
 	}
 	if strings.Contains(loginRec.Body.String(), "ops-pass") {
 		t.Fatalf("login response leaked password: %s", loginRec.Body.String())
+	}
+
+	demote := httptest.NewRequest(http.MethodPut, "/api/v1/system/users/owner_1", bytes.NewBufferString(`{"role":"member"}`))
+	demote.Header.Set("Authorization", ownerToken)
+	demoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(demoteRec, demote)
+	if demoteRec.Code != http.StatusOK {
+		t.Fatalf("expected demote 200, got %d body=%s", demoteRec.Code, demoteRec.Body.String())
+	}
+	createAfterDemote := httptest.NewRequest(http.MethodPost, "/api/v1/system/users", bytes.NewBufferString(`{
+		"memberId":"should_fail",
+		"workspaceId":"ws_open_kraken",
+		"role":"member",
+		"password":"x"
+	}`))
+	createAfterDemote.Header.Set("Authorization", ownerToken)
+	forbiddenRec := httptest.NewRecorder()
+	handler.ServeHTTP(forbiddenRec, createAfterDemote)
+	if forbiddenRec.Code != http.StatusForbidden {
+		t.Fatalf("expected stale owner token to be forbidden after demotion, got %d body=%s", forbiddenRec.Code, forbiddenRec.Body.String())
+	}
+}
+
+func TestRolePolicyBlocksMemberManagementForMemberRole(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	appRoot := t.TempDir()
+	repo := projectdata.NewRepository(appRoot)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), realtime.NewHub(64))
+	accountSvc, err := account.NewService(filepath.Join(appRoot, "accounts"), []account.SeedAccount{{
+		MemberID:    "member_1",
+		WorkspaceID: "ws_open_kraken",
+		DisplayName: "Member",
+		Role:        authz.RoleMember,
+		Password:    "member-pass",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := apihttp.NewHandlerWithDependencies(service, realtime.NewHub(64), repo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{
+		AccountService: accountSvc,
+	}, plathttp.PermissiveWebSocketUpgrader())
+
+	memberToken := mustToken(t, authz.Principal{MemberID: "member_1", WorkspaceID: "ws_open_kraken", Role: authz.RoleMember})
+	createMember := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/ws_open_kraken/members", bytes.NewBufferString(`{"memberId":"blocked_1","displayName":"Blocked","roleType":"member"}`))
+	createMember.Header.Set("Authorization", memberToken)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, createMember)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected member roster write 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	aelRequest := httptest.NewRequest(http.MethodGet, "/api/v2/runs", nil)
+	aelRequest.Header.Set("Authorization", memberToken)
+	aelRec := httptest.NewRecorder()
+	handler.ServeHTTP(aelRec, aelRequest)
+	if aelRec.Code != http.StatusForbidden {
+		t.Fatalf("expected member api v2 access 403, got %d body=%s", aelRec.Code, aelRec.Body.String())
+	}
+}
+
+func TestSettingsHandlerRestrictsUsersToOwnSettings(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	appRoot := t.TempDir()
+	repo := projectdata.NewRepository(appRoot)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), realtime.NewHub(64))
+	accountSvc, err := account.NewService(filepath.Join(appRoot, "accounts"), []account.SeedAccount{{
+		MemberID:    "member_1",
+		WorkspaceID: "ws_open_kraken",
+		DisplayName: "Member",
+		Role:        authz.RoleMember,
+		Password:    "member-pass",
+	}, {
+		MemberID:    "member_2",
+		WorkspaceID: "ws_open_kraken",
+		DisplayName: "Other",
+		Role:        authz.RoleMember,
+		Password:    "other-pass",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := apihttp.NewHandlerWithDependencies(service, realtime.NewHub(64), repo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{
+		AccountService:  accountSvc,
+		SettingsService: settings.NewService(filepath.Join(appRoot, "settings")),
+	}, plathttp.PermissiveWebSocketUpgrader())
+
+	memberToken := mustToken(t, authz.Principal{MemberID: "member_1", WorkspaceID: "ws_open_kraken", Role: authz.RoleMember})
+	ownGet := httptest.NewRequest(http.MethodGet, "/api/v1/settings?memberId=member_1", nil)
+	ownGet.Header.Set("Authorization", memberToken)
+	ownRec := httptest.NewRecorder()
+	handler.ServeHTTP(ownRec, ownGet)
+	if ownRec.Code != http.StatusOK {
+		t.Fatalf("expected own settings read 200, got %d body=%s", ownRec.Code, ownRec.Body.String())
+	}
+
+	otherGet := httptest.NewRequest(http.MethodGet, "/api/v1/settings?memberId=member_2", nil)
+	otherGet.Header.Set("Authorization", memberToken)
+	otherRec := httptest.NewRecorder()
+	handler.ServeHTTP(otherRec, otherGet)
+	if otherRec.Code != http.StatusForbidden {
+		t.Fatalf("expected other settings read 403, got %d body=%s", otherRec.Code, otherRec.Body.String())
+	}
+
+	otherPut := httptest.NewRequest(http.MethodPut, "/api/v1/settings", bytes.NewBufferString(`{"memberId":"member_2","theme":"dark"}`))
+	otherPut.Header.Set("Authorization", memberToken)
+	otherPutRec := httptest.NewRecorder()
+	handler.ServeHTTP(otherPutRec, otherPut)
+	if otherPutRec.Code != http.StatusForbidden {
+		t.Fatalf("expected other settings write 403, got %d body=%s", otherPutRec.Code, otherPutRec.Body.String())
 	}
 }
 

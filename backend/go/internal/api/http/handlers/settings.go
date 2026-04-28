@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 
+	"open-kraken/backend/go/internal/authn"
+	"open-kraken/backend/go/internal/authz"
 	"open-kraken/backend/go/internal/settings"
 )
 
@@ -28,6 +30,9 @@ func (h *SettingsHandler) HandleGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, http.ErrNotSupported)
 		return
 	}
+	if !h.canAccessMemberSettings(w, r, memberID) {
+		return
+	}
 	us, err := h.svc.Get(memberID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -50,6 +55,9 @@ func (h *SettingsHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, http.ErrNotSupported)
 		return
 	}
+	if !h.canAccessMemberSettings(w, r, body.MemberID) {
+		return
+	}
 	existing, err := h.svc.Get(body.MemberID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -62,6 +70,19 @@ func (h *SettingsHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, publicSettings(saved))
+}
+
+func (h *SettingsHandler) canAccessMemberSettings(w http.ResponseWriter, r *http.Request, memberID string) bool {
+	principal, err := authn.ResolvePrincipal(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return false
+	}
+	if principal.MemberID != memberID {
+		writeError(w, http.StatusForbidden, authz.ErrForbidden)
+		return false
+	}
+	return true
 }
 
 func mergeProviderAuth(existing, incoming map[string]settings.ProviderAuthSetting) map[string]settings.ProviderAuthSetting {

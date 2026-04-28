@@ -11,6 +11,7 @@ export type LegacyApiClient = {
   updateRoadmap: (roadmap: unknown) => Promise<unknown>;
   getProjectData: () => Promise<unknown>;
   updateProjectData: (payload: unknown) => Promise<unknown>;
+  listTerminalSessions?: (workspaceId: string) => Promise<unknown>;
   attachTerminal: (terminalId: string) => Promise<unknown>;
   subscribe: (listener: (event: unknown) => void) => () => void;
 };
@@ -80,6 +81,9 @@ export const createLiveClient = ({
         method: 'POST',
         body: JSON.stringify({ subscriberId: `web_${workspaceId}_${Date.now()}` })
       });
+    },
+    async listTerminalSessions(targetWorkspaceId: string) {
+      return http.request(`/api/v1/terminal/sessions?workspaceId=${encodeURIComponent(targetWorkspaceId)}`);
     },
     subscribe(listener: (event: unknown) => void) {
       const ws = new WebSocketImpl(wsBaseUrl);

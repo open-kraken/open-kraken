@@ -287,5 +287,5 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 		})
 	}
 
-	return mux
+	return withRolePolicy(mux, apiBasePath, ext.AccountService)
 }

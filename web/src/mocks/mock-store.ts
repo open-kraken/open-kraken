@@ -66,6 +66,9 @@ export const createMockStore = () => {
       }
       return clone({ session, snapshot: session.snapshot });
     },
+    listTerminalSessions() {
+      return clone(state.terminalSessions);
+    },
     getTerminalSession() {
       return clone(state.terminalSessions[0]);
     }

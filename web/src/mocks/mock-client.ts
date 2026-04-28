@@ -142,6 +142,9 @@ export const createMockClient = ({ workspaceId = 'ws_open_kraken', clock = () =>
       });
       return attached;
     },
+    async listTerminalSessions() {
+      return { items: store.listTerminalSessions() };
+    },
     subscribe(listener: (event: unknown) => void) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };

@@ -127,7 +127,7 @@ test('migration web gate: roadmap page enters through AppShell route outlet', ()
   const markup = renderShellRoute('roadmap');
 
   assert.match(markup, /data-shell-route="roadmap"/);
-  assert.match(markup, /data-nav-route="roadmap"/);
+  assert.match(markup, /data-nav-route="taskmap"/);
   assert.match(markup, /Workspace status/);
 });
 

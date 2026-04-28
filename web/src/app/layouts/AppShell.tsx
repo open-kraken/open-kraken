@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { appNavGroups, appRoutes, type AppRouteId } from '@/routes';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { appNavGroups, appRoutes, canAccessRoute, firstRouteForRole, type AppRouteId } from '@/routes';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useAppShell } from '@/state/app-shell-store';
 import { useAuth } from '@/auth/AuthProvider';
@@ -124,6 +124,18 @@ export const AppShell = () => {
   const { route, workspace, notifications, realtime, navigate, dismissNotification, chatNotifications } = useAppShell();
   const { account, logout } = useAuth();
   const ActivePage = pageByRoute[route.id];
+  const accountRole = account?.role;
+  const allowedRouteIds = useMemo(
+    () => new Set(appRoutes.filter((candidate) => canAccessRoute(accountRole, candidate.id)).map((candidate) => candidate.id)),
+    [accountRole]
+  );
+  const visibleNavGroups = useMemo(
+    () =>
+      appNavGroups
+        .map((group) => ({ ...group, routeIds: group.routeIds.filter((routeId) => allowedRouteIds.has(routeId)) }))
+        .filter((group) => group.routeIds.length > 0),
+    [allowedRouteIds]
+  );
 
   // ── Theme ──
   const [isDark, setIsDark] = useState(() =>
@@ -138,13 +150,15 @@ export const AppShell = () => {
 
   // ── Command Palette ──
   const [cmdOpen, setCmdOpen] = useState(false);
-  const commandItems: CommandItem[] = appRoutes.map((r) => ({
-    id: r.id,
-    label: r.label,
-    description: r.description,
-    group: 'Navigation',
-    handler: () => navigate(r.id),
-  }));
+  const commandItems: CommandItem[] = appRoutes
+    .filter((r) => allowedRouteIds.has(r.id))
+    .map((r) => ({
+      id: r.id,
+      label: r.label,
+      description: r.description,
+      group: 'Navigation',
+      handler: () => navigate(r.id),
+    }));
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -172,6 +186,13 @@ export const AppShell = () => {
   }, []);
 
   const routeLabel = (routeId: AppRouteId) => t(`routes.${routeId}.label`);
+
+  useEffect(() => {
+    if (allowedRouteIds.has(route.id)) {
+      return;
+    }
+    navigate(firstRouteForRole(accountRole).id);
+  }, [accountRole, allowedRouteIds, navigate, route.id]);
 
   // ── Fullscreen mode ──
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -260,7 +281,7 @@ export const AppShell = () => {
 
         <ScrollArea className="flex-1">
           <nav className="p-3" data-nav-area>
-            {appNavGroups.map((group) => (
+            {visibleNavGroups.map((group) => (
               <div key={group.id} className="nav-section">
                 <div className="nav-section-label">{t(`navGroups.${group.id}`)}</div>
                 {group.routeIds.map((routeId) => {

@@ -121,7 +121,8 @@ func (h *AccountHandler) enforceOwner(w http.ResponseWriter, r *http.Request) bo
 		writeAuthzError(w, err)
 		return false
 	}
-	if principal.Role != authz.RoleOwner {
+	account, err := h.svc.Get(principal.MemberID)
+	if err != nil || account.WorkspaceID != principal.WorkspaceID || account.Role != authz.RoleOwner {
 		writeAuthzError(w, authz.ErrForbidden)
 		return false
 	}
