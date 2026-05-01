@@ -10,6 +10,7 @@ var ErrCursorAhead = errors.New("cursor ahead of server head")
 
 type SubscribeRequest struct {
 	WorkspaceID string
+	Families    []string
 	ChannelIDs  []string
 	TerminalIDs []string
 	MemberIDs   []string

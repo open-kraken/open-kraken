@@ -9,24 +9,25 @@ import (
 
 // Errors returned by validation and repository operations.
 var (
-	ErrNotFound           = errors.New("message: not found")
-	ErrInvalidID          = errors.New("message: id is required")
-	ErrInvalidWorkspace   = errors.New("message: workspaceId is required")
+	ErrNotFound            = errors.New("message: not found")
+	ErrInvalidID           = errors.New("message: id is required")
+	ErrInvalidWorkspace    = errors.New("message: workspaceId is required")
 	ErrInvalidConversation = errors.New("message: conversationId is required")
-	ErrInvalidSender      = errors.New("message: senderId is required")
-	ErrInvalidContent     = errors.New("message: content text is required")
-	ErrInvalidContentType = errors.New("message: content type must be text, system, or terminal")
-	ErrInvalidStatus      = errors.New("message: status is invalid")
+	ErrInvalidSender       = errors.New("message: senderId is required")
+	ErrInvalidContent      = errors.New("message: content text is required")
+	ErrInvalidContentType  = errors.New("message: content type must be text, system, or terminal")
+	ErrInvalidStatus       = errors.New("message: status is invalid")
 )
 
 // Status represents the delivery state of a message.
 type Status string
 
 const (
-	StatusSending   Status = "sending"
-	StatusQueued    Status = "queued"
+	StatusPending   Status = "pending"
+	StatusSending   Status = StatusPending
+	StatusQueued    Status = StatusPending
 	StatusSent      Status = "sent"
-	StatusDelivered Status = "delivered"
+	StatusDelivered Status = StatusSent
 	StatusFailed    Status = "failed"
 )
 
@@ -98,12 +99,25 @@ func (m Message) Validate() error {
 	if m.ContentText == "" {
 		return ErrInvalidContent
 	}
-	switch m.Status {
-	case StatusSending, StatusQueued, StatusSent, StatusDelivered, StatusFailed:
-	default:
+	if NormalizeStatus(m.Status) == "" {
 		return ErrInvalidStatus
 	}
 	return nil
+}
+
+// NormalizeStatus maps legacy persisted message states into the public
+// pending/sent/failed contract.
+func NormalizeStatus(status Status) Status {
+	switch status {
+	case "", StatusPending, "sending", "queued":
+		return StatusPending
+	case StatusSent, "delivered":
+		return StatusSent
+	case StatusFailed:
+		return StatusFailed
+	default:
+		return ""
+	}
 }
 
 // Preview returns a truncated content string suitable for conversation lists.

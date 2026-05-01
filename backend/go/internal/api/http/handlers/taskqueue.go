@@ -245,11 +245,11 @@ func writeTaskError(w http.ResponseWriter, err error) {
 	}
 	switch {
 	case errors.Is(err, taskqueue.ErrNotFound):
-		writeJSON(w, http.StatusNotFound, map[string]any{"message": err.Error()})
+		writeError(w, http.StatusNotFound, err)
 	case errors.Is(err, taskqueue.ErrInvalidTransition), errors.Is(err, taskqueue.ErrAlreadyClaimed), errors.Is(err, taskqueue.ErrNoAvailableAgent):
-		writeJSON(w, http.StatusConflict, map[string]any{"message": err.Error()})
+		writeError(w, http.StatusConflict, err)
 	case errors.Is(err, taskqueue.ErrAlreadyExists):
-		writeJSON(w, http.StatusConflict, map[string]any{"message": err.Error()})
+		writeError(w, http.StatusConflict, err)
 	default:
 		writeError(w, http.StatusBadRequest, err)
 	}

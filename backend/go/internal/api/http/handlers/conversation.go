@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -76,7 +77,7 @@ func (h *WorkspaceHandler) handleConversationCreate(w http.ResponseWriter, r *ht
 		convType = "direct"
 	}
 	if convType != "direct" && convType != "team" && convType != "channel" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "conversation type must be direct, team, or channel"})
+		writeError(w, http.StatusBadRequest, errors.New("conversation type must be direct, team, or channel"))
 		return
 	}
 
@@ -88,7 +89,7 @@ func (h *WorkspaceHandler) handleConversationCreate(w http.ResponseWriter, r *ht
 	case "direct":
 		memberID := strings.TrimSpace(body.MemberID)
 		if memberID == "" || !h.memberExistsLocked(memberID) {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "memberId is required and must exist"})
+			writeError(w, http.StatusBadRequest, errors.New("memberId is required and must exist"))
 			return
 		}
 		currentID := h.defaultHumanMemberIDLocked(memberID)
@@ -108,7 +109,7 @@ func (h *WorkspaceHandler) handleConversationCreate(w http.ResponseWriter, r *ht
 	case "team":
 		teamID := strings.TrimSpace(body.TeamID)
 		if teamID == "" || !h.teamExistsLocked(teamID) {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "teamId is required and must exist"})
+			writeError(w, http.StatusBadRequest, errors.New("teamId is required and must exist"))
 			return
 		}
 		if existing := findTeamConversation(h.state.Conversations, teamID); existing != nil {
@@ -208,7 +209,7 @@ func (h *WorkspaceHandler) handleMessagesList(w http.ResponseWriter, conversatio
 				"content":   map[string]string{"type": string(m.ContentType), "text": m.ContentText},
 				"createdAt": m.CreatedAt.UnixMilli(),
 				"isAi":      m.IsAI,
-				"status":    string(m.Status),
+				"status":    string(message.NormalizeStatus(m.Status)),
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -269,7 +270,7 @@ func (h *WorkspaceHandler) handleMessagesCreate(w http.ResponseWriter, r *http.R
 			"content":   map[string]string{"type": string(saved.ContentType), "text": saved.ContentText},
 			"createdAt": saved.CreatedAt.UnixMilli(),
 			"isAi":      saved.IsAI,
-			"status":    string(saved.Status),
+			"status":    string(message.NormalizeStatus(saved.Status)),
 		}
 		h.mu.Lock()
 		updateConversationPreview(h.state.Conversations, conversationID, messageJSON)

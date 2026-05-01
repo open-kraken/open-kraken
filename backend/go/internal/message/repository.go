@@ -53,7 +53,7 @@ func migrateMessageDB(db *sql.DB) error {
 			sender_id       TEXT    NOT NULL,
 			content_type    TEXT    NOT NULL DEFAULT 'text',
 			content_text    TEXT    NOT NULL,
-			status          TEXT    NOT NULL DEFAULT 'sending',
+			status          TEXT    NOT NULL DEFAULT 'pending',
 			is_ai           INTEGER NOT NULL DEFAULT 0,
 			span_id         TEXT    NOT NULL DEFAULT '',
 			seq             INTEGER NOT NULL DEFAULT 0,
@@ -252,5 +252,5 @@ func scanMsg(s rowScanner) (Message, error) {
 	return m, nil
 }
 
-func scanMessage(row *sql.Row) (Message, error)    { return scanMsg(row) }
+func scanMessage(row *sql.Row) (Message, error)      { return scanMsg(row) }
 func scanMessageRow(rows *sql.Rows) (Message, error) { return scanMsg(rows) }

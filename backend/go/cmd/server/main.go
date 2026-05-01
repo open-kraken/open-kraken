@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"open-kraken/backend/go/internal/llmexec"
 	"open-kraken/backend/go/internal/memory"
 	"open-kraken/backend/go/internal/message"
+	namespaces "open-kraken/backend/go/internal/namespace"
 	"open-kraken/backend/go/internal/node"
 	"open-kraken/backend/go/internal/observability"
 	okprometheus "open-kraken/backend/go/internal/observability/prometheus"
@@ -52,6 +54,8 @@ import (
 	"open-kraken/backend/go/internal/vector"
 	"open-kraken/backend/go/internal/verifier"
 )
+
+const defaultWorkspaceID = "ws_open_kraken"
 
 // seedNodes registers a local node representing this machine and starts a
 // heartbeat goroutine so the Nodes page shows realistic live data.
@@ -409,6 +413,41 @@ func initStorageServices(cfg runtimecfg.Config, hub *realtime.Hub, log *logger.L
 	return
 }
 
+func buildNamespaceCountProvider(workspaceRoot string, store roster.Store, defaultWorkspaceID string) namespaces.CountProvider {
+	return func(ctx context.Context, namespaceID string) (namespaces.Counts, error) {
+		namespaceID = strings.TrimSpace(namespaceID)
+		if namespaceID == "" {
+			return namespaces.Counts{}, nil
+		}
+		if store != nil {
+			doc, found, err := store.Read(ctx, namespaceID)
+			if err != nil || !found {
+				return namespaces.Counts{}, err
+			}
+			return namespaceRosterCounts(doc), nil
+		}
+
+		// The file-backed roster is still a singleton document. Only attach it
+		// to the legacy default workspace id so new namespaces do not inherit
+		// unrelated roster counts before namespace context switching lands.
+		if namespaceID != defaultWorkspaceID {
+			return namespaces.Counts{}, nil
+		}
+		doc, found, err := roster.Read(workspaceRoot)
+		if err != nil || !found {
+			return namespaces.Counts{}, err
+		}
+		return namespaceRosterCounts(doc), nil
+	}
+}
+
+func namespaceRosterCounts(doc roster.Document) namespaces.Counts {
+	return namespaces.Counts{
+		TeamCount:   len(doc.Teams),
+		MemberCount: len(doc.Members),
+	}
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -576,12 +615,18 @@ func main() {
 	} else {
 		log.Info("workspace roster store: workspace file")
 	}
+	namespaceRepo, err := namespaces.NewSQLiteRepository(filepath.Join(cfg.AppDataRoot, "namespaces.db"))
+	if err != nil {
+		log.Error("init namespace repository failed", logger.WithFields("error", err.Error()))
+		panic("init namespace repository: " + err.Error())
+	}
+	namespaceSvc := namespaces.NewService(namespaceRepo, buildNamespaceCountProvider(cfg.WorkspaceRoot, rosterStore, defaultWorkspaceID))
 
 	// Seed accounts for development login.
 	seedAccounts := []handlers.KnownAccount{
-		{MemberID: "owner_1", WorkspaceID: "ws_open_kraken", DisplayName: "Claire", Role: authz.RoleOwner, Password: "admin", Avatar: "CO"},
-		{MemberID: "assistant_1", WorkspaceID: "ws_open_kraken", DisplayName: "Planner", Role: authz.RoleAssistant, Password: "planner", Avatar: "PL"},
-		{MemberID: "member_1", WorkspaceID: "ws_open_kraken", DisplayName: "Runner", Role: authz.RoleMember, Password: "runner", Avatar: "RN"},
+		{MemberID: "owner_1", WorkspaceID: defaultWorkspaceID, DisplayName: "Claire", Role: authz.RoleOwner, Password: "admin", Avatar: "CO"},
+		{MemberID: "assistant_1", WorkspaceID: defaultWorkspaceID, DisplayName: "Planner", Role: authz.RoleAssistant, Password: "planner", Avatar: "PL"},
+		{MemberID: "member_1", WorkspaceID: defaultWorkspaceID, DisplayName: "Runner", Role: authz.RoleMember, Password: "runner", Avatar: "RN"},
 	}
 	accountSeeds := make([]account.SeedAccount, 0, len(seedAccounts))
 	for _, seed := range seedAccounts {
@@ -643,6 +688,7 @@ func main() {
 		MemoryService:    memorySvc,
 		LedgerService:    ledgerSvc,
 		MessageService:   msgSvc,
+		NamespaceService: namespaceSvc,
 		PresenceService:  presenceSvc,
 		PluginService:    pluginSvc,
 		SettingsService:  settingsSvc,
@@ -653,6 +699,7 @@ func main() {
 		AELService:       aelSvc,
 		AuthAccounts:     seedAccounts,
 		AccountService:   accountSvc,
+		JWTSecret:        cfg.JWTSecret,
 	}, platformhttp.WebSocketUpgrader(cfg))
 
 	server := &http.Server{

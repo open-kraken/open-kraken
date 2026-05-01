@@ -18,16 +18,22 @@ This note records the first real authorization wiring on top of the role model:
 - OpenAPI peer: `/Users/claire/IdeaProjects/open-kraken/docs/api/openapi.yaml`
 - Realtime peer: `/Users/claire/IdeaProjects/open-kraken/docs/backend/realtime-contract.md`
 
-Formal authentication adapter now used by HTTP/WebSocket entrypoints:
+Formal authentication adapter used by HTTP/WebSocket entrypoints in development:
 
 - `Authorization: Bearer open-kraken-dev.<base64url-json>`
 - bearer payload fields: `workspaceId`, `memberId`, `role`
 - adapter implementation: `/Users/claire/IdeaProjects/open-kraken/backend/go/internal/authn/adapter.go`
 
+Production authentication behavior:
+
+- When `OPEN_KRAKEN_JWT_SECRET` is configured, `/auth/login` issues an HMAC-signed JWT instead of an `open-kraken-dev.*` bearer.
+- Protected HTTP and WebSocket routes reject unsigned `open-kraken-dev.*` bearers while JWT auth is configured.
+- After a signed JWT is verified at the middleware boundary, the request is adapted to the internal principal format before reaching existing handlers.
+
 Compatibility note:
 
-- legacy `X-Open-Kraken-*` actor headers remain as a fallback adapter during migration
-- new entry tests and runtime docs should prefer the bearer adapter instead of the legacy header carrier
+- legacy `X-Open-Kraken-*` actor headers remain as a fallback adapter during local migration paths that do not enable JWT auth
+- new entry tests and runtime docs should prefer signed JWTs for production-auth paths and the development bearer only for dev-mode paths
 
 ## Go GOROOT Mismatch
 

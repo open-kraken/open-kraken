@@ -102,16 +102,24 @@ func (h *RealtimeHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	workspaceID := strings.TrimSpace(query.Get("workspaceId"))
 	memberID := strings.TrimSpace(query.Get("memberId"))
-	subscriptions := parseSubscriptions(query.Get("subscriptions"))
+	subscriptions, invalidSubscriptions := parseSubscriptions(query.Get("subscriptions"))
 	channelIDs := query["conversationId"]
 	terminalIDs := query["terminalId"]
 	if workspaceID == "" || memberID == "" {
 		_ = writeJSON(handshakeRejected("realtime_invalid_handshake", "workspaceId and memberId are required", http.StatusBadRequest))
 		return
 	}
+	if len(invalidSubscriptions) > 0 {
+		_ = writeJSON(handshakeRejected("realtime_invalid_handshake", "unknown subscriptions: "+strings.Join(invalidSubscriptions, ","), http.StatusBadRequest))
+		return
+	}
 	authCtx, err := authContextFromRequest(r, authz.ActionTerminalAttach)
 	if err != nil {
 		_ = writeJSON(handshakeRejected("auth.unauthorized", err.Error(), http.StatusUnauthorized))
+		return
+	}
+	if authCtx.Actor.MemberID != memberID {
+		_ = writeJSON(handshakeRejected("auth.workspace_mismatch", "bearer token does not match requested memberId", http.StatusForbidden))
 		return
 	}
 	authCtx.WorkspaceID = workspaceID
@@ -120,9 +128,17 @@ func (h *RealtimeHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 		_ = writeJSON(handshakeRejected("auth.capability_denied", err.Error(), http.StatusForbidden))
 		return
 	}
+	families := subscriptionFamilies(subscriptions)
+	if !subscriptions["chat"] {
+		channelIDs = nil
+	}
+	if !subscriptions["terminal"] {
+		terminalIDs = nil
+	}
 
 	result, err := h.hub.Subscribe(realtime.SubscribeRequest{
 		WorkspaceID: workspaceID,
+		Families:    families,
 		ChannelIDs:  channelIDs,
 		TerminalIDs: terminalIDs,
 		Cursor:      strings.TrimSpace(query.Get("cursor")),
@@ -131,6 +147,7 @@ func (h *RealtimeHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 		if err == realtime.ErrCursorAhead && h.startupCursor == realtime.NewCursor(0) {
 			result, err = h.hub.Subscribe(realtime.SubscribeRequest{
 				WorkspaceID: workspaceID,
+				Families:    families,
 				ChannelIDs:  channelIDs,
 				TerminalIDs: terminalIDs,
 			})
@@ -165,9 +182,37 @@ func (h *RealtimeHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 			if envelope.Type != session.EventAttach {
 				continue
 			}
+			if !subscriptions["terminal"] {
+				_ = writeJSON(realtime.Event{
+					Name:        realtime.EventTerminalStatus,
+					WorkspaceID: workspaceID,
+					MemberID:    memberID,
+					Payload: realtime.TerminalStatusPayload{
+						ConnectionState: "detached",
+						ProcessState:    "failed",
+						Reason:          "terminal subscription is not enabled",
+					},
+				})
+				continue
+			}
 			var req session.AttachRequest
 			if err := json.Unmarshal(envelope.Payload, &req); err != nil {
 				return
+			}
+			if len(terminalIDs) > 0 && !containsString(terminalIDs, req.SessionID) {
+				_ = writeJSON(realtime.Event{
+					Name:        realtime.EventTerminalStatus,
+					WorkspaceID: workspaceID,
+					MemberID:    memberID,
+					TerminalID:  req.SessionID,
+					Payload: realtime.TerminalStatusPayload{
+						TerminalID:      req.SessionID,
+						ConnectionState: "detached",
+						ProcessState:    "failed",
+						Reason:          "terminal subscription is outside caller scope",
+					},
+				})
+				continue
 			}
 			stopCurrentRelay()
 			authCtx, err := authContextFromRequest(r, authz.ActionTerminalAttach)
@@ -263,6 +308,7 @@ func (h *RealtimeHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 			cursor := h.hub.LatestCursor()
 			nextResult, err := h.hub.Subscribe(realtime.SubscribeRequest{
 				WorkspaceID: workspaceID,
+				Families:    families,
 				ChannelIDs:  channelIDs,
 				TerminalIDs: unionIDs(terminalIDs, req.SessionID),
 				Cursor:      cursor,
@@ -282,13 +328,13 @@ func (h *RealtimeHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 func handshakeAccepted(workspaceID, memberID string, subscriptions map[string]bool, channelIDs, terminalIDs []string, requestedCursor string, result *realtime.SubscribeResult) map[string]any {
 	scope := map[string]any{}
 	scope["chat"] = subscriptions["chat"]
-	if len(channelIDs) > 0 {
+	if subscriptions["chat"] && len(channelIDs) > 0 {
 		scope["chat"] = channelIDs
 	}
 	scope["members"] = subscriptions["members"]
 	scope["roadmap"] = subscriptions["roadmap"]
 	scope["terminal"] = subscriptions["terminal"]
-	if len(terminalIDs) > 0 {
+	if subscriptions["terminal"] && len(terminalIDs) > 0 {
 		scope["terminal"] = terminalIDs
 	}
 	return map[string]any{
@@ -318,7 +364,7 @@ func handshakeRejected(code, message string, status int) map[string]any {
 	}
 }
 
-func parseSubscriptions(raw string) map[string]bool {
+func parseSubscriptions(raw string) (map[string]bool, []string) {
 	result := map[string]bool{
 		"chat":     true,
 		"members":  true,
@@ -326,7 +372,7 @@ func parseSubscriptions(raw string) map[string]bool {
 		"terminal": true,
 	}
 	if strings.TrimSpace(raw) == "" {
-		return result
+		return result, nil
 	}
 	result = map[string]bool{
 		"chat":     false,
@@ -334,13 +380,38 @@ func parseSubscriptions(raw string) map[string]bool {
 		"roadmap":  false,
 		"terminal": false,
 	}
+	var invalid []string
 	for _, part := range strings.Split(raw, ",") {
 		name := strings.TrimSpace(part)
-		if _, ok := result[name]; ok {
-			result[name] = true
+		if name == "" {
+			continue
+		}
+		if _, ok := result[name]; !ok {
+			invalid = append(invalid, name)
+			continue
+		}
+		result[name] = true
+	}
+	return result, invalid
+}
+
+func subscriptionFamilies(subscriptions map[string]bool) []string {
+	families := make([]string, 0, len(subscriptions))
+	for _, name := range []string{"chat", "members", "roadmap", "terminal"} {
+		if subscriptions[name] {
+			families = append(families, name)
 		}
 	}
-	return result
+	return families
+}
+
+func containsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 func unionIDs(existing []string, next string) []string {

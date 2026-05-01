@@ -10,7 +10,8 @@ const (
 type MessageStatus string
 
 const (
-	MessageStatusSending MessageStatus = "sending"
+	MessageStatusPending MessageStatus = "pending"
+	MessageStatusSending MessageStatus = MessageStatusPending
 	MessageStatusSent    MessageStatus = "sent"
 	MessageStatusFailed  MessageStatus = "failed"
 )
@@ -51,6 +52,30 @@ type WorkspaceDTO struct {
 	RootPath string          `json:"rootPath"`
 	ReadOnly bool            `json:"readOnly"`
 	Warning  *WorkspaceAlert `json:"warning,omitempty"`
+}
+
+type NamespaceStatus string
+
+const (
+	NamespaceStatusActive   NamespaceStatus = "active"
+	NamespaceStatusArchived NamespaceStatus = "archived"
+)
+
+type NamespaceDTO struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Slug        string          `json:"slug"`
+	Description string          `json:"description"`
+	Status      NamespaceStatus `json:"status"`
+	TeamCount   int             `json:"team_count"`
+	MemberCount int             `json:"member_count"`
+	CreatedAt   string          `json:"created_at"`
+	UpdatedAt   string          `json:"updated_at"`
+}
+
+type NamespaceListDTO struct {
+	Items []NamespaceDTO `json:"items"`
+	Total int            `json:"total"`
 }
 
 type WorkspaceAlert struct {
@@ -259,18 +284,18 @@ type TokenStatsDTO struct {
 
 // RunDTO is the API representation of an AEL Run.
 type RunDTO struct {
-	ID          string  `json:"id"`
-	TenantID    string  `json:"tenantId"`
-	HiveID      string  `json:"hiveId"`
-	State       string  `json:"state"`
-	PolicySetID string  `json:"policySetId,omitempty"`
-	TokenBudget int     `json:"tokenBudget"`
-	TokensUsed  int     `json:"tokensUsed"`
-	CostUSD     float64 `json:"costUsd"`
-	Objective   string  `json:"objective,omitempty"`
-	Version     int     `json:"version"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenantId"`
+	HiveID      string    `json:"hiveId"`
+	State       string    `json:"state"`
+	PolicySetID string    `json:"policySetId,omitempty"`
+	TokenBudget int       `json:"tokenBudget"`
+	TokensUsed  int       `json:"tokensUsed"`
+	CostUSD     float64   `json:"costUsd"`
+	Objective   string    `json:"objective,omitempty"`
+	Version     int       `json:"version"`
+	CreatedAt   string    `json:"createdAt"`
+	UpdatedAt   string    `json:"updatedAt"`
 	Flows       []FlowDTO `json:"flows,omitempty"`
 }
 
@@ -289,22 +314,22 @@ type FlowDTO struct {
 
 // StepDTO is the API representation of an AEL Step.
 type StepDTO struct {
-	ID            string       `json:"id"`
-	FlowID        string       `json:"flowId"`
-	RunID         string       `json:"runId"`
-	TenantID      string       `json:"tenantId"`
-	State         string       `json:"state"`
-	Regime        string       `json:"regime"`
-	WorkloadClass string       `json:"workloadClass"`
-	AgentType     string       `json:"agentType,omitempty"`
-	Provider      string       `json:"provider,omitempty"`
-	TokensUsed    int          `json:"tokensUsed"`
-	CostUSD       float64      `json:"costUsd"`
-	DurationMS    int          `json:"durationMs"`
-	FailureReason string       `json:"failureReason,omitempty"`
-	Version       int          `json:"version"`
-	CreatedAt     string       `json:"createdAt"`
-	UpdatedAt     string       `json:"updatedAt"`
+	ID            string          `json:"id"`
+	FlowID        string          `json:"flowId"`
+	RunID         string          `json:"runId"`
+	TenantID      string          `json:"tenantId"`
+	State         string          `json:"state"`
+	Regime        string          `json:"regime"`
+	WorkloadClass string          `json:"workloadClass"`
+	AgentType     string          `json:"agentType,omitempty"`
+	Provider      string          `json:"provider,omitempty"`
+	TokensUsed    int             `json:"tokensUsed"`
+	CostUSD       float64         `json:"costUsd"`
+	DurationMS    int             `json:"durationMs"`
+	FailureReason string          `json:"failureReason,omitempty"`
+	Version       int             `json:"version"`
+	CreatedAt     string          `json:"createdAt"`
+	UpdatedAt     string          `json:"updatedAt"`
 	SideEffects   []SideEffectDTO `json:"sideEffects,omitempty"`
 }
 

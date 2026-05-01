@@ -4,7 +4,12 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"open-kraken/backend/go/internal/authn"
+	"open-kraken/backend/go/internal/authz"
 )
+
+const developmentBearerPrefix = "open-kraken-dev."
 
 type principalKey struct{}
 
@@ -43,9 +48,8 @@ func WithAuth(jwtSecret []byte, next http.Handler) http.Handler {
 		}
 		token := strings.TrimPrefix(auth, "Bearer ")
 
-		// Support legacy dev tokens (open-kraken-dev.*) by passing them through.
-		if strings.HasPrefix(token, "open-kraken-dev.") {
-			next.ServeHTTP(w, r)
+		if strings.HasPrefix(token, developmentBearerPrefix) {
+			writeAuthError(w, "development bearer tokens are disabled when JWT auth is configured")
 			return
 		}
 
@@ -55,8 +59,22 @@ func WithAuth(jwtSecret []byte, next http.Handler) http.Handler {
 			return
 		}
 
+		principal := authz.Principal{
+			WorkspaceID: claims.WorkspaceID,
+			MemberID:    claims.MemberID,
+			Role:        authz.Role(claims.Role),
+		}
+		internalBearer, err := authn.NewDevelopmentBearerToken(principal)
+		if err != nil {
+			writeAuthError(w, "invalid token claims")
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), principalKey{}, claims)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		nextReq := r.WithContext(ctx)
+		nextReq.Header = r.Header.Clone()
+		nextReq.Header.Set("Authorization", internalBearer)
+		next.ServeHTTP(w, nextReq)
 	})
 }
 

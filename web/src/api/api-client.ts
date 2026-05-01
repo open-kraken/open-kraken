@@ -56,6 +56,7 @@ export type RoadmapResponse = {
 
 export type RoadmapDocumentResponse = {
   readOnly?: boolean;
+  version?: number;
   storage?: 'workspace' | 'app' | 'none';
   warning?: string;
   readOnlyReason?: string | null;
@@ -74,6 +75,7 @@ export type RoadmapDocumentResponse = {
 
 export type ProjectDataDocumentResponse = {
   readOnly?: boolean;
+  version?: number;
   storage?: 'workspace' | 'app' | 'none';
   warning?: string;
   readOnlyReason?: string | null;
@@ -164,9 +166,9 @@ export type ApiClient = {
   /** Same payload as {@link getRoadmapDocument}; kept for callers that only need the roadmap envelope. */
   getRoadmap: () => Promise<RoadmapDocumentResponse>;
   getRoadmapDocument: () => Promise<RoadmapDocumentResponse>;
-  updateRoadmapDocument: (payload: { readOnly: boolean; roadmap: RoadmapDocumentResponse['roadmap'] }) => Promise<RoadmapDocumentResponse>;
+  updateRoadmapDocument: (payload: { readOnly: boolean; expectedVersion?: number; roadmap: RoadmapDocumentResponse['roadmap'] }) => Promise<RoadmapDocumentResponse>;
   getProjectDataDocument: () => Promise<ProjectDataDocumentResponse>;
-  updateProjectDataDocument: (payload: { readOnly: boolean; payload: Record<string, unknown> }) => Promise<ProjectDataDocumentResponse>;
+  updateProjectDataDocument: (payload: { readOnly: boolean; expectedVersion?: number; payload: Record<string, unknown> }) => Promise<ProjectDataDocumentResponse>;
   /** Terminal attach for a session id (HTTP GET per workspace route handler). */
   listTerminalSessions?: (workspaceId: string) => Promise<TerminalSessionsResponse>;
   attachTerminalSession: (sessionId: string) => Promise<unknown>;

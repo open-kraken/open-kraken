@@ -64,10 +64,11 @@ type WorkspaceHandler struct {
 	nodeSvc       *node.Service
 	settingsSvc   *settings.Service
 	// teams mirrors roster.json (memberIds); expanded in API responses.
-	teams         []roster.Team
-	rosterVersion int64
-	rosterStore   roster.Store
-	rosterStorage string
+	teams          []roster.Team
+	rosterVersion  int64
+	rosterStore    roster.Store
+	rosterStorage  string
+	roadmapVersion int64
 }
 
 func NewWorkspaceHandler(service *terminal.Service, hub *realtime.Hub, projectRepo projectdata.ProjectDataRepository, workspaceRoot string) *WorkspaceHandler {

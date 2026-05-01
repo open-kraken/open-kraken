@@ -21,6 +21,7 @@ export type RoadmapDocument = {
 
 export type RoadmapResponse = {
   readOnly: boolean;
+  version?: number;
   warning?: string;
   storage?: 'workspace' | 'app' | 'none';
   readOnlyReason?: string;
@@ -34,6 +35,7 @@ export type ProjectDataPayload = Record<string, unknown>;
 
 export type ProjectDataDocument = {
   payload: ProjectDataPayload;
+  version: number;
   storage: 'workspace' | 'app' | 'none';
   warning: string;
   readOnlyReason: string | null;
@@ -41,6 +43,7 @@ export type ProjectDataDocument = {
 
 export type ProjectDataResponse = {
   readOnly?: boolean;
+  version?: number;
   storage?: 'workspace' | 'app' | 'none';
   warning?: string;
   readOnlyReason?: string | null;
@@ -49,9 +52,9 @@ export type ProjectDataResponse = {
 
 export type RoadmapProjectDataClient = {
   getRoadmap: () => Promise<RoadmapResponse>;
-  updateRoadmap: (roadmap: RoadmapResponse['roadmap']) => Promise<RoadmapResponse>;
+  updateRoadmap: (roadmap: RoadmapResponse['roadmap'], expectedVersion?: number) => Promise<RoadmapResponse>;
   getProjectData: () => Promise<ProjectDataResponse>;
-  updateProjectData: (payload: { readOnly: boolean; payload: ProjectDataPayload }) => Promise<ProjectDataResponse>;
+  updateProjectData: (payload: { readOnly: boolean; expectedVersion?: number; payload: ProjectDataPayload }) => Promise<ProjectDataResponse>;
 };
 
 const compareTasks = (left: RoadmapTaskItem, right: RoadmapTaskItem) => {
@@ -97,6 +100,7 @@ export const normalizeRoadmapDocument = (response: RoadmapResponse): RoadmapDocu
 
 export const normalizeProjectDataDocument = (response: ProjectDataResponse): ProjectDataDocument => ({
   payload: response.payload ?? {},
+  version: response.version ?? 0,
   storage: response.storage ?? 'none',
   warning: response.warning ?? '',
   readOnlyReason:

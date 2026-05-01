@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"open-kraken/backend/go/internal/skill"
 )
@@ -46,7 +48,7 @@ func (h *SkillHandler) HandleSkillImport(w http.ResponseWriter, r *http.Request)
 	switch strategy {
 	case skill.ImportStrategyMerge, skill.ImportStrategyReplace, skill.ImportStrategyValidate:
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "strategy must be merge, replace, or validate"})
+		writeError(w, http.StatusBadRequest, errors.New("strategy must be merge, replace, or validate"))
 		return
 	}
 	result, err := h.svc.ImportSkills(r.Context(), body.Entries, strategy)
@@ -80,13 +82,33 @@ func (h *SkillHandler) HandleSkills(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// HandleSkillsReload handles POST /api/skills/reload. The loader is currently
+// filesystem-backed without an in-memory cache, so reload means rescan and
+// return the visible catalog count.
+func (h *SkillHandler) HandleSkillsReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	entries, err := h.svc.ListSkills()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"loaded":     len(entries),
+		"skipped":    0,
+		"reloadedAt": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 // HandleMemberSkills routes PUT and GET requests for /api/members/{id}/skills.
 func (h *SkillHandler) HandleMemberSkills(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, h.membersPrefix)
 	path = strings.TrimSuffix(path, "/skills")
 	memberID := strings.Trim(path, "/")
 	if memberID == "" {
-		w.WriteHeader(http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, errors.New("memberId is required"))
 		return
 	}
 
@@ -101,11 +123,6 @@ func (h *SkillHandler) HandleMemberSkills(w http.ResponseWriter, r *http.Request
 }
 
 func (h *SkillHandler) handleBindSkills(w http.ResponseWriter, r *http.Request, memberID string) {
-	if h.canAssignSkillsToMember != nil && !h.canAssignSkillsToMember(memberID) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "skills can only be assigned to AI Assistant members"})
-		return
-	}
-
 	var body struct {
 		Skills []string `json:"skills"`
 	}
@@ -115,6 +132,10 @@ func (h *SkillHandler) handleBindSkills(w http.ResponseWriter, r *http.Request, 
 	ctx := r.Context()
 	if body.Skills == nil {
 		body.Skills = []string{}
+	}
+	if len(body.Skills) > 0 && h.canAssignSkillsToMember != nil && !h.canAssignSkillsToMember(memberID) {
+		writeError(w, http.StatusBadRequest, errors.New("skills can only be assigned to AI Assistant members"))
+		return
 	}
 	if err := h.svc.ReplaceMemberSkills(ctx, memberID, body.Skills); err != nil {
 		writeError(w, http.StatusBadRequest, err)

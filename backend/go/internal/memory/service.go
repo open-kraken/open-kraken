@@ -40,7 +40,7 @@ func (s *Service) Put(ctx context.Context, e MemoryEntry) (MemoryEntry, error) {
 		return MemoryEntry{}, fmt.Errorf("memory put: %w", err)
 	}
 	// Reload to get timestamps set by the repository.
-	stored, err := s.repo.Get(ctx, e.Scope, e.Key)
+	stored, err := s.repo.Get(ctx, e.Scope, e.OwnerID, e.Key)
 	if err != nil {
 		return MemoryEntry{}, fmt.Errorf("memory put reload: %w", err)
 	}
@@ -49,11 +49,11 @@ func (s *Service) Put(ctx context.Context, e MemoryEntry) (MemoryEntry, error) {
 
 // Get retrieves the entry identified by scope and key.
 // Returns ErrNotFound for absent or expired entries.
-func (s *Service) Get(ctx context.Context, scope Scope, key string) (MemoryEntry, error) {
+func (s *Service) Get(ctx context.Context, scope Scope, ownerID, key string) (MemoryEntry, error) {
 	if err := ValidateScope(scope); err != nil {
 		return MemoryEntry{}, err
 	}
-	e, err := s.repo.Get(ctx, scope, key)
+	e, err := s.repo.Get(ctx, scope, ownerID, key)
 	if err != nil {
 		return MemoryEntry{}, fmt.Errorf("memory get: %w", err)
 	}
@@ -61,22 +61,22 @@ func (s *Service) Get(ctx context.Context, scope Scope, key string) (MemoryEntry
 }
 
 // Delete removes the entry identified by scope and key.
-func (s *Service) Delete(ctx context.Context, scope Scope, key string) error {
+func (s *Service) Delete(ctx context.Context, scope Scope, ownerID, key string) error {
 	if err := ValidateScope(scope); err != nil {
 		return err
 	}
-	if err := s.repo.Delete(ctx, scope, key); err != nil {
+	if err := s.repo.Delete(ctx, scope, ownerID, key); err != nil {
 		return fmt.Errorf("memory delete: %w", err)
 	}
 	return nil
 }
 
 // List returns all non-expired entries for the given scope.
-func (s *Service) List(ctx context.Context, scope Scope) ([]MemoryEntry, error) {
+func (s *Service) List(ctx context.Context, scope Scope, ownerID string) ([]MemoryEntry, error) {
 	if err := ValidateScope(scope); err != nil {
 		return nil, err
 	}
-	entries, err := s.repo.ListByScope(ctx, scope)
+	entries, err := s.repo.ListByScope(ctx, scope, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("memory list: %w", err)
 	}

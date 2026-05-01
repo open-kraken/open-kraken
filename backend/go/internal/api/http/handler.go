@@ -13,6 +13,7 @@ import (
 	"open-kraken/backend/go/internal/ledger"
 	"open-kraken/backend/go/internal/memory"
 	"open-kraken/backend/go/internal/message"
+	namespaces "open-kraken/backend/go/internal/namespace"
 	"open-kraken/backend/go/internal/node"
 	"open-kraken/backend/go/internal/plugin"
 	"open-kraken/backend/go/internal/presence"
@@ -40,6 +41,7 @@ type ExtendedServices struct {
 	MemoryService    *memory.Service
 	LedgerService    *ledger.Service
 	MessageService   *message.Service
+	NamespaceService *namespaces.Service
 	PresenceService  *presence.Service
 	PluginService    *plugin.Service
 	SettingsService  *settings.Service
@@ -48,6 +50,7 @@ type ExtendedServices struct {
 	InstanceManager  *instance.Manager
 	AuthAccounts     []handlers.KnownAccount
 	AccountService   *account.Service
+	JWTSecret        string
 	RosterStore      roster.Store
 	// AELService is the Authoritative Execution Ledger (paper §3.2). Nil when
 	// OPEN_KRAKEN_POSTGRES_DSN is not configured.
@@ -123,6 +126,7 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 		skillHandler := handlers.NewSkillHandler(ext.SkillService, JoinAPI(apiBasePath, "members")+"/")
 		skillHandler.SetMemberSkillEligibility(workspaceHandler.MemberCanUseSkills)
 		mux.HandleFunc(JoinAPI(apiBasePath, "skills"), skillHandler.HandleSkills)
+		mux.HandleFunc(JoinAPI(apiBasePath, "skills/reload"), skillHandler.HandleSkillsReload)
 		mux.HandleFunc(JoinAPI(apiBasePath, "members")+"/", skillHandler.HandleMemberSkills)
 	}
 
@@ -164,6 +168,14 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 		msgBase := JoinAPI(apiBasePath, "messages")
 		mux.HandleFunc(msgBase, msgHandler.Handle)
 		mux.HandleFunc(msgBase+"/", msgHandler.Handle)
+	}
+
+	// Namespace registry routes.
+	if ext.NamespaceService != nil {
+		namespaceHandler := handlers.NewNamespaceHandler(ext.NamespaceService, JoinAPI(apiBasePath, "namespaces"))
+		namespacesBase := JoinAPI(apiBasePath, "namespaces")
+		mux.HandleFunc(namespacesBase, namespaceHandler.Handle)
+		mux.HandleFunc(namespacesBase+"/", namespaceHandler.Handle)
 	}
 
 	// Provider registry routes.
@@ -228,7 +240,7 @@ func NewHandlerWithDependencies(service *terminal.Service, hub *realtime.Hub, pr
 	}
 
 	// Authentication endpoints (always registered).
-	authHandler := handlers.NewAuthHandlerWithService(ext.AccountService, ext.AuthAccounts)
+	authHandler := handlers.NewAuthHandlerWithServiceAndJWT(ext.AccountService, ext.AuthAccounts, ext.JWTSecret)
 	mux.HandleFunc(JoinAPI(apiBasePath, "auth/login"), authHandler.HandleLogin)
 	mux.HandleFunc(JoinAPI(apiBasePath, "auth/me"), authHandler.HandleMe)
 	if ext.AccountService != nil {

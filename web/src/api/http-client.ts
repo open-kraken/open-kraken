@@ -4,6 +4,7 @@ export type HttpErrorEnvelope = {
   requestId: string;
   details?: unknown;
   status: number;
+  retryable?: boolean;
 };
 
 export class HttpClientError extends Error {
@@ -82,20 +83,28 @@ const parseErrorEnvelope = async (response: Response, requestId: string): Promis
   const statusFallback = classifyStatusCode(response.status);
 
   try {
-    const body = (await response.json()) as Partial<HttpErrorEnvelope>;
+    const body = (await response.json()) as Partial<HttpErrorEnvelope> & {
+      error?: string | Partial<HttpErrorEnvelope>;
+    };
+    const nested = body.error && typeof body.error === 'object' ? body.error : undefined;
     return {
-      code: body.code ?? statusFallback.code,
-      message: body.message ?? statusFallback.message,
-      requestId: body.requestId ?? requestId,
-      details: body.details,
-      status: response.status
+      code: body.code ?? nested?.code ?? statusFallback.code,
+      message:
+        body.message ??
+        nested?.message ??
+        (typeof body.error === 'string' ? body.error : statusFallback.message),
+      requestId: body.requestId ?? nested?.requestId ?? requestId,
+      details: body.details ?? nested?.details,
+      status: response.status,
+      retryable: body.retryable ?? nested?.retryable,
     };
   } catch {
     return {
       ...statusFallback,
       requestId,
       details: undefined,
-      status: response.status
+      status: response.status,
+      retryable: response.status === 408 || response.status === 429 || response.status >= 500
     };
   }
 };

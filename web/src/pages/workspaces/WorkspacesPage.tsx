@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
+import { PreviewRouteNotice } from "@/components/shell/PreviewRouteNotice";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -291,17 +292,19 @@ export function WorkspacesPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-8">
+            <Button variant="outline" size="sm" className="h-8" disabled title="Preview data only">
               <Download size={14} className="mr-1" />
               Clone
             </Button>
-            <Button size="sm" className="h-8">
+            <Button size="sm" className="h-8" disabled title="Preview data only">
               <Plus size={14} className="mr-1" />
               New Workspace
             </Button>
           </div>
         </div>
       </div>
+
+      <PreviewRouteNotice surface="Workspaces" dependency="workspace registry, repository, and file-tree APIs" />
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
@@ -371,13 +374,13 @@ export function WorkspacesPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" disabled title="Preview data only">
                   <Settings size={14} className="mr-1" />
                   Settings
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" disabled title="Preview data only">
                       <MoreVertical size={14} />
                     </Button>
                   </DropdownMenuTrigger>

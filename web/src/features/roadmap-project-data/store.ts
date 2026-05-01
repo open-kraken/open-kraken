@@ -33,6 +33,7 @@ export type RoadmapEditorState = {
   saveError: string | null;
   warning: string;
   storage: 'workspace' | 'app' | 'none';
+  version: number;
   readOnlyReason: string | null;
   reloadRequestedWhileDirty: boolean;
 };
@@ -54,6 +55,7 @@ export const EMPTY_ROADMAP: RoadmapDocument = {
 
 export const EMPTY_PROJECT_DATA: ProjectDataDocument = {
   payload: {},
+  version: 0,
   storage: 'none',
   warning: '',
   readOnlyReason: null
@@ -78,6 +80,7 @@ export const createRoadmapEditorState = (): RoadmapEditorState => ({
   saveError: null,
   warning: '',
   storage: 'none',
+  version: 0,
   readOnlyReason: null,
   reloadRequestedWhileDirty: false
 });
@@ -101,6 +104,7 @@ export const hydrateRoadmapState = (response: RoadmapResponse): RoadmapEditorSta
     saveError: null,
     warning: response.warning ?? '',
     storage: response.storage ?? 'workspace',
+    version: response.version ?? 0,
     readOnlyReason:
       response.readOnly === true
         ? response.readOnlyReason ?? DEFAULT_READONLY_REASON_EN

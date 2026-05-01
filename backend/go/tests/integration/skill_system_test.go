@@ -76,12 +76,12 @@ func TestMemberSkillBind_Success(t *testing.T) {
 	skillMD(t, env.SkillDir, "tech-lead-pro", "tech-lead", "TL skill")
 	doReq(t, env, http.MethodPost, "/api/v1/skills/reload", nil)
 
-	resp := doReq(t, env, http.MethodPut, "/api/v1/members/member-bind/skills", map[string]any{
+	resp := doReq(t, env, http.MethodPut, "/api/v1/members/assistant_1/skills", map[string]any{
 		"skills": []string{"tech-lead-pro"},
 	})
 	body := mustStatus(t, resp, http.StatusOK)
-	if body["memberId"] != "member-bind" {
-		t.Errorf("expected memberId=member-bind, got %v", body["memberId"])
+	if body["memberId"] != "assistant_1" {
+		t.Errorf("expected memberId=assistant_1, got %v", body["memberId"])
 	}
 }
 
@@ -92,7 +92,7 @@ func TestMemberSkillBind_Success(t *testing.T) {
 func TestMemberSkillBind_UnknownSkill(t *testing.T) {
 	env := startTestServer(t)
 
-	resp := doReq(t, env, http.MethodPut, "/api/v1/members/member-x/skills", map[string]any{
+	resp := doReq(t, env, http.MethodPut, "/api/v1/members/assistant_1/skills", map[string]any{
 		"skills": []string{"non-existent-skill"},
 	})
 	defer resp.Body.Close()
@@ -112,11 +112,11 @@ func TestMemberSkillGet_AfterBind(t *testing.T) {
 	skillMD(t, env.SkillDir, "devops-pro", "devops-engineer", "DevOps skill")
 	doReq(t, env, http.MethodPost, "/api/v1/skills/reload", nil)
 
-	doReq(t, env, http.MethodPut, "/api/v1/members/member-get/skills", map[string]any{
+	doReq(t, env, http.MethodPut, "/api/v1/members/assistant_1/skills", map[string]any{
 		"skills": []string{"devops-pro"},
 	})
 
-	resp := doReq(t, env, http.MethodGet, "/api/v1/members/member-get/skills", nil)
+	resp := doReq(t, env, http.MethodGet, "/api/v1/members/assistant_1/skills", nil)
 	body := mustStatus(t, resp, http.StatusOK)
 
 	skills, _ := body["skills"].([]any)

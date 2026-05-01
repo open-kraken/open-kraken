@@ -79,9 +79,11 @@ func (h *MemoryHandler) handlePut(w http.ResponseWriter, r *http.Request, scopeS
 	actor := actorID(r)
 
 	// For agent scope, ownerId is forced to the caller's actor ID to prevent
-	// cross-agent writes. Team and global scopes use the actor ID as ownerId
-	// for audit purposes but do not restrict access.
-	ownerID := actor
+	// cross-agent writes. Team and global entries remain shared by key.
+	ownerID := ""
+	if scope == memory.ScopeAgent {
+		ownerID = actor
+	}
 	e := memory.MemoryEntry{
 		Key:     key,
 		Value:   body.Value,
@@ -100,21 +102,25 @@ func (h *MemoryHandler) handlePut(w http.ResponseWriter, r *http.Request, scopeS
 
 func (h *MemoryHandler) handleGet(w http.ResponseWriter, r *http.Request, scopeStr, key string) {
 	scope := memory.Scope(scopeStr)
-	e, err := h.svc.Get(r.Context(), scope, key)
-	if err != nil {
-		writeMemoryError(w, err)
+	ownerID, ok := h.memoryOwner(w, r, scope)
+	if !ok {
 		return
 	}
-	// For agent scope, enforce that only the owning actor can read the entry.
-	if scope == memory.ScopeAgent && e.OwnerID != actorID(r) {
-		writeError(w, http.StatusForbidden, errForbidden)
+	e, err := h.svc.Get(r.Context(), scope, ownerID, key)
+	if err != nil {
+		writeMemoryError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toMemoryResponse(e))
 }
 
 func (h *MemoryHandler) handleList(w http.ResponseWriter, r *http.Request, scopeStr string) {
-	entries, err := h.svc.List(r.Context(), memory.Scope(scopeStr))
+	scope := memory.Scope(scopeStr)
+	ownerID, ok := h.memoryOwner(w, r, scope)
+	if !ok {
+		return
+	}
+	entries, err := h.svc.List(r.Context(), scope, ownerID)
 	if err != nil {
 		writeMemoryError(w, err)
 		return
@@ -128,23 +134,27 @@ func (h *MemoryHandler) handleList(w http.ResponseWriter, r *http.Request, scope
 
 func (h *MemoryHandler) handleDelete(w http.ResponseWriter, r *http.Request, scopeStr, key string) {
 	scope := memory.Scope(scopeStr)
-	// For agent scope, verify ownership before deletion.
-	if scope == memory.ScopeAgent {
-		e, err := h.svc.Get(r.Context(), scope, key)
-		if err != nil {
-			writeMemoryError(w, err)
-			return
-		}
-		if e.OwnerID != actorID(r) {
-			writeError(w, http.StatusForbidden, errForbidden)
-			return
-		}
+	ownerID, ok := h.memoryOwner(w, r, scope)
+	if !ok {
+		return
 	}
-	if err := h.svc.Delete(r.Context(), scope, key); err != nil {
+	if err := h.svc.Delete(r.Context(), scope, ownerID, key); err != nil {
 		writeMemoryError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *MemoryHandler) memoryOwner(w http.ResponseWriter, r *http.Request, scope memory.Scope) (string, bool) {
+	if scope != memory.ScopeAgent {
+		return "", true
+	}
+	ownerID := actorID(r)
+	if requestedOwner := strings.TrimSpace(r.URL.Query().Get("ownerId")); requestedOwner != "" && requestedOwner != ownerID {
+		writeError(w, http.StatusForbidden, errForbidden)
+		return "", false
+	}
+	return ownerID, true
 }
 
 func toMemoryResponse(e memory.MemoryEntry) map[string]any {

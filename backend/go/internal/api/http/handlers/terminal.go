@@ -205,10 +205,6 @@ func writeJSON(w http.ResponseWriter, status int, value interface{}) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func writeError(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, map[string]string{"error": err.Error()})
-}
-
 func writeServiceError(w http.ResponseWriter, err error) {
 	if errors.Is(err, session.ErrSessionNotFound) {
 		writeError(w, http.StatusNotFound, err)

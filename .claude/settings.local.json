@@ -153,7 +153,11 @@
       "Bash(GOWORK=off env -u GOROOT -u GOTOOLDIR -u GOPATH go test ./internal/provider/openai/ -v)",
       "Bash(GOWORK=off env -u GOROOT -u GOTOOLDIR -u GOPATH go build ./internal/llmexec/)",
       "Bash(GOWORK=off env -u GOROOT -u GOTOOLDIR -u GOPATH go test ./internal/llmexec/ -run \"^TestExecutor_Skill|^TestComposeSystemPrompt\" -v)",
-      "Bash(GOWORK=off env -u GOROOT -u GOTOOLDIR -u GOPATH go test ./internal/flowscheduler/ -run \"^TestScheduler_Retry|^TestDefaultRetryPolicy\" -v)"
+      "Bash(GOWORK=off env -u GOROOT -u GOTOOLDIR -u GOPATH go test ./internal/flowscheduler/ -run \"^TestScheduler_Retry|^TestDefaultRetryPolicy\" -v)",
+      "mcp__aionui-team-06655082-815c-44c2-9fc3-83e93d85966f__team_task_list",
+      "mcp__aionui-team-06655082-815c-44c2-9fc3-83e93d85966f__team_members",
+      "mcp__aionui-team-06655082-815c-44c2-9fc3-83e93d85966f__team_send_message",
+      "mcp__aionui-team-06655082-815c-44c2-9fc3-83e93d85966f__team_task_update"
     ]
   }
 }

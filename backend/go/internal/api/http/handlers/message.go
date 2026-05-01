@@ -202,7 +202,7 @@ func messageToJSON(m message.Message) map[string]any {
 			"type": string(m.ContentType),
 			"text": m.ContentText,
 		},
-		"status":    string(m.Status),
+		"status":    string(message.NormalizeStatus(m.Status)),
 		"isAi":      m.IsAI,
 		"seq":       m.Seq,
 		"createdAt": m.CreatedAt.Format(time.RFC3339Nano),

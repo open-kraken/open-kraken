@@ -45,7 +45,7 @@ func TestRealtimeHandlerAttachSnapshotDeltaStatusFlow(t *testing.T) {
 	wsURL.Path = "/realtime"
 	query := wsURL.Query()
 	query.Set("workspaceId", "ws-1")
-	query.Set("memberId", "member-1")
+	query.Set("memberId", "owner-1")
 	wsURL.RawQuery = query.Encode()
 
 	headers := http.Header{
@@ -97,6 +97,134 @@ func TestRealtimeHandlerAttachSnapshotDeltaStatusFlow(t *testing.T) {
 		if names[i] != name {
 			t.Fatalf("event[%d]=%s want %s", i, names[i], name)
 		}
+	}
+}
+
+func TestRealtimeHandlerRejectsMismatchedMemberID(t *testing.T) {
+	hub := realtime.NewHub(256)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), hub)
+	server := httptest.NewServer(apihttp.NewHandler(service, hub))
+	defer server.Close()
+
+	wsURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
+	}
+	wsURL.Scheme = "ws"
+	wsURL.Path = "/realtime"
+	query := wsURL.Query()
+	query.Set("workspaceId", "ws-1")
+	query.Set("memberId", "member-2")
+	wsURL.RawQuery = query.Encode()
+
+	headers := http.Header{
+		"X-Open-Kraken-Actor-Id":     {"owner-1"},
+		"X-Open-Kraken-Actor-Role":   {"owner"},
+		"X-Open-Kraken-Workspace-Id": {"ws-1"},
+	}
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), headers)
+	if err != nil {
+		t.Fatalf("dial websocket: %v", err)
+	}
+	defer conn.Close()
+
+	var frame map[string]any
+	if err := conn.ReadJSON(&frame); err != nil {
+		t.Fatalf("read rejected handshake: %v", err)
+	}
+	if frame["type"] != "handshake.rejected" {
+		t.Fatalf("expected handshake rejection, got %+v", frame)
+	}
+	errorBody, _ := frame["error"].(map[string]any)
+	if errorBody["code"] != "auth.workspace_mismatch" {
+		t.Fatalf("expected auth.workspace_mismatch, got %+v", frame)
+	}
+}
+
+func TestRealtimeHandlerMembersSubscriptionDoesNotReplayTerminalEvents(t *testing.T) {
+	hub := realtime.NewHub(256)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), hub)
+	hub.Publish(realtime.Event{
+		Name:        realtime.EventTerminalSnapshot,
+		WorkspaceID: "ws-1",
+		TerminalID:  "term-1",
+		Payload: realtime.TerminalSnapshotPayload{
+			TerminalID:      "term-1",
+			ConnectionState: "attached",
+			ProcessState:    "online",
+		},
+	})
+	hub.Publish(realtime.Event{
+		Name:        realtime.EventPresenceSnapshot,
+		WorkspaceID: "ws-1",
+		Payload: realtime.PresenceSnapshotPayload{
+			Members: []realtime.PresenceMember{{
+				MemberID:      "owner-1",
+				PresenceState: "online",
+			}},
+		},
+	})
+	server := httptest.NewServer(apihttp.NewHandler(service, hub))
+	defer server.Close()
+
+	wsURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
+	}
+	wsURL.Scheme = "ws"
+	wsURL.Path = "/realtime"
+	query := wsURL.Query()
+	query.Set("workspaceId", "ws-1")
+	query.Set("memberId", "owner-1")
+	query.Set("subscriptions", "members")
+	wsURL.RawQuery = query.Encode()
+
+	headers := http.Header{
+		"X-Open-Kraken-Actor-Id":     {"owner-1"},
+		"X-Open-Kraken-Actor-Role":   {"owner"},
+		"X-Open-Kraken-Workspace-Id": {"ws-1"},
+	}
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), headers)
+	if err != nil {
+		t.Fatalf("dial websocket: %v", err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+	var handshake map[string]any
+	if err := conn.ReadJSON(&handshake); err != nil {
+		t.Fatalf("read handshake: %v", err)
+	}
+	if handshake["type"] != "handshake.accepted" {
+		t.Fatalf("unexpected handshake: %+v", handshake)
+	}
+	scope, _ := handshake["subscriptionScope"].(map[string]any)
+	if scope["terminal"] != false {
+		t.Fatalf("expected terminal scope disabled, got %+v", scope)
+	}
+
+	var event realtime.Event
+	if err := conn.ReadJSON(&event); err != nil {
+		t.Fatalf("read replay event: %v", err)
+	}
+	if event.Name != realtime.EventPresenceSnapshot {
+		t.Fatalf("expected only presence snapshot, got %+v", event)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+	hub.Publish(realtime.Event{
+		Name:        realtime.EventTerminalStatus,
+		WorkspaceID: "ws-1",
+		TerminalID:  "term-1",
+		Payload: realtime.TerminalStatusPayload{
+			TerminalID:      "term-1",
+			ConnectionState: "attached",
+			ProcessState:    "online",
+		},
+	})
+	var leaked realtime.Event
+	if err := conn.ReadJSON(&leaked); err == nil {
+		t.Fatalf("unexpected terminal event leaked through members subscription: %+v", leaked)
 	}
 }
 

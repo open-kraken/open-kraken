@@ -81,7 +81,7 @@ func (h *AccountHandler) HandleByID(w http.ResponseWriter, r *http.Request) {
 		memberID = memberID[slash+1:]
 	}
 	if memberID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "memberId is required"})
+		writeError(w, http.StatusBadRequest, errors.New("memberId is required"))
 		return
 	}
 	switch r.Method {

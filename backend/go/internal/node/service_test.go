@@ -114,6 +114,29 @@ func TestServiceRegister(t *testing.T) {
 	}
 }
 
+func TestJSONRepositoryPersistsWorkspaceID(t *testing.T) {
+	ctx := context.Background()
+	repo := NewJSONRepository(t.TempDir())
+
+	original := Node{
+		ID:          "node-ws",
+		Hostname:    "host-ws",
+		NodeType:    NodeTypeK8sPod,
+		Status:      NodeStatusOnline,
+		WorkspaceID: "ws-custom",
+	}
+	if err := repo.Save(ctx, original); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := repo.FindByID(ctx, original.ID)
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if got.WorkspaceID != "ws-custom" {
+		t.Fatalf("expected workspace ID to round-trip, got %q", got.WorkspaceID)
+	}
+}
+
 func TestServiceRegisterValidation(t *testing.T) {
 	tests := []struct {
 		name    string

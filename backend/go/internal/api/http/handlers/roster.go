@@ -200,14 +200,14 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 			}
 			memberID := strings.TrimSpace(asString(body["memberId"]))
 			if memberID == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "memberId is required"})
+				writeError(w, http.StatusBadRequest, errors.New("memberId is required"))
 				return
 			}
 			h.mu.Lock()
 			for _, m := range h.state.Members.Members {
 				if asString(m["memberId"]) == memberID {
 					h.mu.Unlock()
-					writeJSON(w, http.StatusConflict, map[string]any{"message": "member already exists"})
+					writeError(w, http.StatusConflict, errors.New("member already exists"))
 					return
 				}
 			}
@@ -242,7 +242,7 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 			}
 			targetTeamID := h.resolveTargetTeamID(body)
 			if targetTeamID == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "teamId does not exist"})
+				writeError(w, http.StatusBadRequest, errors.New("teamId does not exist"))
 				return
 			}
 			if targetTeamID != "team_default" {
@@ -263,7 +263,7 @@ func (h *WorkspaceHandler) HandleMembers(w http.ResponseWriter, r *http.Request,
 			for _, m := range h.state.Members.Members {
 				if asString(m["memberId"]) == memberID {
 					h.cleanupInitializedAgent(row)
-					writeJSON(w, http.StatusConflict, map[string]any{"message": "member already exists"})
+					writeError(w, http.StatusConflict, errors.New("member already exists"))
 					return
 				}
 			}
@@ -659,14 +659,14 @@ func (h *WorkspaceHandler) HandleTeams(w http.ResponseWriter, r *http.Request, w
 			}
 			teamID := strings.TrimSpace(body.TeamID)
 			if teamID == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "teamId is required"})
+				writeError(w, http.StatusBadRequest, errors.New("teamId is required"))
 				return
 			}
 			h.mu.Lock()
 			defer h.mu.Unlock()
 			for _, t := range h.teams {
 				if t.TeamID == teamID {
-					writeJSON(w, http.StatusConflict, map[string]any{"message": "team already exists"})
+					writeError(w, http.StatusConflict, errors.New("team already exists"))
 					return
 				}
 			}

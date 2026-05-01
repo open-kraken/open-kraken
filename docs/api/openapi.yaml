@@ -26,6 +26,159 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeHealthResponse'
+  /api/v1/namespaces:
+    get:
+      operationId: listNamespaces
+      summary: List namespaces
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, archived, all]
+            default: all
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Namespace list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NamespaceListResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '500':
+          $ref: '#/components/responses/Error500'
+    post:
+      operationId: createNamespace
+      summary: Create a namespace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNamespaceRequest'
+      responses:
+        '201':
+          description: Created namespace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Namespace'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/v1/namespaces/{namespaceId}:
+    get:
+      operationId: getNamespace
+      summary: Get a namespace
+      parameters:
+        - $ref: '#/components/parameters/NamespaceId'
+      responses:
+        '200':
+          description: Namespace detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Namespace'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '500':
+          $ref: '#/components/responses/Error500'
+    put:
+      operationId: updateNamespace
+      summary: Update namespace name and description
+      parameters:
+        - $ref: '#/components/parameters/NamespaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNamespaceRequest'
+      responses:
+        '200':
+          description: Updated namespace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Namespace'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/v1/namespaces/{namespaceId}/archive:
+    post:
+      operationId: archiveNamespace
+      summary: Archive a namespace
+      parameters:
+        - $ref: '#/components/parameters/NamespaceId'
+      responses:
+        '200':
+          description: Archived namespace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Namespace'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/v1/namespaces/{namespaceId}/restore:
+    post:
+      operationId: restoreNamespace
+      summary: Restore an archived namespace
+      parameters:
+        - $ref: '#/components/parameters/NamespaceId'
+      responses:
+        '200':
+          description: Restored namespace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Namespace'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '500':
+          $ref: '#/components/responses/Error500'
   /api/workspaces/{workspaceId}/chat/home:
     get:
       operationId: getChatHome
@@ -350,10 +503,132 @@ paths:
           $ref: '#/components/responses/Error500'
         '503':
           $ref: '#/components/responses/Error503'
+  /api/v1/skills:
+    get:
+      operationId: listSkills
+      summary: List filesystem skill catalog entries
+      responses:
+        '200':
+          description: Skill catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillListResponse'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/v1/skills/reload:
+    post:
+      operationId: reloadSkills
+      summary: Rescan the filesystem skill catalog
+      responses:
+        '200':
+          description: Reload result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillReloadResponse'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/v1/members/{memberId}/skills:
+    get:
+      operationId: listMemberSkills
+      summary: List skills assigned to a member
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Member skill bindings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberSkillsResponse'
+        '500':
+          $ref: '#/components/responses/Error500'
+    put:
+      operationId: replaceMemberSkills
+      summary: Replace the full skill binding list for a member
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceMemberSkillsRequest'
+      responses:
+        '200':
+          description: Updated member skill bindings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberSkillsResponse'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/v1/tokens/events:
+    post:
+      operationId: recordTokenEvent
+      summary: Record a token usage event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenEvent'
+      responses:
+        '201':
+          description: Recorded token event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenEvent'
+        '400':
+          $ref: '#/components/responses/Error400'
+  /api/v1/tokens/stats:
+    get:
+      operationId: getTokenStats
+      summary: Get aggregate token usage statistics
+      responses:
+        '200':
+          description: Token statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenStats'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /api/v1/tokens/activity:
+    get:
+      operationId: listTokenActivity
+      summary: List recent token usage events
+      responses:
+        '200':
+          description: Recent token events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenActivityResponse'
+        '500':
+          $ref: '#/components/responses/Error500'
 components:
   parameters:
     WorkspaceId:
       name: workspaceId
+      in: path
+      required: true
+      schema:
+        type: string
+    NamespaceId:
+      name: namespaceId
       in: path
       required: true
       schema:
@@ -479,6 +754,75 @@ components:
           type: string
         readOnly:
           type: boolean
+    Namespace:
+      type: object
+      required: [id, name, slug, description, status, team_count, member_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          pattern: '^ns_[A-Za-z0-9]+'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        slug:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          maxLength: 48
+        description:
+          type: string
+          maxLength: 256
+        status:
+          type: string
+          enum: [active, archived]
+        team_count:
+          type: integer
+          minimum: 0
+        member_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    NamespaceListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Namespace'
+        total:
+          type: integer
+          minimum: 0
+    CreateNamespaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        description:
+          type: string
+          maxLength: 256
+    UpdateNamespaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        description:
+          type: string
+          maxLength: 256
+        slug:
+          type: string
+          description: Read-only after creation; updates fail with 400 when changed.
     Member:
       type: object
       required: [workspaceId, memberId, displayName, avatar, roleType, manualStatus, terminalStatus]
@@ -683,6 +1027,104 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Member'
+    Skill:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        path:
+          type: string
+        category:
+          type: string
+        contentSummary:
+          type: string
+    SkillListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
+    SkillReloadResponse:
+      type: object
+      required: [loaded, skipped, reloadedAt]
+      properties:
+        loaded:
+          type: integer
+        skipped:
+          type: integer
+        reloadedAt:
+          type: string
+          format: date-time
+    MemberSkillsResponse:
+      type: object
+      required: [memberId, skills]
+      properties:
+        memberId:
+          type: string
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
+    ReplaceMemberSkillsRequest:
+      type: object
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          items:
+            type: string
+    TokenEvent:
+      type: object
+      required: [memberId, model, inputTokens, outputTokens, cost]
+      properties:
+        id:
+          type: string
+        memberId:
+          type: string
+        nodeId:
+          type: string
+        model:
+          type: string
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+        cost:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+    TokenStats:
+      type: object
+      required: [scope, inputTokens, outputTokens, totalTokens, totalCost, eventCount]
+      properties:
+        scope:
+          type: string
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+        totalTokens:
+          type: integer
+        totalCost:
+          type: number
+        eventCount:
+          type: integer
+    TokenActivityResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenEvent'
+        total:
+          type: integer
     RoleCapabilities:
       type: object
       required: [roleType, capabilities]
@@ -1111,6 +1553,7 @@ x-websocket:
         required: true
       subscriptions:
         type: string
+        description: Optional comma-separated subscription family list. Supported values are chat, members, roadmap, and terminal; unsupported values reject the handshake.
         example: chat,members,roadmap,terminal
       cursor:
         type: string
@@ -1120,6 +1563,7 @@ x-websocket:
           type: string
       terminalId:
         type: array
+        description: Optional terminal session filters. These apply only when the terminal subscription family is enabled.
         items:
           type: string
     accept:

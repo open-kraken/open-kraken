@@ -17,10 +17,10 @@ const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
     ...client,
     getWorkspaceSummary: async () => ({ workspaceId: 'ws_open_kraken', membersOnline: 1, activeConversationId: 'conv_general' }),
     getRoadmapDocument: () => client.getRoadmap(),
-    updateRoadmapDocument: (payload: { readOnly: boolean; roadmap: Record<string, unknown> }) =>
+    updateRoadmapDocument: (payload: { readOnly: boolean; expectedVersion?: number; roadmap: Record<string, unknown> }) =>
       client.updateRoadmap(payload.roadmap),
     getProjectDataDocument: () => client.getProjectData(),
-    updateProjectDataDocument: (payload: { readOnly: boolean; payload: Record<string, unknown> }) =>
+    updateProjectDataDocument: (payload: { readOnly: boolean; expectedVersion?: number; payload: Record<string, unknown> }) =>
       client.updateProjectData(payload),
     attachTerminalSession: async () => ({}),
     createConversation: async (body: { type: 'direct' | 'team'; memberId?: string; teamId?: string }) => ({
@@ -157,6 +157,15 @@ test('AppShell renders workspace shell chrome and the expanded prototype navigat
   assert.match(markup, /data-nav-route="namespaces"/);
   assert.match(markup, /data-nav-route="artifacts"/);
   assert.match(markup, /Notices/);
+});
+
+test('mock-backed product surfaces are marked as preview routes', () => {
+  const previewRouteIds = appRoutes.filter((route) => route.preview).map((route) => route.id).sort();
+
+  assert.deepEqual(previewRouteIds, ['artifacts', 'repositories', 'workspaces']);
+  const markup = renderShell('/workspaces');
+  assert.match(markup, /data-nav-route="workspaces"/);
+  assert.match(markup, />Preview</);
 });
 
 test('chat and terminal routes mount under AppShell with shell layout intact', () => {

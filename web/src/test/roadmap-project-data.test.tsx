@@ -156,7 +156,7 @@ test('roadmap and project data panels share feedback semantics for loading, savi
   const projectMarkup = renderToStaticMarkup(
     <TestI18n>
       <ProjectDataPanel
-        value={{ payload: { owner: 'Claire' }, storage: 'workspace', warning: '', readOnlyReason: null }}
+        value={{ payload: { owner: 'Claire' }, version: 1, storage: 'workspace', warning: '', readOnlyReason: null }}
         draftText={'{\n  "owner": "Claire"\n}'}
         feedback={errorFeedback}
         onDraftChange={() => undefined}

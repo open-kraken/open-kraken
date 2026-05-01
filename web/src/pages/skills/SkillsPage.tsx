@@ -27,12 +27,20 @@ import {
 import { useI18n } from '@/i18n/I18nProvider';
 import { useAppShell } from '@/state/app-shell-store';
 import { appEnv } from '@/config/env';
-import { getSkills, getMemberSkills, reloadSkills, updateMemberSkills } from '@/api/skills';
+import {
+  getSkills,
+  getMemberSkills,
+  importSkills,
+  reloadSkills,
+  updateMemberSkills,
+  type SkillImportEntry,
+  type SkillImportResult,
+  type SkillImportStrategy,
+} from '@/api/skills';
 import {
   buildSkillsSnapshot,
   downloadJson,
   isSkillsSnapshotV1,
-  skillsFromNames,
   type SkillsSnapshotV1,
 } from '@/features/skills/skills-snapshot';
 import type { Skill, SkillCategory } from '@/types/skill';
@@ -157,6 +165,24 @@ function buildTreeFromSkills(skills: Skill[], usageBySkill: Map<string, SkillUsa
       })),
     }));
 }
+
+const entriesFromSnapshot = (snapshot: SkillsSnapshotV1): SkillImportEntry[] =>
+  Object.entries(snapshot.memberBindings).map(([memberId, skillNames]) => ({
+    memberId,
+    skillNames: skillNames.filter(Boolean),
+  }));
+
+const summarizeImportEntries = (entries: SkillImportEntry[]) => ({
+  members: entries.length,
+  bindings: entries.reduce((sum, entry) => sum + entry.skillNames.length, 0),
+});
+
+const summarizeImportResult = (result: SkillImportResult) => {
+  const action = result.dryRun ? 'Validated' : 'Applied';
+  const conflictText = result.conflicts.length > 0 ? `, ${result.conflicts.length} conflict${result.conflicts.length === 1 ? '' : 's'}` : '';
+  const skippedText = result.skipped > 0 ? `, ${result.skipped} skipped` : '';
+  return `${action} ${result.applied} binding${result.applied === 1 ? '' : 's'}${skippedText}${conflictText}.`;
+};
 
 /* ── Tree node component ── */
 
@@ -782,8 +808,11 @@ export const SkillsPage = () => {
   const [skillBindings, setSkillBindings] = useState<SkillBindingMap>({});
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [validatingImport, setValidatingImport] = useState(false);
   const [reloadingCatalog, setReloadingCatalog] = useState(false);
   const [preview, setPreview] = useState<SkillsSnapshotV1 | null>(null);
+  const [validation, setValidation] = useState<SkillImportResult | null>(null);
+  const [importStrategy, setImportStrategy] = useState<Exclude<SkillImportStrategy, 'validate'>>('merge');
   const [message, setMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -893,57 +922,83 @@ export const SkillsPage = () => {
       e.target.value = '';
       if (!file) return;
       setMessage(null);
+      let parsed: SkillsSnapshotV1;
       try {
         const text = await file.text();
-        const parsed = JSON.parse(text) as unknown;
-        if (!isSkillsSnapshotV1(parsed)) {
+        const candidate = JSON.parse(text) as unknown;
+        if (!isSkillsSnapshotV1(candidate)) {
           setPreview(null);
+          setValidation(null);
           setMessage({ tone: 'err', text: t('skillsPage.importInvalid') });
           pushNotification({ tone: 'error', title: 'Skill import invalid', detail: t('skillsPage.importInvalid') });
           return;
         }
-        setPreview(parsed);
-        setMessage({ tone: 'ok', text: t('skillsPage.importPreviewReady') });
-        pushNotification({ tone: 'info', title: 'Skill import ready', detail: t('skillsPage.importPreviewReady') });
+        parsed = candidate;
       } catch {
         setPreview(null);
+        setValidation(null);
         setMessage({ tone: 'err', text: t('skillsPage.importParseFailed') });
         pushNotification({ tone: 'error', title: 'Skill import failed', detail: t('skillsPage.importParseFailed') });
+        return;
+      }
+
+      setPreview(parsed);
+      setValidation(null);
+      setValidatingImport(true);
+      try {
+        const result = await importSkills({ strategy: 'validate', entries: entriesFromSnapshot(parsed) });
+        setValidation(result);
+        const summary = summarizeImportResult(result);
+        setMessage({ tone: result.conflicts.length > 0 ? 'err' : 'ok', text: summary });
+        pushNotification({
+          tone: result.conflicts.length > 0 ? 'warning' : 'info',
+          title: result.conflicts.length > 0 ? 'Skill import has conflicts' : 'Skill import validated',
+          detail: summary,
+        });
+      } catch (error) {
+        const text = error instanceof Error ? error.message : 'Backend validation failed.';
+        setValidation(null);
+        setMessage({ tone: 'err', text });
+        pushNotification({ tone: 'error', title: 'Skill import validation failed', detail: text });
+      } finally {
+        setValidatingImport(false);
       }
     },
     [pushNotification, t],
   );
 
-  const applyImport = useCallback(async () => {
+  const applyImport = useCallback(async (strategy: Exclude<SkillImportStrategy, 'validate'> = importStrategy) => {
     if (!preview) return;
     setImporting(true);
     setMessage(null);
-    const errors: string[] = [];
     try {
-      const entries = Object.entries(preview.memberBindings);
-      for (const [memberId, names] of entries) {
-        try {
-          const resolved = skillsFromNames(names, preview.catalog);
-          await updateMemberSkills(memberId, { skills: resolved });
-        } catch (err) {
-          errors.push(`${memberId}: ${err instanceof Error ? err.message : 'failed'}`);
-        }
-      }
-      if (errors.length > 0) {
-        const text = errors.join('\n');
+      const result = await importSkills({ strategy, entries: entriesFromSnapshot(preview) });
+      setValidation(result);
+      const text = summarizeImportResult(result);
+      if (result.conflicts.length > 0) {
         setMessage({ tone: 'err', text });
-        pushNotification({ tone: 'error', title: 'Skill import partially failed', detail: text });
+        pushNotification({ tone: 'warning', title: 'Skill import applied with conflicts', detail: text });
       } else {
-        setMessage({ tone: 'ok', text: t('skillsPage.applyDone') });
-        pushNotification({ tone: 'info', title: 'Skill import applied', detail: t('skillsPage.applyDone') });
+        setMessage({ tone: 'ok', text });
+        pushNotification({ tone: 'info', title: 'Skill import applied', detail: text });
         setPreview(null);
+        setValidation(null);
+        setImportStrategy('merge');
         void loadCatalog();
         void loadAssignments();
       }
+      if (result.conflicts.length > 0) {
+        void loadCatalog();
+        void loadAssignments();
+      }
+    } catch (e) {
+      const text = e instanceof Error ? e.message : t('skillsPage.importParseFailed');
+      setMessage({ tone: 'err', text });
+      pushNotification({ tone: 'error', title: 'Skill import failed', detail: text });
     } finally {
       setImporting(false);
     }
-  }, [preview, skills, loadCatalog, loadAssignments, pushNotification, t]);
+  }, [importStrategy, preview, loadCatalog, loadAssignments, pushNotification, t]);
 
   const usageBySkill = useMemo(
     () => buildUsageBySkill(assistantMembers, skillBindings),
@@ -1066,17 +1121,6 @@ export const SkillsPage = () => {
               <Upload size={14} className="mr-1" />
               Import
             </Button>
-            {preview && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-red-600 border-red-600"
-                onClick={() => void applyImport()}
-                disabled={importing}
-              >
-                {importing ? 'Applying...' : 'Apply Import'}
-              </Button>
-            )}
           </div>
         </div>
       </div>
@@ -1091,6 +1135,83 @@ export const SkillsPage = () => {
           </TabsList>
         </Tabs>
       </div>
+
+      {preview && (
+        <div className="border-b app-border-subtle app-surface-strong px-6 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="text-xs">Import preview</Badge>
+                <span className="text-sm font-medium app-text-strong">
+                  {(() => {
+                    const summary = summarizeImportEntries(entriesFromSnapshot(preview));
+                    return `${summary.members} member${summary.members === 1 ? '' : 's'} / ${summary.bindings} binding${summary.bindings === 1 ? '' : 's'}`;
+                  })()}
+                </span>
+                {validatingImport && <span className="text-xs app-text-faint">Validating with backend...</span>}
+                {validation && (
+                  <span className={`text-xs ${validation.conflicts.length > 0 ? 'text-yellow-600' : 'text-green-600'}`}>
+                    {summarizeImportResult(validation)}
+                  </span>
+                )}
+              </div>
+              {validation?.conflicts.length ? (
+                <div className="mt-2 text-xs text-yellow-700 dark:text-yellow-400">
+                  {validation.conflicts.slice(0, 4).map((conflict) => (
+                    <div key={`${conflict.memberId}:${conflict.skillName}:${conflict.reason}`}>
+                      {conflict.memberId}: {conflict.skillName || '(unknown skill)'} - {conflict.reason}
+                    </div>
+                  ))}
+                  {validation.conflicts.length > 4 && (
+                    <div>{validation.conflicts.length - 4} more conflict{validation.conflicts.length - 4 === 1 ? '' : 's'}.</div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={importStrategy === 'merge' ? 'default' : 'outline'}
+                size="sm"
+                className="h-8"
+                onClick={() => setImportStrategy('merge')}
+                disabled={importing || validatingImport}
+              >
+                Merge
+              </Button>
+              <Button
+                variant={importStrategy === 'replace' ? 'default' : 'outline'}
+                size="sm"
+                className="h-8"
+                onClick={() => setImportStrategy('replace')}
+                disabled={importing || validatingImport}
+              >
+                Replace
+              </Button>
+              <Button
+                size="sm"
+                className="h-8"
+                onClick={() => void applyImport(importStrategy)}
+                disabled={importing || validatingImport || !validation}
+              >
+                {importing ? 'Applying...' : importStrategy === 'replace' ? 'Apply Replace' : 'Apply Merge'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => {
+                  setPreview(null);
+                  setValidation(null);
+                  setImportStrategy('merge');
+                }}
+                disabled={importing || validatingImport}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">

@@ -12,20 +12,22 @@ import (
 
 // MemoryRepository persists MemoryEntry records with TTL support.
 type MemoryRepository interface {
-	// Upsert creates or replaces the entry identified by scope+key.
+	// Upsert creates or replaces the entry identified by scope+owner+key.
 	Upsert(ctx context.Context, e MemoryEntry) error
-	// Get retrieves an entry by scope and key. Returns ErrNotFound when absent
-	// or when the entry has expired.
-	Get(ctx context.Context, scope Scope, key string) (MemoryEntry, error)
-	// Delete removes an entry. Returns ErrNotFound when absent.
-	Delete(ctx context.Context, scope Scope, key string) error
-	// ListByScope returns all non-expired entries for the given scope.
-	ListByScope(ctx context.Context, scope Scope) ([]MemoryEntry, error)
+	// Get retrieves an entry by scope, owner, and key. Returns ErrNotFound
+	// when absent or when the entry has expired.
+	Get(ctx context.Context, scope Scope, ownerID, key string) (MemoryEntry, error)
+	// Delete removes an entry by scope, owner, and key. Returns ErrNotFound
+	// when absent.
+	Delete(ctx context.Context, scope Scope, ownerID, key string) error
+	// ListByScope returns all non-expired entries for the given scope and owner.
+	ListByScope(ctx context.Context, scope Scope, ownerID string) ([]MemoryEntry, error)
 }
 
 // sqliteMemoryStore is a SQLite-backed MemoryRepository with TTL support.
-// Entries are unique by (scope, key). OwnerID is stored as metadata and
-// enforced at the handler layer for agent-scope isolation (see Q5).
+// Entries are unique by (scope, owner_id, key). Agent-scope operations must
+// pass ownerID so two actors can use the same key without overwriting each
+// other.
 type sqliteMemoryStore struct {
 	db  *sql.DB
 	now func() time.Time
@@ -46,7 +48,7 @@ func NewSQLiteMemoryRepository(dbPath string) (MemoryRepository, error) {
 }
 
 func migrateMemoryDB(db *sql.DB) error {
-	_, err := db.Exec(`
+	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS memory_entries (
 			id         TEXT    PRIMARY KEY,
 			scope      TEXT    NOT NULL,
@@ -57,11 +59,112 @@ func migrateMemoryDB(db *sql.DB) error {
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL,
 			ttl_nanos  INTEGER NOT NULL DEFAULT 0,
-			UNIQUE(scope, key)
+			UNIQUE(scope, owner_id, key)
 		);
 		CREATE INDEX IF NOT EXISTS idx_memory_scope ON memory_entries(scope);
-	`)
-	return err
+		CREATE INDEX IF NOT EXISTS idx_memory_scope_owner_key ON memory_entries(scope, owner_id, key);
+	`); err != nil {
+		return err
+	}
+	return migrateOldMemoryUniqueness(db)
+}
+
+func migrateOldMemoryUniqueness(db *sql.DB) error {
+	ok, err := hasOwnerScopedMemoryIndex(db)
+	if err != nil || ok {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE memory_entries RENAME TO memory_entries_old`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		CREATE TABLE memory_entries (
+			id         TEXT    PRIMARY KEY,
+			scope      TEXT    NOT NULL,
+			key        TEXT    NOT NULL,
+			value      TEXT    NOT NULL,
+			owner_id   TEXT    NOT NULL DEFAULT '',
+			node_id    TEXT    NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			ttl_nanos  INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(scope, owner_id, key)
+		);
+	`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		INSERT OR REPLACE INTO memory_entries
+			(id, scope, key, value, owner_id, node_id, created_at, updated_at, ttl_nanos)
+		SELECT id, scope, key, value,
+			CASE WHEN scope = 'agent' THEN owner_id ELSE '' END,
+			node_id, created_at, updated_at, ttl_nanos
+		FROM memory_entries_old
+		ORDER BY updated_at ASC
+	`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE memory_entries_old`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_memory_scope ON memory_entries(scope);
+		CREATE INDEX IF NOT EXISTS idx_memory_scope_owner_key ON memory_entries(scope, owner_id, key);
+	`); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func hasOwnerScopedMemoryIndex(db *sql.DB) (bool, error) {
+	rows, err := db.Query(`PRAGMA index_list(memory_entries)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var seq int
+		var name, origin string
+		var unique, partial int
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			return false, err
+		}
+		if unique == 0 {
+			continue
+		}
+		cols, err := indexColumns(db, name)
+		if err != nil {
+			return false, err
+		}
+		if len(cols) == 3 && cols[0] == "scope" && cols[1] == "owner_id" && cols[2] == "key" {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func indexColumns(db *sql.DB, name string) ([]string, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA index_info(%q)", name))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var cols []string
+	for rows.Next() {
+		var seqno, cid int
+		var col string
+		if err := rows.Scan(&seqno, &cid, &col); err != nil {
+			return nil, err
+		}
+		cols = append(cols, col)
+	}
+	return cols, rows.Err()
 }
 
 func (s *sqliteMemoryStore) Upsert(ctx context.Context, e MemoryEntry) error {
@@ -70,11 +173,12 @@ func (s *sqliteMemoryStore) Upsert(ctx context.Context, e MemoryEntry) error {
 		e.CreatedAt = now
 	}
 	e.UpdatedAt = now
+	e.OwnerID = storageOwner(e.Scope, e.OwnerID)
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO memory_entries (id, scope, key, value, owner_id, node_id, created_at, updated_at, ttl_nanos)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(scope, key) DO UPDATE SET
+		ON CONFLICT(scope, owner_id, key) DO UPDATE SET
 			id         = excluded.id,
 			value      = excluded.value,
 			owner_id   = excluded.owner_id,
@@ -89,12 +193,13 @@ func (s *sqliteMemoryStore) Upsert(ctx context.Context, e MemoryEntry) error {
 	return err
 }
 
-func (s *sqliteMemoryStore) Get(ctx context.Context, scope Scope, key string) (MemoryEntry, error) {
+func (s *sqliteMemoryStore) Get(ctx context.Context, scope Scope, ownerID, key string) (MemoryEntry, error) {
+	ownerID = storageOwner(scope, ownerID)
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, scope, key, value, owner_id, node_id, created_at, updated_at, ttl_nanos
 		FROM memory_entries
-		WHERE scope = ? AND key = ?`,
-		string(scope), key,
+		WHERE scope = ? AND owner_id = ? AND key = ?`,
+		string(scope), ownerID, key,
 	)
 	e, err := scanMemoryEntry(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -105,16 +210,17 @@ func (s *sqliteMemoryStore) Get(ctx context.Context, scope Scope, key string) (M
 	}
 	if e.IsExpired(s.now()) {
 		// Lazy delete expired entry.
-		_, _ = s.db.ExecContext(ctx, `DELETE FROM memory_entries WHERE scope = ? AND key = ?`, string(scope), key)
+		_, _ = s.db.ExecContext(ctx, `DELETE FROM memory_entries WHERE scope = ? AND owner_id = ? AND key = ?`, string(scope), ownerID, key)
 		return MemoryEntry{}, ErrNotFound
 	}
 	return e, nil
 }
 
-func (s *sqliteMemoryStore) Delete(ctx context.Context, scope Scope, key string) error {
+func (s *sqliteMemoryStore) Delete(ctx context.Context, scope Scope, ownerID, key string) error {
+	ownerID = storageOwner(scope, ownerID)
 	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM memory_entries WHERE scope = ? AND key = ?`,
-		string(scope), key,
+		`DELETE FROM memory_entries WHERE scope = ? AND owner_id = ? AND key = ?`,
+		string(scope), ownerID, key,
 	)
 	if err != nil {
 		return err
@@ -126,14 +232,19 @@ func (s *sqliteMemoryStore) Delete(ctx context.Context, scope Scope, key string)
 	return nil
 }
 
-func (s *sqliteMemoryStore) ListByScope(ctx context.Context, scope Scope) ([]MemoryEntry, error) {
-	rows, err := s.db.QueryContext(ctx, `
+func (s *sqliteMemoryStore) ListByScope(ctx context.Context, scope Scope, ownerID string) ([]MemoryEntry, error) {
+	ownerID = storageOwner(scope, ownerID)
+	query := `
 		SELECT id, scope, key, value, owner_id, node_id, created_at, updated_at, ttl_nanos
 		FROM memory_entries
-		WHERE scope = ?
-		ORDER BY updated_at DESC`,
-		string(scope),
-	)
+		WHERE scope = ?`
+	args := []any{string(scope)}
+	if scope == ScopeAgent {
+		query += " AND owner_id = ?"
+		args = append(args, ownerID)
+	}
+	query += " ORDER BY updated_at DESC"
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -158,9 +269,16 @@ func (s *sqliteMemoryStore) ListByScope(ctx context.Context, scope Scope) ([]Mem
 	}
 	// Best-effort lazy cleanup of expired entries.
 	for _, k := range expired {
-		_, _ = s.db.ExecContext(ctx, `DELETE FROM memory_entries WHERE scope = ? AND key = ?`, string(scope), k)
+		_, _ = s.db.ExecContext(ctx, `DELETE FROM memory_entries WHERE scope = ? AND owner_id = ? AND key = ?`, string(scope), ownerID, k)
 	}
 	return out, nil
+}
+
+func storageOwner(scope Scope, ownerID string) string {
+	if scope == ScopeAgent {
+		return ownerID
+	}
+	return ""
 }
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.
@@ -196,6 +314,6 @@ func scanEntry(s scanner) (MemoryEntry, error) {
 
 // entryKey returns the composite lookup key for a scope+key pair.
 // Kept as a package-level helper for the in-memory test repository.
-func entryKey(scope Scope, key string) string {
-	return string(scope) + ":" + key
+func entryKey(scope Scope, ownerID, key string) string {
+	return string(scope) + ":" + storageOwner(scope, ownerID) + ":" + key
 }

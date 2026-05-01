@@ -25,7 +25,7 @@ func newInMemoryMemRepo() *inMemoryMemRepo {
 func (r *inMemoryMemRepo) Upsert(_ context.Context, e MemoryEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	k := entryKey(e.Scope, e.Key)
+	k := entryKey(e.Scope, e.OwnerID, e.Key)
 	now := r.now()
 	if existing, ok := r.entries[k]; ok {
 		e.CreatedAt = existing.CreatedAt
@@ -33,14 +33,15 @@ func (r *inMemoryMemRepo) Upsert(_ context.Context, e MemoryEntry) error {
 		e.CreatedAt = now
 	}
 	e.UpdatedAt = now
+	e.OwnerID = storageOwner(e.Scope, e.OwnerID)
 	r.entries[k] = e
 	return nil
 }
 
-func (r *inMemoryMemRepo) Get(_ context.Context, scope Scope, key string) (MemoryEntry, error) {
+func (r *inMemoryMemRepo) Get(_ context.Context, scope Scope, ownerID, key string) (MemoryEntry, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	e, ok := r.entries[entryKey(scope, key)]
+	e, ok := r.entries[entryKey(scope, ownerID, key)]
 	if !ok {
 		return MemoryEntry{}, ErrNotFound
 	}
@@ -50,10 +51,10 @@ func (r *inMemoryMemRepo) Get(_ context.Context, scope Scope, key string) (Memor
 	return e, nil
 }
 
-func (r *inMemoryMemRepo) Delete(_ context.Context, scope Scope, key string) error {
+func (r *inMemoryMemRepo) Delete(_ context.Context, scope Scope, ownerID, key string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	k := entryKey(scope, key)
+	k := entryKey(scope, ownerID, key)
 	if _, ok := r.entries[k]; !ok {
 		return ErrNotFound
 	}
@@ -61,13 +62,16 @@ func (r *inMemoryMemRepo) Delete(_ context.Context, scope Scope, key string) err
 	return nil
 }
 
-func (r *inMemoryMemRepo) ListByScope(_ context.Context, scope Scope) ([]MemoryEntry, error) {
+func (r *inMemoryMemRepo) ListByScope(_ context.Context, scope Scope, ownerID string) ([]MemoryEntry, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	now := r.now()
 	var out []MemoryEntry
 	for _, e := range r.entries {
 		if e.Scope != scope || e.IsExpired(now) {
+			continue
+		}
+		if scope == ScopeAgent && e.OwnerID != storageOwner(scope, ownerID) {
 			continue
 		}
 		out = append(out, e)
@@ -95,7 +99,7 @@ func TestServicePutAndGet(t *testing.T) {
 		t.Error("expected ID to be generated")
 	}
 
-	got, err := svc.Get(ctx, ScopeGlobal, "build.target")
+	got, err := svc.Get(ctx, ScopeGlobal, "", "build.target")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -118,11 +122,45 @@ func TestServicePutUpdatesExisting(t *testing.T) {
 	}
 }
 
+func TestServiceAgentEntriesAreOwnerScoped(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestMemService()
+
+	_, err := svc.Put(ctx, MemoryEntry{Key: "shared", Value: "a", Scope: ScopeAgent, OwnerID: "agent-a"})
+	if err != nil {
+		t.Fatalf("put agent-a: %v", err)
+	}
+	_, err = svc.Put(ctx, MemoryEntry{Key: "shared", Value: "b", Scope: ScopeAgent, OwnerID: "agent-b"})
+	if err != nil {
+		t.Fatalf("put agent-b: %v", err)
+	}
+
+	a, err := svc.Get(ctx, ScopeAgent, "agent-a", "shared")
+	if err != nil {
+		t.Fatalf("get agent-a: %v", err)
+	}
+	b, err := svc.Get(ctx, ScopeAgent, "agent-b", "shared")
+	if err != nil {
+		t.Fatalf("get agent-b: %v", err)
+	}
+	if a.Value != "a" || b.Value != "b" {
+		t.Fatalf("expected owner-scoped values, got a=%q b=%q", a.Value, b.Value)
+	}
+
+	entries, err := svc.List(ctx, ScopeAgent, "agent-a")
+	if err != nil {
+		t.Fatalf("list agent-a: %v", err)
+	}
+	if len(entries) != 1 || entries[0].OwnerID != "agent-a" {
+		t.Fatalf("expected only agent-a memory, got %+v", entries)
+	}
+}
+
 func TestServiceGetNotFound(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestMemService()
 
-	_, err := svc.Get(ctx, ScopeAgent, "missing")
+	_, err := svc.Get(ctx, ScopeAgent, "owner-1", "missing")
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
@@ -133,10 +171,10 @@ func TestServiceDelete(t *testing.T) {
 	svc, _ := newTestMemService()
 
 	_, _ = svc.Put(ctx, MemoryEntry{Key: "to-delete", Value: "x", Scope: ScopeGlobal})
-	if err := svc.Delete(ctx, ScopeGlobal, "to-delete"); err != nil {
+	if err := svc.Delete(ctx, ScopeGlobal, "", "to-delete"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	_, err := svc.Get(ctx, ScopeGlobal, "to-delete")
+	_, err := svc.Get(ctx, ScopeGlobal, "", "to-delete")
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound after delete, got %v", err)
 	}
@@ -145,7 +183,7 @@ func TestServiceDelete(t *testing.T) {
 func TestServiceDeleteNotFound(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newTestMemService()
-	err := svc.Delete(ctx, ScopeGlobal, "ghost")
+	err := svc.Delete(ctx, ScopeGlobal, "", "ghost")
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
@@ -159,7 +197,7 @@ func TestServiceList(t *testing.T) {
 	_, _ = svc.Put(ctx, MemoryEntry{Key: "b", Value: "2", Scope: ScopeTeam})
 	_, _ = svc.Put(ctx, MemoryEntry{Key: "c", Value: "3", Scope: ScopeAgent})
 
-	entries, err := svc.List(ctx, ScopeTeam)
+	entries, err := svc.List(ctx, ScopeTeam, "")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -190,7 +228,7 @@ func TestServiceTTLExpiry(t *testing.T) {
 	expired := fixedNow.Add(2 * time.Hour)
 	repo.now = func() time.Time { return expired }
 
-	_, err = svc.Get(ctx, ScopeGlobal, "ephemeral")
+	_, err = svc.Get(ctx, ScopeGlobal, "", "ephemeral")
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound after TTL expiry, got %v", err)
 	}
@@ -203,13 +241,13 @@ func TestServiceInvalidScope(t *testing.T) {
 	if _, err := svc.Put(ctx, MemoryEntry{Key: "k", Scope: "bad"}); !errors.Is(err, ErrInvalidScope) {
 		t.Errorf("expected ErrInvalidScope, got %v", err)
 	}
-	if _, err := svc.Get(ctx, "bad", "k"); !errors.Is(err, ErrInvalidScope) {
+	if _, err := svc.Get(ctx, "bad", "", "k"); !errors.Is(err, ErrInvalidScope) {
 		t.Errorf("expected ErrInvalidScope on get, got %v", err)
 	}
-	if err := svc.Delete(ctx, "bad", "k"); !errors.Is(err, ErrInvalidScope) {
+	if err := svc.Delete(ctx, "bad", "", "k"); !errors.Is(err, ErrInvalidScope) {
 		t.Errorf("expected ErrInvalidScope on delete, got %v", err)
 	}
-	if _, err := svc.List(ctx, "bad"); !errors.Is(err, ErrInvalidScope) {
+	if _, err := svc.List(ctx, "bad", ""); !errors.Is(err, ErrInvalidScope) {
 		t.Errorf("expected ErrInvalidScope on list, got %v", err)
 	}
 }

@@ -20,24 +20,24 @@ const (
 
 // Round represents a single audit comparison round.
 type Round struct {
-	RoundNumber     int       `json:"roundNumber"`
-	MemberID        string    `json:"memberId"`
-	TerminalID      string    `json:"terminalId"`
-	FrontendSig     string    `json:"frontendSignature"`
-	BackendSig      string    `json:"backendSignature"`
-	ReopenSig       string    `json:"reopenSignature"`
-	Match           bool      `json:"match"`
-	ErrorDetail     string    `json:"errorDetail,omitempty"`
-	CompletedAt     time.Time `json:"completedAt"`
+	RoundNumber int       `json:"roundNumber"`
+	MemberID    string    `json:"memberId"`
+	TerminalID  string    `json:"terminalId"`
+	FrontendSig string    `json:"frontendSignature"`
+	BackendSig  string    `json:"backendSignature"`
+	ReopenSig   string    `json:"reopenSignature"`
+	Match       bool      `json:"match"`
+	ErrorDetail string    `json:"errorDetail,omitempty"`
+	CompletedAt time.Time `json:"completedAt"`
 }
 
 // Report holds the full audit report.
 type Report struct {
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspaceId"`
-	Status      Status    `json:"status"`
-	Rounds      []Round   `json:"rounds"`
-	StartedAt   time.Time `json:"startedAt"`
+	ID          string     `json:"id"`
+	WorkspaceID string     `json:"workspaceId"`
+	Status      Status     `json:"status"`
+	Rounds      []Round    `json:"rounds"`
+	StartedAt   time.Time  `json:"startedAt"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 }
 
@@ -63,8 +63,12 @@ func (s *Service) StartAudit(workspaceID string) *Report {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	id := s.idGen()
+	for suffix := 1; s.reports[id] != nil; suffix++ {
+		id = fmt.Sprintf("%s_%d", s.idGen(), suffix)
+	}
 	r := &Report{
-		ID:          s.idGen(),
+		ID:          id,
 		WorkspaceID: workspaceID,
 		Status:      StatusRunning,
 		StartedAt:   s.now(),

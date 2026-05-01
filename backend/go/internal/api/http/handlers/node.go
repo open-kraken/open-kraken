@@ -77,6 +77,15 @@ func (h *NodeHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if workspaceID == "" {
 		workspaceID = r.Header.Get("X-Kraken-Workspace-Id")
 	}
+	if workspaceID == "" {
+		workspaceID = r.Header.Get("X-Workspace-Id")
+	}
+	if workspaceID == "" {
+		workspaceID = r.Header.Get(headerWorkspaceID)
+	}
+	if workspaceID == "" {
+		workspaceID = "ws_open_kraken"
+	}
 	nodeType := body.NodeType
 	if nodeType == "" {
 		nodeType = body.Type

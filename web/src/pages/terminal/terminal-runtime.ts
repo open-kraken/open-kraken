@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppShellContextValue } from '@/state/app-shell-store';
 import type { RealtimeEnvelope } from '@/realtime/realtime-client';
 import {
@@ -406,15 +406,25 @@ export const useTerminalPanelRuntime = ({
   pushNotification,
   initialTerminalId = defaultTerminalId
 }: TerminalRuntimeDeps) => {
+  const pushNotificationRef = useRef(pushNotification);
+
+  useEffect(() => {
+    pushNotificationRef.current = pushNotification;
+  }, [pushNotification]);
+
+  const notify = useCallback<AppShellContextValue['pushNotification']>((toast) => {
+    pushNotificationRef.current(toast);
+  }, []);
+
   const controller = useMemo(
     () =>
       createTerminalPanelController({
         apiClient,
         realtimeClient,
-        pushNotification,
+        pushNotification: notify,
         initialTerminalId
       }),
-    [apiClient, initialTerminalId, pushNotification, realtimeClient]
+    [apiClient, initialTerminalId, notify, realtimeClient]
   );
   const [state, setState] = useState<TerminalPanelState>(() => controller.getState());
 

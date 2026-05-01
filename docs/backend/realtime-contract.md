@@ -122,6 +122,8 @@ Clients subscribe with:
 - malformed cursors are rejected as invalid client state.
 - future cursors are rejected when the current process has already established a cursor head.
 - after service restart with no persisted replay head, any non-empty cursor is treated as out-of-window and forces snapshot resync instead of durable replay.
+- WebSocket handshake subscription families are limited to `chat`, `members`, `roadmap`, and `terminal`; unsupported family names reject the handshake.
+- Events outside the accepted subscription families are not replayed or delivered on that WebSocket subscription.
 
 ### Cursor and replay window
 

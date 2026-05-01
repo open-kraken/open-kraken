@@ -27,6 +27,7 @@ export type AppRouteDefinition = {
   label: string;
   description: string;
   allowedRoles?: AppRole[];
+  preview?: boolean;
 };
 
 export const appRoutes: AppRouteDefinition[] = [
@@ -108,28 +109,30 @@ export const appRoutes: AppRouteDefinition[] = [
     path: '/workspaces',
     label: 'Workspaces',
     description: 'Workspace registry, ownership, and current activity.',
-    allowedRoles: ['owner', 'supervisor']
+    allowedRoles: ['owner', 'supervisor'],
+    preview: true
   },
   {
     id: 'repositories',
     path: '/repositories',
     label: 'Repositories',
     description: 'Connected repositories, branch posture, and sync health.',
-    allowedRoles: ['owner', 'supervisor']
+    allowedRoles: ['owner', 'supervisor'],
+    preview: true
   },
   {
     id: 'namespaces',
     path: '/namespaces',
     label: 'Namespaces',
-    description: 'Namespace inventory, tenancy boundaries, and membership.',
-    allowedRoles: ['owner', 'supervisor']
+    description: 'Namespace inventory, tenancy boundaries, and membership.'
   },
   {
     id: 'artifacts',
     path: '/artifacts',
     label: 'Artifacts',
     description: 'Build outputs, bundles, and delivery artifacts across runs.',
-    allowedRoles: ['owner', 'supervisor']
+    allowedRoles: ['owner', 'supervisor'],
+    preview: true
   },
   {
     id: 'system',

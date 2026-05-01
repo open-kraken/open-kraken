@@ -63,6 +63,22 @@ func TestListReports(t *testing.T) {
 	}
 }
 
+func TestStartAuditAvoidsIDCollision(t *testing.T) {
+	svc := NewService()
+	svc.idGen = func() string { return "audit_same" }
+
+	first := svc.StartAudit("ws1")
+	second := svc.StartAudit("ws1")
+
+	if first.ID == second.ID {
+		t.Fatalf("expected distinct IDs, got %q", first.ID)
+	}
+	reports := svc.ListReports("ws1")
+	if len(reports) != 2 {
+		t.Fatalf("expected both reports to be retained, got %d", len(reports))
+	}
+}
+
 func TestGetReport(t *testing.T) {
 	svc := NewService()
 	report := svc.StartAudit("ws1")

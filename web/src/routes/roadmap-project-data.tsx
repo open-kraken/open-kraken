@@ -40,9 +40,9 @@ import {
 
 export type RoadmapProjectDataApi = {
   getRoadmap: () => Promise<RoadmapResponse>;
-  updateRoadmap: (roadmap: RoadmapResponse['roadmap']) => Promise<RoadmapResponse>;
+  updateRoadmap: (roadmap: RoadmapResponse['roadmap'], expectedVersion?: number) => Promise<RoadmapResponse>;
   getProjectData: () => Promise<ProjectDataResponse>;
-  updateProjectData: (payload: { readOnly: boolean; payload: Record<string, unknown> }) => Promise<ProjectDataResponse>;
+  updateProjectData: (payload: { readOnly: boolean; expectedVersion?: number; payload: Record<string, unknown> }) => Promise<ProjectDataResponse>;
 };
 
 export type RoadmapProjectDataRouteProps = {
@@ -67,8 +67,8 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
       const response = await apiClient.getRoadmapDocument();
       return normalizeShellRoadmapResponse(response);
     },
-    updateRoadmap: async (roadmap) => {
-      const response = await apiClient.updateRoadmapDocument({ readOnly: false, roadmap });
+    updateRoadmap: async (roadmap, expectedVersion) => {
+      const response = await apiClient.updateRoadmapDocument({ readOnly: false, expectedVersion, roadmap });
       return normalizeShellRoadmapResponse(response);
     },
     getProjectData: () => apiClient.getProjectDataDocument(),
@@ -127,7 +127,7 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
   const handleRoadmapSave = async () => {
     setRoadmapState((current) => markRoadmapSaving(current));
     try {
-      const response = await resolvedClient.updateRoadmap(roadmapState.draft);
+      const response = await resolvedClient.updateRoadmap(roadmapState.draft, roadmapState.version);
       startTransition(() => {
         setRoadmapState(applyRoadmapSaveSuccess(response));
         onPageError?.(null);
@@ -149,6 +149,7 @@ export const RoadmapProjectDataRoute = ({ client, onPageError }: RoadmapProjectD
     try {
       const response = await resolvedClient.updateProjectData({
         readOnly: false,
+        expectedVersion: projectDataState.persisted.version,
         payload: projectDataState.draftPayload
       });
       startTransition(() => {

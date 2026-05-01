@@ -17,6 +17,7 @@ type Hub struct {
 
 type filter struct {
 	workspaceID string
+	families    map[string]struct{}
 	channelIDs  map[string]struct{}
 	terminalIDs map[string]struct{}
 	memberIDs   map[string]struct{}
@@ -179,6 +180,7 @@ func (h *Hub) snapshotEventsLocked(f filter) []Event {
 func newFilter(req SubscribeRequest) filter {
 	return filter{
 		workspaceID: req.WorkspaceID,
+		families:    toSet(req.Families),
 		channelIDs:  toSet(req.ChannelIDs),
 		terminalIDs: toSet(req.TerminalIDs),
 		memberIDs:   toSet(req.MemberIDs),
@@ -206,6 +208,15 @@ func matches(f filter, event Event) bool {
 	if f.workspaceID != "" && event.WorkspaceID != f.workspaceID {
 		return false
 	}
+	if len(f.families) > 0 {
+		family := eventFamily(event.Name)
+		if family == "" {
+			return false
+		}
+		if _, ok := f.families[family]; !ok {
+			return false
+		}
+	}
 	if len(f.channelIDs) > 0 {
 		if _, ok := f.channelIDs[event.ChannelID]; !ok {
 			return false
@@ -222,6 +233,21 @@ func matches(f filter, event Event) bool {
 		}
 	}
 	return true
+}
+
+func eventFamily(name string) string {
+	switch name {
+	case EventChatSnapshot, EventChatDelta, EventChatStatus, EventChatUpdated:
+		return "chat"
+	case EventPresenceSnapshot, EventPresenceDelta, EventPresenceStatus, EventPresenceHeartbeat:
+		return "members"
+	case EventRoadmapSnapshot, EventRoadmapDelta, EventRoadmapStatus, EventRoadmapUpdated:
+		return "roadmap"
+	case EventTerminalAttach, EventTerminalSnapshot, EventTerminalDelta, EventTerminalStatus:
+		return "terminal"
+	default:
+		return ""
+	}
 }
 
 func isSnapshotEvent(name string) bool {

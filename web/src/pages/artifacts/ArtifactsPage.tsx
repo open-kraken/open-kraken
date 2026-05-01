@@ -23,6 +23,7 @@ import {
   Copy,
   Archive,
 } from 'lucide-react';
+import { PreviewRouteNotice } from '@/components/shell/PreviewRouteNotice';
 
 type ArtifactType = 'report' | 'patch' | 'plan' | 'test_result' | 'export' | 'doc';
 type ArtifactStatus = 'draft' | 'final' | 'archived';
@@ -259,7 +260,7 @@ export const ArtifactsPage = () => {
               Browse generated reports, patches, plans, and outputs
             </p>
           </div>
-          <Button className="app-accent-bg hover:opacity-90 text-white">
+          <Button className="app-accent-bg hover:opacity-90 text-white" disabled title="Preview data only">
             <Download size={14} className="mr-1" />
             Export All
           </Button>
@@ -285,6 +286,8 @@ export const ArtifactsPage = () => {
           </div>
         </div>
       </div>
+
+      <PreviewRouteNotice surface="Artifacts" dependency="artifact storage and index APIs" />
 
       {/* Filters */}
       <div className="app-bg-elevated border-b app-border-subtle px-6 py-3">

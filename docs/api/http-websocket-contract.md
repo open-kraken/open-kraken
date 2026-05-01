@@ -145,6 +145,86 @@ Terminal HTTP responses and WebSocket handshake acceptance share one recovery st
 
 ## HTTP Contract
 
+### GET `/api/v1/namespaces`
+
+Lists namespace registry entries. All authenticated roles may list and view
+namespaces.
+
+Query parameters:
+
+- `status`: `active`, `archived`, or `all`; default `all`.
+- `q`: optional case-insensitive substring search against `name` and `description`.
+
+Success body:
+
+```json
+{
+  "items": [
+    {
+      "id": "ns_01jexample",
+      "name": "Open Kraken",
+      "slug": "open-kraken",
+      "description": "Primary namespace",
+      "status": "active",
+      "team_count": 4,
+      "member_count": 12,
+      "created_at": "2026-04-29T00:00:00Z",
+      "updated_at": "2026-04-29T00:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+Failure bodies:
+
+- `400`, `401`, `403`, `500` use the shared error envelope.
+
+### POST `/api/v1/namespaces`
+
+Creates an active namespace. Allowed roles: `owner`, `supervisor`.
+
+Request body:
+
+```json
+{ "name": "Open Kraken", "description": "Primary namespace" }
+```
+
+Success: `201 Created` with a single namespace object. The server derives a
+unique immutable `slug` from `name`. Validation errors use `400`; duplicate
+case-insensitive names use `409`.
+
+### GET `/api/v1/namespaces/{id}`
+
+Returns a single namespace object. All authenticated roles may view.
+
+Failure bodies:
+
+- `401`, `403`, `404`, `500` use the shared error envelope.
+
+### PUT `/api/v1/namespaces/{id}`
+
+Updates namespace `name` and `description`. Allowed roles: `owner`,
+`supervisor`. `slug` is immutable; if the caller supplies a changed slug, the
+server returns `400` with message `slug cannot be changed`.
+
+Success: `200 OK` with the updated namespace object. Duplicate
+case-insensitive names use `409`.
+
+### POST `/api/v1/namespaces/{id}/archive`
+
+Archives an active namespace. Allowed role: `owner`.
+
+Success: `200 OK` with the updated namespace object. Archiving an already
+archived namespace returns `409`.
+
+### POST `/api/v1/namespaces/{id}/restore`
+
+Restores an archived namespace. Allowed role: `owner`.
+
+Success: `200 OK` with the updated namespace object. Restoring an already
+active namespace returns `409`.
+
 ### GET `/api/workspaces/{workspaceId}/chat/home`
 
 Returns the chat landing read model for the active workspace.
@@ -326,6 +406,106 @@ Success body:
 Failure bodies:
 
 - `401`, `403`, `404`, `500` use the shared error envelope.
+
+### GET `/api/v1/skills`
+
+Returns the filesystem-backed skill catalog.
+
+Success body:
+
+```json
+{
+  "items": [
+    {
+      "name": "code-review",
+      "description": "Reviews code for quality",
+      "path": "/skills/code-review.md",
+      "category": "qa",
+      "contentSummary": "Review the code and provide feedback."
+    }
+  ]
+}
+```
+
+### POST `/api/v1/skills/reload`
+
+Rescans the filesystem-backed skill catalog. The current loader is not cache-backed, so this endpoint returns the count visible after a rescan.
+
+Success body:
+
+```json
+{
+  "loaded": 12,
+  "skipped": 0,
+  "reloadedAt": "2026-04-03T16:05:00Z"
+}
+```
+
+### GET/PUT `/api/v1/members/{memberId}/skills`
+
+`GET` returns the member's assigned skills. `PUT` replaces the full assignment list using skill names:
+
+```json
+{
+  "skills": ["code-review", "react-ui"]
+}
+```
+
+An empty `skills` array is valid and clears the member's assignments. Non-empty assignment remains restricted to AI Assistant members.
+
+Success body:
+
+```json
+{
+  "memberId": "assistant_1",
+  "skills": []
+}
+```
+
+### POST `/api/v1/tokens/events`
+
+Records a token usage event.
+
+Request body:
+
+```json
+{
+  "memberId": "assistant_1",
+  "nodeId": "node_1",
+  "model": "gpt-5",
+  "inputTokens": 1200,
+  "outputTokens": 400,
+  "cost": 0.05
+}
+```
+
+Success body mirrors the recorded event and adds `id` and `timestamp`.
+
+### GET `/api/v1/tokens/stats`
+
+Returns aggregate token usage:
+
+```json
+{
+  "scope": "all",
+  "inputTokens": 1200,
+  "outputTokens": 400,
+  "totalTokens": 1600,
+  "totalCost": 0.05,
+  "eventCount": 1
+}
+```
+
+### GET `/api/v1/tokens/activity`
+
+Returns recent token usage events:
+
+```json
+{
+  "items": [],
+  "total": 0
+}
+```
 
 ### GET `/api/workspaces/{workspaceId}/roadmap`
 
@@ -643,7 +823,7 @@ Client request requirements:
 - `Authorization: Bearer <token>` header is required.
 - `workspaceId` query parameter is required.
 - `memberId` query parameter is required.
-- `subscriptions` query parameter is optional comma-separated scope list.
+- `subscriptions` query parameter is an optional comma-separated scope list. Supported values are `chat`, `members`, `roadmap`, and `terminal`.
 - `cursor` query parameter is optional last acked event cursor.
 - `terminalId` query parameter may be repeated to narrow terminal session subscriptions.
 - `conversationId` query parameter may be repeated to narrow chat subscriptions.
@@ -687,7 +867,12 @@ Handshake success frame:
 
 - The bearer token must resolve to the same workspace membership as `workspaceId` and `memberId`.
 - The server must apply role-based filtering before accepting requested scopes.
+- Unknown `subscriptions` values are rejected during the handshake instead of being ignored.
 - `subscriptions=members` grants member roster and presence updates only, not terminal control.
+- `terminalId` filters only apply when the `terminal` subscription family is enabled.
+- `conversationId` filters only apply when the `chat` subscription family is enabled.
+- Client-originated `terminal.attach` frames are rejected unless the `terminal` subscription family is enabled.
+- If explicit `terminalId` filters were accepted, a later `terminal.attach` frame must target one of those terminal IDs.
 - Terminal events may be filtered to explicit `terminalId` values when the caller lacks workspace-wide terminal read.
 - Chat events may be filtered to explicit `conversationId` values when the caller lacks workspace-wide chat read.
 - Missing scope filters imply all readable resources within the requested subscription families.
@@ -708,7 +893,8 @@ The server rejects the handshake before live frames when:
 
 - the token is missing, expired, or invalid
 - `workspaceId` or `memberId` is missing or malformed
-- the member does not belong to the workspace
+- the token principal does not match the requested `workspaceId` and `memberId`
+- `subscriptions` contains an unsupported family name
 - requested scopes exceed the caller's readable authorization boundary
 - a `conversationId` or `terminalId` is not inside the caller's visible scope
 - `cursor` is malformed or points beyond the current cursor head

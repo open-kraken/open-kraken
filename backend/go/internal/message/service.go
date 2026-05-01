@@ -99,6 +99,10 @@ func (s *Service) List(ctx context.Context, q Query) ([]Message, error) {
 
 // UpdateStatus changes the status of a message and publishes a status event.
 func (s *Service) UpdateStatus(ctx context.Context, id string, status Status) error {
+	status = NormalizeStatus(status)
+	if status == "" {
+		return fmt.Errorf("message update status: %w", ErrInvalidStatus)
+	}
 	if err := s.repo.UpdateStatus(ctx, id, status); err != nil {
 		return fmt.Errorf("message update status: %w", err)
 	}
@@ -190,7 +194,7 @@ func (s *Service) publishChatStatus(m Message) {
 		Payload: realtime.ChatStatusPayload{
 			ConversationID: m.ConversationID,
 			MessageID:      m.ID,
-			Status:         string(m.Status),
+			Status:         string(NormalizeStatus(m.Status)),
 		},
 	})
 }

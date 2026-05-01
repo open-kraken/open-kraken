@@ -63,7 +63,69 @@ test('HttpClient wraps server errors with the required envelope', async () => {
         message: 'roadmap version mismatch',
         requestId: 'req_server',
         details: { expectedVersion: 4 },
-        status: 409
+        status: 409,
+        retryable: undefined
+      });
+      return true;
+    }
+  );
+});
+
+test('HttpClient accepts legacy and nested backend error envelopes', async () => {
+  const legacyClient = new HttpClient({
+    baseUrl: 'http://127.0.0.1:8080',
+    workspaceId: 'ws_open_kraken',
+    requestIdFactory: () => 'req_legacy',
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ error: 'skill import: unknown skill' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+  });
+
+  await assert.rejects(
+    () => legacyClient.post('/api/v1/skills/import', {}),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpClientError);
+      assert.equal(error.envelope.message, 'skill import: unknown skill');
+      assert.equal(error.envelope.code, 'request_failed');
+      assert.equal(error.envelope.requestId, 'req_legacy');
+      return true;
+    }
+  );
+
+  const nestedClient = new HttpClient({
+    baseUrl: 'http://127.0.0.1:8080',
+    workspaceId: 'ws_open_kraken',
+    requestIdFactory: () => 'req_nested',
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'invalid_import',
+            message: 'import validation failed',
+            requestId: 'req_server_nested',
+            details: { conflicts: 2 }
+          }
+        }),
+        {
+          status: 422,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
+  });
+
+  await assert.rejects(
+    () => nestedClient.post('/api/v1/skills/import', {}),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpClientError);
+      assert.deepEqual(error.envelope, {
+        code: 'invalid_import',
+        message: 'import validation failed',
+        requestId: 'req_server_nested',
+        details: { conflicts: 2 },
+        status: 422,
+        retryable: undefined
       });
       return true;
     }

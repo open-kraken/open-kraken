@@ -88,3 +88,58 @@ func TestMemoryHandleDelete(t *testing.T) {
 		t.Fatalf("expected 404 after delete, got %d", rec.Code)
 	}
 }
+
+func TestMemoryAgentScopeIsIsolatedByActor(t *testing.T) {
+	h := newTestMemoryHandler(t)
+
+	putAgentMemory := func(actor, value string) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/memory/agent/shared", strings.NewReader(`{"value": "`+value+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Kraken-Actor-Id", actor)
+		rec := httptest.NewRecorder()
+		h.Handle(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PUT %s expected 200, got %d: %s", actor, rec.Code, rec.Body.String())
+		}
+	}
+	getAgentMemory := func(actor string) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/agent/shared", nil)
+		req.Header.Set("X-Kraken-Actor-Id", actor)
+		rec := httptest.NewRecorder()
+		h.Handle(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s expected 200, got %d: %s", actor, rec.Code, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+
+	putAgentMemory("agent-a", "from-a")
+	putAgentMemory("agent-b", "from-b")
+
+	aBody := getAgentMemory("agent-a")
+	if !strings.Contains(aBody, "from-a") || strings.Contains(aBody, "from-b") {
+		t.Fatalf("agent-a read leaked or lost owner-scoped value: %s", aBody)
+	}
+	bBody := getAgentMemory("agent-b")
+	if !strings.Contains(bBody, "from-b") || strings.Contains(bBody, "from-a") {
+		t.Fatalf("agent-b read leaked or lost owner-scoped value: %s", bBody)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/memory/agent?ownerId=agent-b", nil)
+	req.Header.Set("X-Kraken-Actor-Id", "agent-a")
+	rec := httptest.NewRecorder()
+	h.Handle(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for cross-owner list, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/memory/agent/shared?ownerId=agent-b", nil)
+	req.Header.Set("X-Kraken-Actor-Id", "agent-a")
+	rec = httptest.NewRecorder()
+	h.Handle(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for cross-owner delete, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

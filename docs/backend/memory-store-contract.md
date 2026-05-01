@@ -24,7 +24,7 @@ type MemoryEntry struct {
     Key       string          `json:"key"`
     Value     json.RawMessage `json:"value"`     // arbitrary JSON blob
     Scope     MemoryScope     `json:"scope"`
-    OwnerID   string          `json:"ownerId"`   // memberId for agent scope; workspaceId for team scope; "" for global
+    OwnerID   string          `json:"ownerId"`   // memberId for agent scope; "" for team/global shared entries
     NodeID    string          `json:"nodeId"`    // node that wrote the entry (informational, not access-control)
     CreatedAt time.Time       `json:"createdAt"`
     UpdatedAt time.Time       `json:"updatedAt"`
@@ -77,7 +77,7 @@ CREATE INDEX idx_memory_expires_at
 ```
 
 - TTL expiry is enforced lazily on read (expired entries return `404`) and eagerly by a background sweeper that runs every **60 seconds**
-- `owner_id` for `global` scope entries is stored as empty string `""`
+- `owner_id` for `team` and `global` scope entries is stored as empty string `""` so those scopes remain shared by key
 - The SQLite file is local to the server process; cross-node access happens through the HTTP API, not direct file access
 
 ---
@@ -88,7 +88,7 @@ All memory API requests may include:
 
 | Header | Required | Description |
 |--------|----------|-------------|
-| `X-Kraken-Actor-Id` | No | Identifies the calling agent or service. Used as `ownerId` for all writes. Defaults to `"anonymous"` when absent. |
+| `X-Kraken-Actor-Id` | No | Identifies the calling agent or service. Used as `ownerId` for `agent` scope writes. Defaults to `"anonymous"` when absent. |
 
 **Scope access rules:**
 
@@ -108,7 +108,7 @@ All memory API requests may include:
 PUT /api/v1/memory/{scope}/{key}
 ```
 
-Creates or replaces a memory entry. For `agent` scope, `ownerId` is always set to the value of `X-Kraken-Actor-Id` (server-side enforcement), preventing cross-agent writes. For `team` and `global` scopes, the actor ID is stored as `ownerId` for audit purposes only.
+Creates or replaces a memory entry. For `agent` scope, `ownerId` is always set to the value of `X-Kraken-Actor-Id` (server-side enforcement), preventing cross-agent writes. For `team` and `global` scopes, `ownerId` is normalized to `""` so writes replace the shared `{scope, key}` entry instead of creating per-actor copies.
 
 **Path Params:**
 | Param | Type | Description |
@@ -146,7 +146,7 @@ Creates or replaces a memory entry. For `agent` scope, `ownerId` is always set t
 | Code | Reason |
 |------|--------|
 | `400` | Invalid scope value or malformed JSON `value` |
-| `403` | Writing to `agent` scope for a different member's `ownerId` |
+| `403` | Reserved for rejected cross-owner agent memory operations |
 
 ---
 
@@ -165,7 +165,7 @@ GET /api/v1/memory/{scope}/{key}
 **Query Params (agent scope only):**
 | Param | Type | Description |
 |-------|------|-------------|
-| `ownerId` | `string` | Required for `agent` scope reads by other agents (e.g. team lead reading a member's memory). Omit to read own memory. |
+| `ownerId` | `string` | Optional for `agent` scope. If present, it must match `X-Kraken-Actor-Id`; omit to read own memory. |
 
 **Response `200 OK`:** Full `MemoryEntry` object
 
@@ -173,7 +173,7 @@ GET /api/v1/memory/{scope}/{key}
 | Code | Reason |
 |------|--------|
 | `404` | Entry not found or TTL expired |
-| `403` | Reading another agent's memory without appropriate role |
+| `403` | Reading another agent's memory |
 
 ---
 
@@ -191,7 +191,7 @@ Returns all entries for the given scope visible to the caller.
 | Param | Type | Description |
 |-------|------|-------------|
 | `prefix` | `string` | Filter keys by prefix, e.g. `agent/context/` |
-| `ownerId` | `string` | For `agent` scope: list another member's memory (requires role) |
+| `ownerId` | `string` | For `agent` scope: optional owner check. If present, it must match `X-Kraken-Actor-Id`; omit to list own memory. |
 | `limit` | `int` | Max entries to return (default 100, max 1000) |
 | `cursor` | `string` | Pagination cursor from previous response |
 
@@ -232,7 +232,7 @@ DELETE /api/v1/memory/{scope}/{key}
 | Code | Reason |
 |------|--------|
 | `404` | Entry not found |
-| `403` | Deleting another agent's memory without appropriate role |
+| `403` | Deleting another agent's memory |
 
 ---
 

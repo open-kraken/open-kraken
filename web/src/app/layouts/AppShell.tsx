@@ -156,7 +156,7 @@ export const AppShell = () => {
     .map((r) => ({
       id: r.id,
       label: r.label,
-      description: r.description,
+      description: r.preview ? `Preview surface: ${r.description}` : r.description,
       group: 'Navigation',
       handler: () => navigate(r.id),
     }));
@@ -292,6 +292,11 @@ export const AppShell = () => {
                     >
                       <NavRouteIcon routeId={routeId} />
                       <span>{routeLabel(routeId)}</span>
+                      {appRoutes.find((candidate) => candidate.id === routeId)?.preview && (
+                        <span className="ml-auto rounded border border-yellow-500/40 px-1 text-[9px] uppercase tracking-wide text-yellow-700 dark:text-yellow-400">
+                          Preview
+                        </span>
+                      )}
                     </button>
                   );
                 })}

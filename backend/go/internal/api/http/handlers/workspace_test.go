@@ -120,6 +120,38 @@ func TestWorkspaceRoadmapAndProjectDataAuthzViaBearerAdapter(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRoadmapRejectsStaleExpectedVersion(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	appRoot := t.TempDir()
+	repo := projectdata.NewRepository(appRoot)
+	service := terminal.NewService(session.NewRegistry(), pty.NewFakeLauncher(pty.NewFakeProcess()), realtime.NewHub(64))
+	handler := apihttp.NewHandlerWithDependencies(service, realtime.NewHub(64), repo, workspaceRoot, "/api/v1", "/ws", apihttp.ExtendedServices{}, plathttp.PermissiveWebSocketUpgrader())
+
+	token := mustToken(t, authz.Principal{
+		MemberID:    "owner-1",
+		WorkspaceID: "ws_open_kraken",
+		Role:        authz.RoleOwner,
+	})
+	first := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/ws_open_kraken/roadmap", bytes.NewBufferString(`{"roadmap":{"objective":"v1","tasks":[]}}`))
+	first.Header.Set("Authorization", token)
+	firstRec := httptest.NewRecorder()
+	handler.ServeHTTP(firstRec, first)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("seed roadmap write got %d body=%s", firstRec.Code, firstRec.Body.String())
+	}
+
+	stale := httptest.NewRequest(http.MethodPut, "/api/v1/workspaces/ws_open_kraken/roadmap", bytes.NewBufferString(`{"expectedVersion":0,"roadmap":{"objective":"stale","tasks":[]}}`))
+	stale.Header.Set("Authorization", token)
+	staleRec := httptest.NewRecorder()
+	handler.ServeHTTP(staleRec, stale)
+	if staleRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", staleRec.Code, staleRec.Body.String())
+	}
+	if !strings.Contains(staleRec.Body.String(), `"code":"version_conflict"`) {
+		t.Fatalf("expected version conflict envelope, got %s", staleRec.Body.String())
+	}
+}
+
 func mustToken(t *testing.T, principal authz.Principal) string {
 	t.Helper()
 	token, err := authn.NewDevelopmentBearerToken(principal)

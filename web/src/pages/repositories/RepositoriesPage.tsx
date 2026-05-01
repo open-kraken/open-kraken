@@ -14,6 +14,7 @@ import {
   GitCommit,
   Server,
 } from "lucide-react";
+import { PreviewRouteNotice } from "@/components/shell/PreviewRouteNotice";
 
 /* ------------------------------------------------------------------ */
 /*  Mock data                                                         */
@@ -90,7 +91,7 @@ export function RepositoriesPage() {
               Manage code repositories and distributed Git execution contexts
             </p>
           </div>
-          <Button className="app-accent-bg hover:opacity-90 text-white">
+          <Button className="app-accent-bg hover:opacity-90 text-white" disabled title="Preview data only">
             <Plus size={14} className="mr-1" />
             Add Repository
           </Button>
@@ -120,6 +121,8 @@ export function RepositoriesPage() {
           </div>
         </div>
       </div>
+
+      <PreviewRouteNotice surface="Repositories" dependency="repository connector and CI status APIs" />
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
@@ -189,11 +192,11 @@ export function RepositoriesPage() {
                   </a>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" disabled title="Preview data only">
                     <GitMerge size={14} className="mr-1" />
                     Sync Remote
                   </Button>
-                  <Button variant="outline" size="sm">Settings</Button>
+                  <Button variant="outline" size="sm" disabled title="Preview data only">Settings</Button>
                 </div>
               </div>
 

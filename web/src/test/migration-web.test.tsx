@@ -24,8 +24,9 @@ const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
         tasks: [{ id: 'task_1', number: 1, title: 'Freeze DTOs', status: 'done', pinned: true }]
       }
     }),
-    updateRoadmapDocument: async (payload: { readOnly: boolean; roadmap: Record<string, unknown> }) => ({
+    updateRoadmapDocument: async (payload: { readOnly: boolean; expectedVersion?: number; roadmap: Record<string, unknown> }) => ({
       readOnly: false,
+      version: (payload.expectedVersion ?? 0) + 1,
       storage: 'workspace',
       warning: '',
       roadmap: payload.roadmap
@@ -36,8 +37,9 @@ const createRouteApiClient = (): AppShellContextValue['apiClient'] => {
       warning: '',
       payload: { projectName: 'open-kraken', owner: 'Claire' }
     }),
-    updateProjectDataDocument: async (payload: { readOnly: boolean; payload: Record<string, unknown> }) => ({
+    updateProjectDataDocument: async (payload: { readOnly: boolean; expectedVersion?: number; payload: Record<string, unknown> }) => ({
       readOnly: false,
+      version: (payload.expectedVersion ?? 0) + 1,
       storage: 'workspace',
       warning: '',
       payload: payload.payload

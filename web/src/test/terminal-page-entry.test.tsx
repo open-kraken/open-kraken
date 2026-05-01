@@ -28,9 +28,9 @@ const terminalApiClient = {
   deleteTeam: async () => ({ members: [] }),
   getRoadmap: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
   getRoadmapDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', roadmap: { objective: 'Ship', tasks: [] } }),
-  updateRoadmapDocument: async (payload: { readOnly: boolean; roadmap: { objective?: string; tasks?: unknown[] } }) => ({ readOnly: payload.readOnly, storage: 'workspace', warning: '', roadmap: payload.roadmap }),
+  updateRoadmapDocument: async (payload: { readOnly: boolean; expectedVersion?: number; roadmap: { objective?: string; tasks?: unknown[] } }) => ({ readOnly: payload.readOnly, version: (payload.expectedVersion ?? 0) + 1, storage: 'workspace', warning: '', roadmap: payload.roadmap }),
   getProjectDataDocument: async () => ({ readOnly: false, storage: 'workspace', warning: '', payload: {} }),
-  updateProjectDataDocument: async (payload: { readOnly: boolean; payload: Record<string, unknown> }) => ({ readOnly: payload.readOnly, storage: 'workspace', warning: '', payload: payload.payload }),
+  updateProjectDataDocument: async (payload: { readOnly: boolean; expectedVersion?: number; payload: Record<string, unknown> }) => ({ readOnly: payload.readOnly, version: (payload.expectedVersion ?? 0) + 1, storage: 'workspace', warning: '', payload: payload.payload }),
   attachTerminalSession: async () => ({}),
   attachTerminal: async () => ({
     session: {

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 
 	"open-kraken/backend/go/internal/authz"
@@ -39,16 +41,20 @@ func (h *WorkspaceHandler) HandleRoadmap(w http.ResponseWriter, r *http.Request,
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"readOnly": false,
-			"storage":  result.Storage,
-			"warning":  result.Warning,
-			"roadmap":  roadmapPayload,
+			"workspaceId": workspaceID,
+			"readOnly":    false,
+			"version":     result.Document.Meta.Version,
+			"storage":     result.Storage,
+			"warning":     result.Warning,
+			"persistence": persistenceEnvelope(result.Storage, result.Warning),
+			"roadmap":     roadmapPayload,
 		})
 	case http.MethodPut:
 		var body map[string]any
 		if !decodeJSON(r, &body, w) {
 			return
 		}
+		expectedVersion := readExpectedVersion(body)
 		roadmapPayload, _ := body["roadmap"].(map[string]any)
 		roadmapTasks, _ := roadmapPayload["tasks"].([]any)
 		tasks := make([]projectdata.RoadmapTask, 0, len(roadmapTasks))
@@ -103,12 +109,17 @@ func (h *WorkspaceHandler) HandleRoadmap(w http.ResponseWriter, r *http.Request,
 		result, err := h.projectWriter.WriteGlobalRoadmap(authCtx, req, projectdata.GlobalRoadmapDocument{
 			Objective: readStringMap(roadmapPayload, "objective"),
 			Tasks:     tasks,
-		}, projectdata.WriteOptions{})
+		}, projectdata.WriteOptions{ExpectedVersion: expectedVersion})
 		if err != nil {
-			writeAuthzError(w, err)
+			if errors.Is(err, projectdata.ErrVersionConflict) {
+				writeError(w, http.StatusConflict, err)
+			} else {
+				writeAuthzError(w, err)
+			}
 			return
 		}
 		h.mu.Lock()
+		h.roadmapVersion = result.Document.Meta.Version
 		h.state.Roadmap = map[string]any{
 			"objective": result.Document.Objective,
 			"tasks":     result.Document.Tasks,
@@ -124,10 +135,13 @@ func (h *WorkspaceHandler) HandleRoadmap(w http.ResponseWriter, r *http.Request,
 		h.publishRoadmapLocked()
 		h.mu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"readOnly": false,
-			"storage":  result.Storage,
-			"warning":  result.Warning,
-			"roadmap":  h.state.Roadmap,
+			"workspaceId": workspaceID,
+			"readOnly":    false,
+			"version":     result.Document.Meta.Version,
+			"storage":     result.Storage,
+			"warning":     result.Warning,
+			"persistence": persistenceEnvelope(result.Storage, result.Warning),
+			"roadmap":     h.state.Roadmap,
 		})
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -168,16 +182,23 @@ func (h *WorkspaceHandler) HandleProjectData(w http.ResponseWriter, r *http.Requ
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"readOnly": false,
-			"storage":  result.Storage,
-			"warning":  result.Warning,
-			"payload":  payload,
+			"workspaceId": workspaceID,
+			"projectId":   readStringMap(payload, "projectId"),
+			"projectName": readStringMap(payload, "projectName"),
+			"attributes":  readMapMap(payload, "attributes"),
+			"readOnly":    false,
+			"version":     result.Document.Meta.Version,
+			"storage":     result.Storage,
+			"warning":     result.Warning,
+			"persistence": persistenceEnvelope(result.Storage, result.Warning),
+			"payload":     payload,
 		})
 	case http.MethodPut:
 		var body map[string]any
 		if !decodeJSON(r, &body, w) {
 			return
 		}
+		expectedVersion := readExpectedVersion(body)
 		payload, _ := body["payload"].(map[string]any)
 		if payload == nil {
 			payload = body
@@ -186,9 +207,13 @@ func (h *WorkspaceHandler) HandleProjectData(w http.ResponseWriter, r *http.Requ
 			ProjectID:   readStringMap(payload, "projectId"),
 			ProjectName: readStringMap(payload, "projectName"),
 			Attributes:  readMapMap(payload, "attributes"),
-		}, projectdata.WriteOptions{})
+		}, projectdata.WriteOptions{ExpectedVersion: expectedVersion})
 		if err != nil {
-			writeAuthzError(w, err)
+			if errors.Is(err, projectdata.ErrVersionConflict) {
+				writeError(w, http.StatusConflict, err)
+			} else {
+				writeAuthzError(w, err)
+			}
 			return
 		}
 		h.mu.Lock()
@@ -198,22 +223,52 @@ func (h *WorkspaceHandler) HandleProjectData(w http.ResponseWriter, r *http.Requ
 		h.state.ProjectData["attributes"] = result.Document.Attributes
 		if roadmapPayload, ok := payload["roadmap"].(map[string]any); ok {
 			h.state.Roadmap = cloneMap(roadmapPayload)
+			h.roadmapVersion = result.Document.Meta.Version
 			h.publishRoadmapLocked()
 			h.state.ProjectData["roadmap"] = cloneMap(roadmapPayload)
 		}
 		h.mu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"readOnly": false,
-			"storage":  result.Storage,
-			"warning":  result.Warning,
-			"payload":  h.state.ProjectData,
+			"workspaceId": workspaceID,
+			"projectId":   result.Document.ProjectID,
+			"projectName": result.Document.ProjectName,
+			"attributes":  result.Document.Attributes,
+			"readOnly":    false,
+			"version":     result.Document.Meta.Version,
+			"storage":     result.Storage,
+			"warning":     result.Warning,
+			"persistence": persistenceEnvelope(result.Storage, result.Warning),
+			"payload":     h.state.ProjectData,
 		})
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
+func readExpectedVersion(body map[string]any) *int64 {
+	switch value := body["expectedVersion"].(type) {
+	case float64:
+		version := int64(value)
+		return &version
+	case int:
+		version := int64(value)
+		return &version
+	case int64:
+		version := value
+		return &version
+	case json.Number:
+		if parsed, err := value.Int64(); err == nil {
+			return &parsed
+		}
+	}
+	return nil
+}
+
 func (h *WorkspaceHandler) publishRoadmapLocked() {
+	version := uint64(h.roadmapVersion)
+	if version == 0 {
+		version = 1
+	}
 	itemIDs := make([]string, 0)
 	if tasks, ok := h.state.Roadmap["tasks"].([]projectdata.RoadmapTask); ok {
 		for _, task := range tasks {
@@ -232,7 +287,7 @@ func (h *WorkspaceHandler) publishRoadmapLocked() {
 		Payload: realtime.RoadmapSnapshotPayload{
 			WorkspaceID: h.state.Workspace.ID,
 			ItemIDs:     itemIDs,
-			Version:     1,
+			Version:     version,
 		},
 	})
 	h.hub.Publish(realtime.Event{
@@ -240,7 +295,7 @@ func (h *WorkspaceHandler) publishRoadmapLocked() {
 		WorkspaceID: h.state.Workspace.ID,
 		Payload: realtime.RoadmapUpdatedPayload{
 			WorkspaceID: h.state.Workspace.ID,
-			Version:     1,
+			Version:     version,
 			Reason:      "write_committed",
 		},
 	})

@@ -10,9 +10,9 @@ import (
 // PipelineResult carries the message through each stage and accumulates
 // decisions made along the way.
 type PipelineResult struct {
-	Message   Message
-	Targets   []string // member IDs that should receive the message
-	Dropped   bool     // true if policy/throttle decided to suppress
+	Message    Message
+	Targets    []string // member IDs that should receive the message
+	Dropped    bool     // true if policy/throttle decided to suppress
 	DropReason string
 }
 
@@ -78,7 +78,7 @@ func (p *Pipeline) normalize(r *PipelineResult) {
 		m.ContentType = ContentTypeText
 	}
 	if m.Status == "" {
-		m.Status = StatusSending
+		m.Status = StatusPending
 	}
 	now := p.now()
 	if m.CreatedAt.IsZero() {
@@ -133,7 +133,7 @@ func (p *Pipeline) throttle(r *PipelineResult) {
 // queued for outbox dispatch; otherwise it is marked sent immediately.
 func (p *Pipeline) deliver(ctx context.Context, r *PipelineResult) error {
 	if len(r.Targets) > 0 {
-		r.Message.Status = StatusQueued
+		r.Message.Status = StatusPending
 	} else {
 		r.Message.Status = StatusSent
 	}
